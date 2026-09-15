@@ -23,7 +23,7 @@
   ],
   "type": "module",
   "bin": {
-    "manta-action-kit-mcp": "./dist/index.js"
+    "manta-action-kit-mcp": "dist/index.js"
   },
   "main": "./dist/index.js",
   "files": [
