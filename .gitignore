@@ -31,8 +31,8 @@ Thumbs.db
 # CodeGraph index (machine-generated, rebuildable)
 .codegraph/
 
-# Claude Code — commit shared assets (.claude/skills/), ignore personal config
-.claude/settings.local.json
+# Claude Code — local config; shared skill 的源码在 packages/skills/，安装方式见其 README
+.claude/
 
 # Misc
 coverage/
