@@ -68,10 +68,11 @@ export default tseslint.config(
     },
   },
 
-  // Skill helper scripts (.claude/skills) — standalone Node scripts run outside
+  // Skill helper scripts — standalone Node scripts run outside
   // the packages, so they get Node globals (process/console/fetch/URL) too.
+  // (.claude/skills/* 是指向 packages/skills/* 的符号链接，ESLint 按真实路径匹配。)
   {
-    files: ['.claude/**/*.{mjs,cjs,js}'],
+    files: ['.claude/**/*.{mjs,cjs,js}', 'packages/skills/**/*.{mjs,cjs,js}'],
     languageOptions: {
       globals: {
         ...globals.node,

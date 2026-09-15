@@ -21,7 +21,6 @@ import path from 'node:path';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
 const MCP_PORT = Number(process.env.MANTA_WS_PORT) || 8787;
-const PROXY_PORT = Number(process.env.MANTA_PROXY_PORT) || 8788;
 
 const results = [];
 const report = (ok, label, detail = '') => {
@@ -134,7 +133,11 @@ function rpc(ws, method, params, timeoutMs) {
       }
       if (frame.type === 'peer-rpc-result' && frame.id === id) {
         clearTimeout(timer);
-        frame.ok ? resolve(frame.result) : reject(new Error(frame.error));
+        if (frame.ok) {
+          resolve(frame.result);
+        } else {
+          reject(new Error(frame.error));
+        }
       }
     });
     ws.send(JSON.stringify({ type: 'hello', role: 'peer', version: '0.0.0' }));
