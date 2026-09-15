@@ -1,0 +1,20 @@
+{
+  "name": "@manta-action-kit/skills",
+  "description": "Agent skills for Manta Action Kit — teaches Claude Code / other agents how to set up, health-check and use the suite (Chrome extension + MCP server)",
+  "version": "0.1.2",
+  "license": "MIT",
+  "type": "module",
+  "files": [
+    "manta-action-kit",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/marrviin/manta-action-kit.git",
+    "directory": "packages/skills"
+  }
+}

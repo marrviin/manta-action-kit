@@ -1,0 +1,24 @@
+packages:
+  - 'packages/*'
+
+allowBuilds:
+  '@parcel/watcher': set this to true or false
+  bufferutil: set this to true or false
+  canvas: set this to true or false
+  core-js: set this to true or false
+  edgedriver: set this to true or false
+  esbuild: set this to true or false
+  geckodriver: set this to true or false
+  kerberos: set this to true or false
+  msw: set this to true or false
+  utf-8-validate: set this to true or false
+
+onlyBuiltDependencies:
+  - esbuild
+  - '@parcel/watcher'
+
+# pnpm 11 runs an install-status check before every `pnpm run` script and exits
+# non-zero while any acknowledged-but-unbuilt native dep exists (test drivers,
+# optional addons pulled in transitively). Those builds aren't needed, so skip the
+# pre-run check — `postinstall` still runs `wxt prepare` after a real install.
+verifyDepsBeforeRun: false

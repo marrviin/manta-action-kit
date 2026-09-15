@@ -1,0 +1,48 @@
+{
+  "name": "manta-action-kit",
+  "description": "Manta Action Kit monorepo — Chrome extension (API recording) + MCP tooling",
+  "private": true,
+  "version": "0.1.2",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=9"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @manta-action-kit/extension dev",
+    "dev:firefox": "pnpm --filter @manta-action-kit/extension dev:firefox",
+    "build": "pnpm --filter @manta-action-kit/extension build",
+    "build:firefox": "pnpm --filter @manta-action-kit/extension build:firefox",
+    "zip": "pnpm --filter @manta-action-kit/extension zip",
+    "zip:firefox": "pnpm --filter @manta-action-kit/extension zip:firefox",
+    "build:mcp": "pnpm --filter manta-action-kit-mcp build",
+    "dev:mcp": "pnpm --filter manta-action-kit-mcp dev",
+    "start:mcp": "pnpm --filter manta-action-kit-mcp start",
+    "compile": "pnpm -r compile",
+    "test": "pnpm --filter @manta-action-kit/extension test",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "lint:style": "stylelint \"packages/**/*.css\"",
+    "lint:style:fix": "stylelint \"packages/**/*.css\" --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "version:sync": "pnpm -r exec -- npm version $npm_package_version --no-git-tag-version --allow-same-version",
+    "version:patch": "npm version patch --no-git-tag-version && pnpm run version:sync",
+    "version:minor": "npm version minor --no-git-tag-version && pnpm run version:sync",
+    "version:major": "npm version major --no-git-tag-version && pnpm run version:sync"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^9.39.4",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.4",
+    "globals": "^17.11.0",
+    "prettier": "^3.9.6",
+    "stylelint": "^17.14.1",
+    "stylelint-config-standard": "^40.0.0",
+    "typescript-eslint": "^8.68.0"
+  }
+}

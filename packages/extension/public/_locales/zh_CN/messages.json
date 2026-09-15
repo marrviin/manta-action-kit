@@ -1,0 +1,18 @@
+{
+  "extName": {
+    "message": "Manta Action Kit - AI 开发者工具箱与 Agent 浏览器桥",
+    "description": "Extension name shown in the Chrome store and toolbar."
+  },
+  "extShortName": {
+    "message": "Manta Action Kit",
+    "description": "Short extension name."
+  },
+  "extDescription": {
+    "message": "让 Claude Code 与 Codex 安全访问你已登录的接口。录制业务流程，经沙箱代理转发——Cookie 始终保密。",
+    "description": "Extension description shown in the Chrome store."
+  },
+  "actionTitle": {
+    "message": "Manta Action Kit",
+    "description": "Toolbar action tooltip."
+  }
+}

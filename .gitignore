@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+.output/
+.wxt/
+*.tsbuildinfo
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Editor / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+
+# CodeGraph index (machine-generated, rebuildable)
+.codegraph/
+
+# Claude Code — commit shared assets (.claude/skills/), ignore personal config
+.claude/settings.local.json
+
+# Misc
+coverage/
+.cache/

@@ -1,0 +1,70 @@
+/* Tailwind CSS v4 — CSS-first configuration.
+ *
+ * The UI is built with antd components; Tailwind is kept only for occasional
+ * layout utility classes. Preflight (Tailwind's base reset) is DISABLED so it can't
+ * fight antd's own component styling. Import order in main.tsx keeps this before
+ * antd so antd wins any remaining overlap.
+ *
+ * Docs: https://tailwindcss.com/docs/theme
+ */
+@layer theme, base, components, utilities;
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
+
+@theme {
+  /* Brand tokens (kept for any utility usage / custom CSS).
+   * Aligned with the antd seed color #3768fa (see components/app-providers.tsx). */
+  --color-brand-50: #eef3ff;
+  --color-brand-500: #5a83fb;
+  --color-brand-600: #3768fa;
+  --color-brand-700: #2a52c8;
+}
+
+html,
+body {
+  margin: 0;
+
+  /* Light-only UI, aligned with the desktop theme. */
+  color-scheme: light;
+}
+
+#root {
+  height: 100%;
+}
+
+/* Recording detail — align the call chain nodes with the Timeline rail.
+ * antd v6's Timeline is built on Steps: each item is a flex row of
+ *   [icon(dot)] [section(content)] with a [rail] connector, and the dot is
+ *   flex-start aligned to the top of the content.
+ * The call node (UnifiedListItem with class `manta-action-kit-call-node`) adds
+ * py-2.5 (10px top padding) via the shared list-item wrapper, which pushes the
+ * title row below the dot. We drop just this node's top padding so its first
+ * line sits flush with the content top and lines up with the dot — without
+ * moving the dot/rail.
+ * Bound to `.manta-action-kit-call-node` (not the whole Timeline) so it only affects
+ * the recording call chain and never other lists or Timelines. */
+.manta-action-kit-call-timeline .ant-timeline-item-content .manta-action-kit-call-node {
+  padding-top: 0;
+}
+
+/* Primary button — near-black, matching the desktop theme.
+ * There, colorPrimary stays blue (focus rings / menu selection / links) while
+ * the primary *button* background is overridden to #333 via a CSS layer that
+ * sits above antd's. manta-action-kit's antd is injected UNLAYERED (no StyleProvider
+ * layer), so a plain rule can't beat antd's `:hover`/`:active`. We instead pin
+ * every enabled state explicitly and use !important to outrank antd's unlayered
+ * styles. Disabled state is left to antd (its greyed look is correct). */
+.ant-btn.ant-btn-primary:not(:disabled, .ant-btn-disabled) {
+  background-color: #333 !important;
+  border-color: #333 !important;
+}
+
+.ant-btn.ant-btn-primary:not(:disabled, .ant-btn-disabled):hover {
+  background-color: #434343 !important;
+  border-color: #434343 !important;
+}
+
+.ant-btn.ant-btn-primary:not(:disabled, .ant-btn-disabled):active {
+  background-color: #1f1f1f !important;
+  border-color: #1f1f1f !important;
+}

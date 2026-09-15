@@ -1,0 +1,18 @@
+{
+  "extName": {
+    "message": "Manta Action Kit - AI Developer Toolkit & Agent Browser Bridge",
+    "description": "Extension name shown in the Chrome store and toolbar."
+  },
+  "extShortName": {
+    "message": "Manta Action Kit",
+    "description": "Short extension name."
+  },
+  "extDescription": {
+    "message": "Secure access to your authenticated APIs for Claude Code & Codex. Record business flows via a sandbox proxy — cookies stay private.",
+    "description": "Extension description shown in the Chrome store."
+  },
+  "actionTitle": {
+    "message": "Manta Action Kit",
+    "description": "Toolbar action tooltip."
+  }
+}
