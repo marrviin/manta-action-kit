@@ -33,6 +33,7 @@ Thumbs.db
 
 # Claude Code — local config; shared skill 的源码在 packages/skills/，安装方式见其 README
 .claude/
+CLAUDE.md
 
 # Misc
 coverage/
