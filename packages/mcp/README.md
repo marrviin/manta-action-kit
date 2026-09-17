@@ -81,8 +81,8 @@ Every MCP process starts identically (via `npx`) and races for the WS bridge por
 ## Build & run
 
 ```bash
-pnpm --filter manta-action-kit-mcp build   # tsc -> dist/
-pnpm --filter manta-action-kit-mcp start   # node dist/index.js
+pnpm --filter @manta-action-kit/mcp build   # tsc -> dist/
+pnpm --filter @manta-action-kit/mcp start   # node dist/index.js
 ```
 
 Config (both must be distinct free ports):
@@ -104,7 +104,7 @@ Equivalent manual config — **production** (published package):
   "mcpServers": {
     "manta-action-kit": {
       "command": "npx",
-      "args": ["-y", "manta-action-kit-mcp"],
+      "args": ["-y", "@manta-action-kit/mcp"],
       "env": { "MANTA_WS_PORT": "8787", "MANTA_PROXY_PORT": "8788" },
     },
   },
@@ -211,8 +211,8 @@ agent ──stdio (MCP)──▶ manta-action-kit-mcp ──WS 服务 ws://127.0
 ## 构建与运行
 
 ```bash
-pnpm --filter manta-action-kit-mcp build   # tsc -> dist/
-pnpm --filter manta-action-kit-mcp start   # node dist/index.js
+pnpm --filter @manta-action-kit/mcp build   # tsc -> dist/
+pnpm --filter @manta-action-kit/mcp start   # node dist/index.js
 ```
 
 配置项（两者必须是不同的空闲端口）：
@@ -233,7 +233,7 @@ pnpm --filter manta-action-kit-mcp start   # node dist/index.js
   "mcpServers": {
     "manta-action-kit": {
       "command": "npx",
-      "args": ["-y", "manta-action-kit-mcp"],
+      "args": ["-y", "@manta-action-kit/mcp"],
       "env": { "MANTA_WS_PORT": "8787", "MANTA_PROXY_PORT": "8788" },
     },
   },

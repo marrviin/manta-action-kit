@@ -10,7 +10,7 @@ A pnpm **monorepo** with two packages:
 
 - **`packages/extension`** — the Chrome extension (Manifest V3), the main
   implementation.
-- **`packages/mcp`** — [`manta-action-kit-mcp`](packages/mcp/README.md), the
+- **`packages/mcp`** — [`@manta-action-kit/mcp`](packages/mcp/README.md), the
   MCP server that bridges an agent to the extension over a local WebSocket.
 
 ## Stack

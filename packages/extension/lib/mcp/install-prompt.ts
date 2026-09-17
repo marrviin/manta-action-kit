@@ -9,7 +9,7 @@
  */
 
 /** Published package name run via `npx -y <pkg>`. */
-export const MCP_PACKAGE = 'manta-action-kit-mcp';
+export const MCP_PACKAGE = '@manta-action-kit/mcp';
 
 export function buildInstallPrompt(port: number, proxyPort: number): string {
   const args = ['-y', MCP_PACKAGE];
