@@ -1,11 +1,20 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { App, Button, Dropdown, Empty, Input, Spin, Tag, Typography } from 'antd';
-import { EditOutlined, SearchOutlined } from '@ant-design/icons';
-import { useTranslation } from 'react-i18next';
-import { useRecordings } from '@/hooks/use-recordings';
-import { getCalls } from '@/lib/db';
-import { UnifiedListItem } from '@/components/common/unified-list-item';
-import type { Recording } from '@/lib/recording/types';
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  App,
+  Button,
+  Dropdown,
+  Empty,
+  Input,
+  Spin,
+  Tag,
+  Typography,
+} from "antd";
+import { EditOutlined, SearchOutlined } from "@ant-design/icons";
+import { useTranslation } from "react-i18next";
+import { useRecordings } from "@/hooks/use-recordings";
+import { getCalls } from "@/lib/db";
+import { UnifiedListItem } from "@/components/common/unified-list-item";
+import type { Recording } from "@/lib/recording/types";
 
 const { Text } = Typography;
 
@@ -15,15 +24,19 @@ interface Props {
 
 export function RecordingList({ onOpen }: Props) {
   const { t } = useTranslation();
-  const { recordings, loading, error, refresh, rename, remove } = useRecordings();
-  const [search, setSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const { recordings, loading, error, refresh, rename, remove } =
+    useRecordings();
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   // Lazily loaded map of recordingId -> concatenated lowercase call URLs.
   const [urlIndex, setUrlIndex] = useState<Record<string, string>>({});
   const loadingIds = useRef<Set<string>>(new Set());
 
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(search.trim().toLowerCase()), 300);
+    const timer = setTimeout(
+      () => setDebouncedSearch(search.trim().toLowerCase()),
+      300,
+    );
     return () => clearTimeout(timer);
   }, [search]);
 
@@ -32,19 +45,20 @@ export function RecordingList({ onOpen }: Props) {
     if (!debouncedSearch) return;
     let cancelled = false;
     recordings.forEach((rec) => {
-      if (urlIndex[rec.id] !== undefined || loadingIds.current.has(rec.id)) return;
+      if (urlIndex[rec.id] !== undefined || loadingIds.current.has(rec.id))
+        return;
       loadingIds.current.add(rec.id);
       getCalls(rec.id)
         .then((calls) => {
           if (cancelled) return;
           const joined = calls
             .map((c) => c.url)
-            .join(' ')
+            .join(" ")
             .toLowerCase();
           setUrlIndex((prev) => ({ ...prev, [rec.id]: joined }));
         })
         .catch(() => {
-          if (!cancelled) setUrlIndex((prev) => ({ ...prev, [rec.id]: '' }));
+          if (!cancelled) setUrlIndex((prev) => ({ ...prev, [rec.id]: "" }));
         })
         .finally(() => loadingIds.current.delete(rec.id));
     });
@@ -57,7 +71,7 @@ export function RecordingList({ onOpen }: Props) {
     if (!debouncedSearch) return recordings;
     return recordings.filter((rec) => {
       if (rec.name.toLowerCase().includes(debouncedSearch)) return true;
-      return (urlIndex[rec.id] ?? '').includes(debouncedSearch);
+      return (urlIndex[rec.id] ?? "").includes(debouncedSearch);
     });
   }, [recordings, debouncedSearch, urlIndex]);
 
@@ -76,7 +90,7 @@ export function RecordingList({ onOpen }: Props) {
           image={Empty.PRESENTED_IMAGE_SIMPLE}
           description={
             <span>
-              {t('recording.loadFailed')}
+              {t("recording.loadFailed")}
               <br />
               <Text type="secondary" className="text-xs">
                 {error.message}
@@ -85,7 +99,7 @@ export function RecordingList({ onOpen }: Props) {
           }
         >
           <Button size="small" onClick={() => refresh()}>
-            {t('common.retry')}
+            {t("common.retry")}
           </Button>
         </Empty>
       </div>
@@ -106,7 +120,7 @@ export function RecordingList({ onOpen }: Props) {
         <Input
           allowClear
           prefix={<SearchOutlined />}
-          placeholder={t('recording.searchPlaceholder')}
+          placeholder={t("recording.searchPlaceholder")}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -114,7 +128,10 @@ export function RecordingList({ onOpen }: Props) {
       <div className="flex-1 min-h-0 overflow-auto">
         {filteredRecordings.length === 0 ? (
           <div className="h-full flex items-center justify-center">
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('recording.noMatch')} />
+            <Empty
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              description={t("recording.noMatch")}
+            />
           </div>
         ) : (
           filteredRecordings.map((rec) => (
@@ -150,12 +167,13 @@ function RecordingRow({
 
   const confirmDelete = () => {
     modal.confirm({
-      title: t('recording.deleteRecordingTitle'),
-      content: t('recording.deleteRecordingConfirm', { name: recording.name }),
-      okText: t('common.delete'),
+      title: t("recording.deleteRecordingTitle"),
+      content: t("recording.deleteRecordingConfirm", { name: recording.name }),
+      okText: t("common.delete"),
       okButtonProps: { danger: true },
-      cancelText: t('common.cancel'),
+      cancelText: t("common.cancel"),
       onOk: onRemove,
+      centered: true,
     });
   };
 
@@ -168,12 +186,12 @@ function RecordingRow({
 
   return (
     <Dropdown
-      trigger={['contextMenu']}
+      trigger={["contextMenu"]}
       menu={{
         items: [
           {
-            key: 'delete',
-            label: t('common.delete'),
+            key: "delete",
+            label: t("common.delete"),
             danger: true,
             onClick: confirmDelete,
           },
@@ -196,7 +214,7 @@ function RecordingRow({
                 onBlur={commit}
                 onPressEnter={commit}
                 onKeyDown={(e) => {
-                  if (e.key === 'Escape') {
+                  if (e.key === "Escape") {
                     setDraft(recording.name);
                     setEditing(false);
                   }
@@ -222,7 +240,7 @@ function RecordingRow({
           }
           status={
             <Tag color="blue" className="me-0 text-xs rounded">
-              {t('recording.callCount', { count: recording.callCount })}
+              {t("recording.callCount", { count: recording.callCount })}
             </Tag>
           }
           timestamp={recording.createdAt}

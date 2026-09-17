@@ -27,9 +27,10 @@ const CONN_META = {
 
 /**
  * "MCP" side-panel feature. The MCP control panel:
- *   - 复制安装提示词
- *   - 连接状态（只读，background 常驻连接本地 MCP 服务）+ 端口
- *   - 对外工具的逐项开关（默认全开）
+ *   - Copy install prompt
+ *   - Connection status (read-only; the background keeps a persistent connection
+ *     to the local MCP service) + ports
+ *   - Per-tool on/off switches for exposed tools (all on by default)
  * Self-contained; mounts inside the home tab. There is no MCP master switch — the
  * bridge always connects; per-call native prompts + per-tool switches are the gate.
  */
@@ -75,7 +76,7 @@ export function McpFeature() {
 
   return (
     <div className="flex-1 min-h-0 overflow-auto pt-2 px-3 pb-4">
-      {/* 描述说明 + 复制安装提示词 */}
+      {/* Description + copy install prompt */}
       <Alert
         type="info"
         className="mt-3"
@@ -97,15 +98,16 @@ export function McpFeature() {
 
       <Divider className="my-4" />
 
-      {/* 配置项 */}
+      {/* Config items */}
       <div className="flex items-center justify-between mt-4">
         <div>
           <Text strong>{t('mcp.status')}</Text>
         </div>
         <Badge status={CONN_META[connStatus].status} text={t(CONN_META[connStatus].labelKey)} />
       </div>
-      {/* 端口只读展示:主端口为约定固定值,代理端口会随 MCP 服务自愈(set_proxy_port)漂移并回填,
-          这里始终展示当前实际连接端口,不提供手动修改。 */}
+      {/* Ports are read-only: the main port is a fixed convention, while the proxy
+          port may drift via MCP service self-healing (set_proxy_port) and be written
+          back — always show the currently connected port, no manual editing. */}
       <div className="flex items-center justify-between mt-3">
         <Text type="secondary" className="text-sm">
           {t('mcp.port')}
@@ -121,7 +123,7 @@ export function McpFeature() {
 
       <Divider className="my-4" />
 
-      {/* 工具开关:默认全开,可单独关闭某个工具 */}
+      {/* Tool switches: all on by default, each can be turned off individually */}
       <div className="mt-4">
         <Text strong>{t('mcp.tools')}</Text>
       </div>

@@ -8,19 +8,26 @@
  */
 
 export type RpcMethod =
-  | 'list_recordings'
-  | 'get_recording'
-  | 'get_call'
-  | 'get_flow'
-  | 'get_endpoints'
-  | 'set_recording_description'
-  | 'proxy_fetch'
-  | 'proxy_sse'
-  | 'proxy_rule'
-  | 'list_proxy_rules'
-  | 'add_proxy_rule'
-  | 'update_proxy_rule'
-  | 'set_proxy_port';
+  | "list_recordings"
+  | "get_recording"
+  | "get_call"
+  | "get_flow"
+  | "get_endpoints"
+  | "set_recording_description"
+  | "proxy_fetch"
+  | "proxy_sse"
+  | "proxy_rule"
+  | "list_proxy_rules"
+  | "add_proxy_rule"
+  | "update_proxy_rule"
+  | "set_proxy_port"
+  | "list_actions"
+  | "get_action"
+  | "search_actions"
+  | "create_action"
+  | "update_action"
+  | "delete_action"
+  | "execute_action";
 
 /** Minimal shapes we need on the server side (structural, kept loose on purpose). */
 export interface Recording {
@@ -66,10 +73,10 @@ export interface FieldDependency {
   fromSeq: number;
   fromPath: string;
   toSeq: number;
-  toLocation: 'url' | 'query' | 'body' | 'header';
+  toLocation: "url" | "query" | "body" | "header";
   toPath: string;
   value: string;
-  origin: 'inferred' | 'confirmed' | 'manual';
+  origin: "inferred" | "confirmed" | "manual";
 }
 
 /** A lightweight call summary in a flow (no headers/bodies). */
@@ -89,7 +96,8 @@ export interface RecordingFlow {
 }
 
 /** The primitive JSON kinds a SchemaNode can describe (mirror of extension type). */
-export type SchemaKind = 'string' | 'number' | 'boolean' | 'null' | 'array' | 'object';
+export type SchemaKind =
+  "string" | "number" | "boolean" | "null" | "array" | "object";
 
 /** A structural description of a JSON value (mirror of the extension type). */
 export interface SchemaNode {
@@ -103,7 +111,7 @@ export interface SchemaNode {
 
 /** One request field whose value comes from an upstream endpoint's response (mirror). */
 export interface EndpointInput {
-  toLocation: 'url' | 'query' | 'body' | 'header';
+  toLocation: "url" | "query" | "body" | "header";
   toPath: string;
   fromEndpointKey: string;
   fromPath: string;
@@ -157,7 +165,7 @@ export interface GatewayProxyRule {
   sandboxPrefix: string;
   targetBase: string;
   enabled: boolean;
-  createdBy: 'user' | 'agent';
+  createdBy: "user" | "agent";
   createdAt: number;
 }
 
@@ -189,16 +197,116 @@ export interface GatewaySseResponse {
   statusText: string;
   headers: Record<string, string>;
   events: SseEvent[];
-  endReason: 'complete' | 'stop-match' | 'idle' | 'max-events' | 'max-bytes' | 'timeout' | 'error';
+  endReason:
+    | "complete"
+    | "stop-match"
+    | "idle"
+    | "max-events"
+    | "max-bytes"
+    | "timeout"
+    | "error";
   eventCount: number;
   errorText?: string;
   /** COUNT of the user's cookies injected (never names/values — see GatewayResponse). */
   injectedCookieCount: number;
 }
 
+/** Where an action override writes its templated value (mirror of extension type). */
+export type OverrideLocation = "url" | "query" | "body" | "header";
+
+/** A runtime parameter an action declares (mirror of extension type). */
+export interface ActionParam {
+  name: string;
+  description?: string;
+  type: "string" | "number" | "boolean";
+  required: boolean;
+  default?: string;
+}
+
+/** One templated override applied to a step's recorded request (mirror). */
+export interface ActionOverride {
+  toLocation: OverrideLocation;
+  toPath: string;
+  /** A template — {{param}} or {{steps[N].outputs[X]}} — never a recorded literal. */
+  value: string;
+}
+
+/** One replay step: a recorded call referenced by callId, plus its overrides (mirror). */
+export interface ActionStep {
+  callId: string;
+  kind: "fetch" | "sse";
+  overrides?: ActionOverride[];
+  waitMs?: number;
+  /** Named JSON paths into the step's response, usable by later steps' templates. */
+  outputs?: Record<string, string>;
+}
+
+/** A saved, replayable action (mirror of extension type; no credentials inside). */
+export interface Action {
+  id: string;
+  name: string;
+  description: string;
+  recordingId: string;
+  params: ActionParam[];
+  steps: ActionStep[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+/**
+ * Lightweight projection for list/search results (progressive disclosure) —
+ * mirror of the extension type; get_action returns the full Action.
+ */
+export interface ActionSummary {
+  id: string;
+  name: string;
+  description: string;
+  recordingId: string;
+  params: Array<{
+    name: string;
+    type: "string" | "number" | "boolean";
+    required: boolean;
+  }>;
+  stepCount: number;
+  updatedAt: number;
+}
+
+/** Outcome of one executed action step (mirror of extension type). */
+export interface ActionStepResult {
+  index: number;
+  callId: string;
+  kind: "fetch" | "sse";
+  url: string;
+  outcome: "ok" | "refused" | "error";
+  status: number;
+  statusText: string;
+  bodyPreview: string | null;
+  truncated: boolean;
+  eventCount?: number;
+  outputs: Record<string, string>;
+  errorText?: string;
+  durationMs: number;
+}
+
+/** A full action run: every step's result, or the point where it aborted (mirror). */
+export interface ActionRunResult {
+  actionId: string;
+  actionName: string;
+  startedAt: number;
+  durationMs: number;
+  endReason: "complete" | "aborted";
+  failedStep?: number;
+  failure?: "refused" | "error";
+  steps: ActionStepResult[];
+}
+
 export interface RpcResults {
   list_recordings: { recordings: Recording[] };
-  get_recording: { recording: Recording | null; calls: ApiCall[]; descriptionHint?: string };
+  get_recording: {
+    recording: Recording | null;
+    calls: ApiCall[];
+    descriptionHint?: string;
+  };
   get_call: { call: ApiCall | null };
   get_flow: { flow: RecordingFlow | null };
   get_endpoints: { endpoints: EndpointSummary[] };
@@ -211,6 +319,13 @@ export interface RpcResults {
   update_proxy_rule: { rule: GatewayProxyRule };
   /** Persist a new proxy port in the extension so its scripts' baseURL stays in sync. */
   set_proxy_port: { proxyPort: number };
+  list_actions: { actions: ActionSummary[] };
+  get_action: { action: Action | null };
+  search_actions: { actions: ActionSummary[] };
+  create_action: { action: Action };
+  update_action: { action: Action | null };
+  delete_action: { deleted: boolean };
+  execute_action: { run: ActionRunResult };
 }
 
 /**
@@ -221,28 +336,28 @@ export interface RpcResults {
  *    directly. See index.ts's single-instance election.
  */
 export interface HelloFrame {
-  type: 'hello';
-  role: 'extension' | 'peer';
+  type: "hello";
+  role: "extension" | "peer";
   version: string;
 }
 
 export interface RpcRequestFrame {
-  type: 'rpc';
+  type: "rpc";
   id: string;
   method: RpcMethod;
   params: unknown;
 }
 
 export type RpcResultFrame =
-  | { type: 'rpc-result'; id: string; ok: true; result: unknown }
-  | { type: 'rpc-result'; id: string; ok: false; error: string };
+  | { type: "rpc-result"; id: string; ok: true; result: unknown }
+  | { type: "rpc-result"; id: string; ok: false; error: string };
 
 /**
  * A peer process (a non-owner MCP server) asks the owner to run an RPC against
  * the extension on its behalf. Correlated back by `id` in a `peer-rpc-result`.
  */
 export interface PeerRpcRequestFrame {
-  type: 'peer-rpc';
+  type: "peer-rpc";
   id: string;
   method: RpcMethod;
   params: unknown;
@@ -250,8 +365,8 @@ export interface PeerRpcRequestFrame {
 
 /** The owner's reply to a peer's `peer-rpc`, carrying the extension's result. */
 export type PeerRpcResultFrame =
-  | { type: 'peer-rpc-result'; id: string; ok: true; result: unknown }
-  | { type: 'peer-rpc-result'; id: string; ok: false; error: string };
+  | { type: "peer-rpc-result"; id: string; ok: true; result: unknown }
+  | { type: "peer-rpc-result"; id: string; ok: false; error: string };
 
 /** Frames a client (extension or peer) may send to the owner. */
 export type ClientFrame = HelloFrame | RpcResultFrame | PeerRpcRequestFrame;

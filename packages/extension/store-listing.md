@@ -1,9 +1,10 @@
 # Chrome Web Store Listing
 
-> 商店后台上架文案备份。manifest 里只放 `name` / `short_name` / `description`(见 `wxt.config.ts`);
-> 「长描述」在开发者后台单独填写,不在 manifest 内。
+> Backup of the Chrome Web Store listing copy. The manifest only carries `name` /
+> `short_name` / `description` (see `wxt.config.ts`); the "detailed description"
+> is entered separately in the developer dashboard, not in the manifest.
 
-## Name（展示名，manifest `name`，≤75 字符）
+## Name (display name, manifest `name`, ≤75 chars)
 
 ```
 Manta Action Kit - AI Developer Toolkit & Agent Browser Bridge
@@ -15,13 +16,13 @@ Manta Action Kit - AI Developer Toolkit & Agent Browser Bridge
 Manta Action Kit
 ```
 
-## Short description（manifest `description`，硬上限 132 字符，无换行/HTML）
+## Short description (manifest `description`, hard limit 132 chars, no line breaks/HTML)
 
 ```
 Secure access to your authenticated APIs for Claude Code & Codex. Record business flows via a sandbox proxy — cookies stay private.
 ```
 
-## Detailed description（商店后台「详细描述」，支持长文本）
+## Detailed description (store dashboard "Detailed description", long text supported)
 
 🔐 Give your AI agents secure access to your real, logged-in APIs — without ever handing over your credentials.
 
@@ -36,7 +37,7 @@ Built as an AI Developer Toolkit, bridged to your agent over MCP.
 
 (Coming Soon: DOM Simplifier, Authentication State Injector, and more!)
 
-## Permission justification（商店后台「隐私权做法」逐条说明）
+## Permission justification (store dashboard "Privacy practices", item by item)
 
 - **host_permissions `<all_urls>`**: The recording hook must be injected into any
   site the user chooses to record (a MAIN-world script that patches fetch/XHR at

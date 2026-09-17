@@ -1,17 +1,25 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { App, Button, Empty, Spin, Timeline, Typography } from 'antd';
-import { CaretDownOutlined, CaretUpOutlined, LeftOutlined } from '@ant-design/icons';
-import { useTranslation } from 'react-i18next';
-import { CallNode } from './call-node';
-import { EndpointsPanel } from './endpoints-panel';
-import { BottomTabBar } from '@/components/common/bottom-tab-bar';
-import { deleteCall, getCalls, getRecording } from '@/lib/db';
-import { formatGap } from '@/lib/utils';
-import type { ApiCall, FieldDependency, Recording } from '@/lib/recording/types';
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { App, Button, Empty, Spin, Timeline, Typography } from "antd";
+import {
+  CaretDownOutlined,
+  CaretUpOutlined,
+  LeftOutlined,
+} from "@ant-design/icons";
+import { useTranslation } from "react-i18next";
+import { CallNode } from "./call-node";
+import { EndpointsPanel } from "./endpoints-panel";
+import { BottomTabBar } from "@/components/common/bottom-tab-bar";
+import { deleteCall, getCalls, getRecording } from "@/lib/db";
+import { formatGap } from "@/lib/utils";
+import type {
+  ApiCall,
+  FieldDependency,
+  Recording,
+} from "@/lib/recording/types";
 
 const { Text, Paragraph } = Typography;
 
-type DetailTab = 'result' | 'endpoints';
+type DetailTab = "result" | "endpoints";
 
 interface Props {
   recordingId: string;
@@ -22,8 +30,8 @@ interface Props {
 
 /**
  * A recording's detail view (full-screen route). Two bottom tabs:
- *   - 录制结果: the pure recorded call chain.
- *   - 接口契约: aggregated endpoint contracts.
+ *   - Result: the pure recorded call chain.
+ *   - Endpoints: aggregated endpoint contracts.
  */
 export function RecordingDetail({ recordingId, onBack, initialTab }: Props) {
   const { message } = App.useApp();
@@ -31,16 +39,18 @@ export function RecordingDetail({ recordingId, onBack, initialTab }: Props) {
   const [recording, setRecording] = useState<Recording | null>(null);
   const [calls, setCalls] = useState<ApiCall[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<DetailTab>(initialTab ?? 'result');
+  const [tab, setTab] = useState<DetailTab>(initialTab ?? "result");
 
   useEffect(() => {
     let active = true;
-    Promise.all([getRecording(recordingId), getCalls(recordingId)]).then(([rec, cs]) => {
-      if (!active) return;
-      setRecording(rec ?? null);
-      setCalls(cs);
-      setLoading(false);
-    });
+    Promise.all([getRecording(recordingId), getCalls(recordingId)]).then(
+      ([rec, cs]) => {
+        if (!active) return;
+        setRecording(rec ?? null);
+        setCalls(cs);
+        setLoading(false);
+      },
+    );
     return () => {
       active = false;
     };
@@ -55,9 +65,9 @@ export function RecordingDetail({ recordingId, onBack, initialTab }: Props) {
       setRecording((prev) =>
         prev ? { ...prev, callCount: Math.max(0, prev.callCount - 1) } : prev,
       );
-      message.success(t('common.deleted'));
+      message.success(t("common.deleted"));
     } catch {
-      message.error(t('common.deleteFailed'));
+      message.error(t("common.deleteFailed"));
     }
   };
 
@@ -79,17 +89,20 @@ export function RecordingDetail({ recordingId, onBack, initialTab }: Props) {
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      <div className="flex items-center gap-2 py-2 px-3 border-b border-[rgba(5,5,5,0.06)]">
+      <div className="flex items-center gap-2 h-[48px] box-border px-3 border-b border-[rgba(5,5,5,0.06)]">
         <Button icon={<LeftOutlined />} onClick={onBack} />
         <div className="min-w-0 flex-1">
           <Text strong ellipsis className="block">
-            {t('detail.titleWithCount', { name: recording.name, count: recording.callCount })}
+            {t("detail.titleWithCount", {
+              name: recording.name,
+              count: recording.callCount,
+            })}
           </Text>
         </div>
       </div>
 
       <div className="flex-1 min-h-0 flex flex-col">
-        {tab === 'result' && (
+        {tab === "result" && (
           <ResultPanel
             calls={calls}
             deps={recording.deps}
@@ -97,13 +110,15 @@ export function RecordingDetail({ recordingId, onBack, initialTab }: Props) {
             onDeleteCall={handleDelete}
           />
         )}
-        {tab === 'endpoints' && <EndpointsPanel calls={calls} deps={recording.deps} />}
+        {tab === "endpoints" && (
+          <EndpointsPanel calls={calls} deps={recording.deps} />
+        )}
       </div>
 
       <BottomTabBar
         tabs={[
-          { key: 'result' as const, label: t('detail.tabResult') },
-          { key: 'endpoints' as const, label: t('detail.tabEndpoints') },
+          { key: "result" as const, label: t("detail.tabResult") },
+          { key: "endpoints" as const, label: t("detail.tabEndpoints") },
         ]}
         active={tab}
         onChange={setTab}
@@ -112,14 +127,14 @@ export function RecordingDetail({ recordingId, onBack, initialTab }: Props) {
   );
 }
 
-/** 录制描述卡片：折叠时限制高度，底部提供一条展开/收起操作条（图标切换）。 */
+/** Recording description card: height-capped when collapsed, with an expand/collapse action bar (icon toggle) at the bottom. */
 function DescriptionCard({ description }: { description: string }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const [overflow, setOverflow] = useState(false);
   const contentRef = useRef<HTMLParagraphElement>(null);
 
-  // 折叠状态下限制最多 5 行的高度（text-xs=12px，leading-relaxed≈1.625 → 单行约 19.5px）。
+  // When collapsed, cap at ~5 lines (text-xs=12px, leading-relaxed≈1.625 → ~19.5px per line).
   const collapsedMaxHeight = 98;
 
   useLayoutEffect(() => {
@@ -144,10 +159,12 @@ function DescriptionCard({ description }: { description: string }) {
         <div
           role="button"
           tabIndex={0}
-          aria-label={expanded ? t('detail.descCollapse') : t('detail.descExpand')}
+          aria-label={
+            expanded ? t("detail.descCollapse") : t("detail.descExpand")
+          }
           onClick={() => setExpanded((v) => !v)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
+            if (e.key === "Enter" || e.key === " ") {
               e.preventDefault();
               setExpanded((v) => !v);
             }
@@ -186,20 +203,27 @@ function ResultPanel({
         ) : (
           <div className="manta-action-kit-call-timeline">
             <Text type="secondary" className="block mb-3 text-sm">
-              {t('detail.callChainTitle')}
+              {t("detail.callChainTitle")}
             </Text>
             <Timeline
               items={calls.map((call, index) => {
                 const next = calls[index + 1];
                 const gap = next ? next.startedAt - call.startedAt : null;
                 return {
-                  color: call.errored ? 'red' : 'blue',
+                  color: call.errored ? "red" : "blue",
                   children: (
                     <>
-                      <CallNode call={call} deps={deps} onDelete={onDeleteCall} />
+                      <CallNode
+                        call={call}
+                        deps={deps}
+                        onDelete={onDeleteCall}
+                      />
                       {gap != null && gap > 0 && (
-                        <Text type="secondary" className="block text-[12px]! mt-2">
-                          {t('detail.waitGap', { gap: formatGap(gap) })}
+                        <Text
+                          type="secondary"
+                          className="block text-[12px]! mt-2"
+                        >
+                          {t("detail.waitGap", { gap: formatGap(gap) })}
                         </Text>
                       )}
                     </>

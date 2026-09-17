@@ -5,15 +5,15 @@
  * automatically across popup, side panel, content scripts, and background.
  * Docs: https://wxt.dev/storage.html
  */
-import { storage } from '#imports';
+import { storage } from "#imports";
 import {
   IDLE_RECORDING_STATE,
   type RecordingFilterRule,
   type RecordingState,
-} from './recording/types';
-import type { RpcMethod } from './mcp/protocol';
-import type { Locale } from './i18n';
-import { detectLocale } from './i18n/detect';
+} from "./recording/types";
+import type { RpcMethod } from "./mcp/protocol";
+import type { Locale } from "./i18n";
+import { detectLocale } from "./i18n/detect";
 
 export const settings = {
   /**
@@ -23,12 +23,12 @@ export const settings = {
    * popup / side panel / content toolbar via WXT storage watchers (see
    * lib/i18n/sync.ts + components/app-providers.tsx).
    */
-  locale: storage.defineItem<Locale>('sync:locale', {
+  locale: storage.defineItem<Locale>("sync:locale", {
     fallback: detectLocale(),
   }),
 
   /** Port of the local MCP WebSocket server the extension connects to. */
-  mcpPort: storage.defineItem<number>('sync:mcpPort', {
+  mcpPort: storage.defineItem<number>("sync:mcpPort", {
     fallback: 8787,
   }),
 
@@ -38,7 +38,7 @@ export const settings = {
    * scripts point their baseURL at (http://127.0.0.1:<proxyPort><sandboxPrefix>).
    * Must match the MCP server's MANTA_PROXY_PORT.
    */
-  proxyPort: storage.defineItem<number>('sync:proxyPort', {
+  proxyPort: storage.defineItem<number>("sync:proxyPort", {
     fallback: 8788,
   }),
 
@@ -53,9 +53,12 @@ export const settings = {
    * Managed from the MCP side-panel tab (see components/mcp/mcp-feature.tsx) and
    * enforced at the RPC entry point (see lib/mcp/handlers.ts).
    */
-  mcpToolEnabled: storage.defineItem<Partial<Record<RpcMethod, boolean>>>('sync:mcpToolEnabled', {
-    fallback: {},
-  }),
+  mcpToolEnabled: storage.defineItem<Partial<Record<RpcMethod, boolean>>>(
+    "sync:mcpToolEnabled",
+    {
+      fallback: {},
+    },
+  ),
 };
 
 /**
@@ -63,9 +66,12 @@ export const settings = {
  * service worker sleeping but clears when the browser fully restarts. Readable by
  * popup and content scripts to know whether/where recording is active.
  */
-export const recordingState = storage.defineItem<RecordingState>('session:recordingState', {
-  fallback: IDLE_RECORDING_STATE,
-});
+export const recordingState = storage.defineItem<RecordingState>(
+  "session:recordingState",
+  {
+    fallback: IDLE_RECORDING_STATE,
+  },
+);
 
 /**
  * Recording filter rules (blacklist). Structured config, so it lives in `local`
@@ -73,7 +79,7 @@ export const recordingState = storage.defineItem<RecordingState>('session:record
  * The background session reads this to drop matching calls while recording.
  */
 export const recordingFilterRules = storage.defineItem<RecordingFilterRule[]>(
-  'local:recordingFilterRules',
+  "local:recordingFilterRules",
   { fallback: [] },
 );
 
@@ -86,15 +92,18 @@ export const recordingFilterRules = storage.defineItem<RecordingFilterRule[]>(
  * local MCP server, and the real per-call gate is the tool's native permission
  * prompt. So this is a status readout, not a setting.
  */
-export type McpConnStatus = 'connecting' | 'connected' | 'disconnected';
+export type McpConnStatus = "connecting" | "connected" | "disconnected";
 
-export const mcpConnStatus = storage.defineItem<McpConnStatus>('session:mcpConnStatus', {
-  fallback: 'connecting',
-});
+export const mcpConnStatus = storage.defineItem<McpConnStatus>(
+  "session:mcpConnStatus",
+  {
+    fallback: "connecting",
+  },
+);
 
 /**
  * Which tab (if any) should show the in-page recording toolbar. Set by the popup
- * when the user picks "接口录制"; watched by the content script to mount/unmount
+ * when the user picks "API recording"; watched by the content script to mount/unmount
  * its draggable toolbar. Session-scoped so it survives SW sleep but not restart.
  */
 export interface ToolbarState {
@@ -102,9 +111,12 @@ export interface ToolbarState {
   tabId: number | null;
 }
 
-export const toolbarState = storage.defineItem<ToolbarState>('session:toolbarState', {
-  fallback: { tabId: null },
-});
+export const toolbarState = storage.defineItem<ToolbarState>(
+  "session:toolbarState",
+  {
+    fallback: { tabId: null },
+  },
+);
 
 /**
  * Which feature tab the side panel home page should select when it next opens.
@@ -112,11 +124,14 @@ export const toolbarState = storage.defineItem<ToolbarState>('session:toolbarSta
  * then consumed and cleared by the home page on mount. `null` means "no request —
  * keep the default tab". Session-scoped so it survives SW sleep but not restart.
  */
-export type SidePanelTab = 'api-recording' | 'gateway' | 'mcp';
+export type SidePanelTab = "api-recording" | "action" | "gateway" | "mcp";
 
-export const sidePanelTab = storage.defineItem<SidePanelTab | null>('session:sidePanelTab', {
-  fallback: null,
-});
+export const sidePanelTab = storage.defineItem<SidePanelTab | null>(
+  "session:sidePanelTab",
+  {
+    fallback: null,
+  },
+);
 
 /**
  * The feature tab the user last viewed in the side panel home page. Persisted in
@@ -125,6 +140,9 @@ export const sidePanelTab = storage.defineItem<SidePanelTab | null>('session:sid
  * instead of always defaulting to the first one. Updated whenever the user
  * switches feature tabs. `null` means "never chosen — fall back to the default".
  */
-export const lastSidePanelTab = storage.defineItem<SidePanelTab | null>('local:lastSidePanelTab', {
-  fallback: null,
-});
+export const lastSidePanelTab = storage.defineItem<SidePanelTab | null>(
+  "local:lastSidePanelTab",
+  {
+    fallback: null,
+  },
+);

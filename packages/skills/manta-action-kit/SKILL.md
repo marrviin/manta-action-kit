@@ -1,130 +1,183 @@
 ---
 name: manta-action-kit
-description: manta-action-kit 套件（Chrome 扩展 + MCP server）的使用指南：环境检查与初始化、扩展/MCP/连接状态排查、读取接口录制、cookie 注入代理转发。「manta」「查录制」「看调用链」「用我的登录态调接口」「proxy_fetch」「环境检查」「初始化环境」「连不上」等说法时使用。
+description: Usage guide for the manta-action-kit suite (Chrome extension + MCP server): environment checks and initialization, extension/MCP/connection troubleshooting, recording APIs, and action management — creating actions from recordings, searching and executing actions, cookie-injecting proxy forwarding. Use when the user says "manta", "check recordings", "view call chains", "create an action / turn a recording into an action", "execute an action / run that action", "search actions / what actions are available", "call the API with my login state", "proxy_fetch", "check environment", "initialize environment", "can't connect", etc.
 ---
 
-# manta-action-kit 套件使用指南
+# manta-action-kit Suite Usage Guide
 
-本套件由两部分组成，协作方式见仓库根 `CLAUDE.md`：
+The suite consists of two parts; see the repo root `CLAUDE.md` for how they collaborate:
 
-- **Chrome 扩展**（`packages/extension`）：录制页面 API 调用（IndexedDB 存储）；作为 MCP 桥（MV3
-  service worker 只能当 WS 客户端，主动连出到本地 MCP 进程）；沙箱代理网关（转发时注入 cookie，cookie 永不暴露给 agent）。
-- **MCP server**（`packages/mcp`，stdio）：本文件的工具提供方。工具名前缀 `mcp__manta-action-kit__`。
-  用户口中的 **「manta」是它的短别名**。
+- **Chrome extension** (`packages/extension`): records page API calls (IndexedDB storage); acts as
+  the MCP bridge (an MV3 service worker can only be a WS client, so it dials out to the local MCP
+  process); sandboxed proxy gateway (injects cookies when forwarding — cookies are never exposed to
+  the agent).
+- **MCP server** (`packages/mcp`, stdio): provides the tools in this file. Tool names carry the
+  prefix `mcp__manta-action-kit__`. **"manta" is the user-facing short alias** for it.
 
-## 一、环境检查（用户说「检查环境 / 初始化 / 连不上 / 排查」时按序执行）
+## 1. Environment Check (run in order when the user says "check environment / initialize / can't connect / troubleshoot")
 
-**先跑自带脚本（一条命令覆盖全部检查项，逐项输出 ✅/❌ 与修复建议）：**
+**Run the bundled script first (one command covers all checks, printing ✅/❌ per item with fix suggestions):**
 
 ```bash
 node packages/skills/manta-action-kit/scripts/check-env.mjs
 ```
 
-脚本覆盖下面 1–3 步（含以 peer 身份做端到端探活，能区分「桥在但扩展没连」与「全链路通」）。
-退出码 0 = 全过。**有 ❌ 的项再按下面的手动步骤深挖修复**，修完复跑脚本确认。
+The script covers steps 1–3 below (including an end-to-end probe as a peer, distinguishing "bridge
+up but extension not connected" from "full chain works"). Exit code 0 = all pass. **For any ❌ item,
+dig in and fix it with the manual steps below, then re-run the script to confirm.**
 
-四项依次检查，**每项给出通过判据与修复动作**，逐项报告结果而不是只报最终结论。
+Four checks in order — **each with pass criteria and a fix action; report results per item rather
+than only the final conclusion.**
 
-### 1. MCP server 已注册且可启动
+### 1. MCP server is registered and can start
 
 ```bash
 claude mcp list 2>/dev/null | grep manta-action-kit
 ```
 
-- ✅ 通过：输出含 `✔ Connected`。
-- ❌ 未出现该行 → 注册（在本仓库根目录）：
+- ✅ Pass: output contains `✔ Connected`.
+- ❌ That line missing → register it (from the repo root):
 
   ```bash
-  pnpm build:mcp   # 先确保 dist 存在，见第 2 步
+  pnpm build:mcp   # make sure dist exists first, see step 2
   claude mcp add manta-action-kit --scope local -- node "$(pwd)/packages/mcp/dist/index.js"
   ```
 
-  然后让用户执行 `/mcp` reconnect 或重启会话。
-- ❌ `✘ Failed to connect` → 先看第 2 步（dist 缺失 / 端口被占）。
+  Then ask the user to run `/mcp` reconnect or restart the session.
 
-### 2. dist 已构建
+- ❌ `✘ Failed to connect` → check step 2 first (missing dist / port in use).
+
+### 2. dist is built
 
 ```bash
 test -f packages/mcp/dist/index.js && echo OK
 ```
 
-- ❌ 缺失 → `pnpm build:mcp`。
-- 若启动即 fatal 报端口冲突（`MANTA_WS_PORT (8787)` 相关），查占用：
-  `lsof -nP -iTCP:8787 -sTCP:LISTEN`（代理端口同理查 8788）。进程残留就 kill，
-  或改用空闲端口：注册时加 `--env MANTA_WS_PORT=<port>`，并同步改扩展设置页端口。
+- ❌ Missing → `pnpm build:mcp`.
+- If startup dies immediately with a port-conflict fatal error (related to `MANTA_WS_PORT (8787)`),
+  check what's holding it: `lsof -nP -iTCP:8787 -sTCP:LISTEN` (same for the proxy port 8788). Kill
+  leftover processes, or switch to a free port: add `--env MANTA_WS_PORT=<port>` when registering,
+  and update the port on the extension settings page to match.
 
-### 3. 扩展在线、WS 已连（用工具探活，最便宜的是 `list_recordings`）
+### 3. Extension online, WS connected (probe with a tool — `list_recordings` is cheapest)
 
-直接调用 `mcp__manta-action-kit__list_recordings`（探活探错，不关心返回内容）：
+Just call `mcp__manta-action-kit__list_recordings` (probe for errors; ignore the payload):
 
-- ✅ 通过：返回 JSON（哪怕空列表）。**空列表 ≠ 故障**，只是还没录过。
-- ❌ 报 `No Chrome extension connected. Open the extension (its MCP tab shows the
-  connection status) and make sure the configured port matches.` → 依次让用户确认：
-  1. Chrome 已打开且加载了本扩展（`chrome://extensions` 开发者模式加载
-     `packages/extension/.output/chrome-mv3/`，或 `pnpm dev`）；
-  2. 侧边栏 → 设置 → **「MCP 服务」开关已打开**（扩展开关才控制连出）；
-  3. 扩展设置页端口与 server 端口一致（默认 8787）。
-- ❌ 报 `RPC "..." timed out after ...ms` → 扩展 WS 连着但没响应，多为扩展刚刷新 /
-  service worker 休眠，让用户点一下扩展侧边栏唤醒后重试。
+- ✅ Pass: returns JSON (even an empty list). **An empty list ≠ a fault** — it just means nothing
+  has been recorded yet.
+- ❌ Error `No Chrome extension connected. Open the extension (its MCP tab shows the
+connection status) and make sure the configured port matches.` → have the user confirm, in order:
+  1. Chrome is open with the extension loaded (`chrome://extensions`, developer mode, load
+     `packages/extension/.output/chrome-mv3/`, or run `pnpm dev`);
+  2. Sidebar → Settings → **the "MCP Service" toggle is ON** (only the extension-side switch
+     controls the outbound connection);
+  3. The port on the extension settings page matches the server port (default 8787).
+- ❌ Error `RPC "..." timed out after ...ms` → the extension's WS is connected but unresponsive,
+  usually because the extension just reloaded / the service worker went dormant. Ask the user to
+  click the extension sidebar once to wake it, then retry.
 
-### 4. 汇总报告
+### 4. Summary report
 
-按「✅/❌ + 修复动作（已做 / 需用户手动）」输出清单。**需要用户在 Chrome 里点开关、
-在弹窗里确认这类动作，明确指出来让用户做，agent 不要空转重试。**
+Output a checklist as "✅/❌ + fix action (already done / requires the user)". **Any action the
+user must do in Chrome — flipping a toggle, confirming a dialog — must be called out explicitly
+for the user to perform; do not spin retrying in the agent.**
 
-## 二、全新环境初始化（用户说「新机器装一下 / 初始化环境」时）
+## 2. Fresh-Environment Initialization (when the user says "set it up on a new machine / initialize the environment")
 
-按序执行，前两步是仓库构建，后两步是用户侧操作：
+Run in order; the first two steps are repo builds, the last two are user-side actions:
 
-1. `pnpm install && pnpm build && pnpm build:mcp`（扩展产物在
-   `packages/extension/.output/chrome-mv3/`，MCP 产物在 `packages/mcp/dist/`）。
-2. 注册 MCP server（上面第 1 步的 `claude mcp add` 命令）。
-3. 指导用户：Chrome → `chrome://extensions` → 开发者模式 → 加载已解压 → 选
-   `packages/extension/.output/chrome-mv3/`。
-4. 指导用户：打开侧边栏 → 设置 → 打开「MCP 服务」开关（端口保持默认 8787）。
-5. 跑一遍上面的环境检查（至少第 1、3 项）确认打通。
+1. `pnpm install && pnpm build && pnpm build:mcp` (extension output lands in
+   `packages/extension/.output/chrome-mv3/`, MCP output in `packages/mcp/dist/`).
+2. Register the MCP server (the `claude mcp add` command from step 1 above).
+3. Guide the user: Chrome → `chrome://extensions` → developer mode → Load unpacked → select
+   `packages/extension/.output/chrome-mv3/`.
+4. Guide the user: open the sidebar → Settings → turn ON the "MCP Service" toggle (keep the
+   default port 8787).
+5. Run the environment check above (at least items 1 and 3) to confirm the chain works.
 
-## 三、功能使用（触发词 → 工具）
+## 3. Feature Usage (trigger phrase → tool)
 
-用户说这些话时直接调 `mcp__manta-action-kit__<tool>`，**不要追问、不要自己写脚本解析 IndexedDB**：
+When the user says these things, call `mcp__manta-action-kit__<tool>` directly — **do not ask
+follow-up questions and do not write your own scripts to parse IndexedDB**:
 
-| 用户说法 | 工具 | 说明 |
-| --- | --- | --- |
-| 「查录制 / 列出录制 / 我录过哪些接口」 | `list_recordings` | 所有录制元数据 |
-| 「看这条录制的调用链 / 完整请求响应」 | `get_recording` | 单条录制 + 全链路 |
-| 「分析步骤依赖 / 字段从哪来」 | `get_flow` | 有序步骤 + 推断的字段依赖 |
-| 「看接口契约 / 去重后的端点」 | `get_endpoints` | 去重端点 + 脱敏 schema |
-| 「看单个调用」 | `get_call` | 按 id 取单个 API call |
-| 「用我的登录态调这个接口 / 帮我请求一下」 | `proxy_fetch` | 经扩展注入 cookie 转发 |
-| 「拉 SSE / 看流式事件」 | `proxy_sse` | 转发 SSE 并收事件 |
+**Core principle: recording data is merely raw material for "creating actions".** To execute a
+recorded flow, the correct path is: analyze the recording (`get_flow` / `get_endpoints`) →
+`create_action` to distill it into a parameterized action → `execute_action` for end-to-end
+replay. **Do not manually replay recorded calls one by one with `proxy_fetch`**; `proxy_fetch` is
+only for ad-hoc, one-off single calls.
 
-关于 `proxy_fetch` / `proxy_sse`：
+### Actions — the executable form of recordings
 
-- 每次调用都会弹 **原生确认框**（MCP `requiresUserInteraction`），这是设计上的主闸门，
-  auto/bypass 模式也绕不过——提示用户点允许即可，不是故障。
-- cookie 只在扩展内部注入，**永远不会出现在工具返回里**；把响应转述给用户即可。
-- 环回/私网/云元数据地址（含 169.254.169.254）会被 SSRF 防护拒绝，属预期拦截。
+| User says                                       | Tool             | Notes                                                                                                                                                                             |
+| ----------------------------------------------- | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| "check actions / what actions are there"        | `list_actions`   | All saved actions                                                                                                                                                                 |
+| "find an action that can do X"                  | `search_actions` | Filter by keyword (the discovery entry point before executing)                                                                                                                    |
+| "show this action's definition / parameters"    | `get_action`     | Full definition of a single action                                                                                                                                                |
+| "turn this recording into an action / reusable" | `create_action`  | Declare parameters + steps referencing callIds + template rewrites, distilled                                                                                                     |
+| "change the action's parameters / steps / desc" | `update_action`  | Update the action definition                                                                                                                                                      |
+| "delete this action"                            | `delete_action`  | Delete the action                                                                                                                                                                 |
+| "execute the action / run that action"          | `execute_action` | End-to-end replay: auto-resolved dependencies, template parameter injection; runs through the extension gateway (same channel and same confirmation-dialog gating as proxy_fetch) |
 
-## 四、调试工作流（改 `packages/mcp` 源码时）
+### Recordings (raw material, for analysis / action creation)
 
-- `pnpm dev:mcp` —— tsc --watch 实时编译 dist。**不会热重启已运行的 MCP 进程**：
-  改完代码让用户 `/mcp` reconnect 该 server，或重启会话。
-- `pnpm start:mcp` —— 手动跑一次看启动日志（stdio + WS 桥）。
-- 扩展侧：`pnpm dev` 加载开发版扩展；改扩展代码后偶尔需在 `chrome://extensions` 点刷新 ↻。
+| User says                                                      | Tool              | Notes                                                                        |
+| -------------------------------------------------------------- | ----------------- | ---------------------------------------------------------------------------- |
+| "check recordings / list recordings / what APIs I've recorded" | `list_recordings` | All recording metadata (index of action material)                            |
+| "show this recording's call chain / full req-res"              | `get_recording`   | Single recording + full chain (for analysis)                                 |
+| "analyze step dependencies / where fields come from"           | `get_flow`        | Ordered steps + inferred field dependencies (must read before create_action) |
+| "show API contracts / deduplicated endpoints"                  | `get_endpoints`   | Deduplicated endpoints + sanitized schemas (must read before create_action)  |
+| "show a single call"                                           | `get_call`        | Fetch a single API call by id                                                |
 
-## 五、故障速查
+### Direct forwarding (ad-hoc / one-off calls)
 
-| 现象 | 原因 | 处置 |
-| --- | --- | --- |
-| `claude mcp list` 无此 server 或 ✘ | 未注册 / dist 缺失 | 第一节第 1、2 步 |
-| 工具报 `No Chrome extension connected` | Chrome 没开 / 开关没开 / 端口不一致 | 第一节第 3 步三项 |
-| 工具报 `RPC ... timed out` | service worker 休眠 / 刚刷新 | 唤醒扩展后重试 |
-| 启动 fatal：端口冲突 | 8787/8788 被占 | `lsof -nP -iTCP:<port>` 查占，kill 或换端口（两端同步改） |
-| 改了源码不生效 | tsc watch 不热重启 | `/mcp` reconnect 或重启会话 |
+| User says                                                   | Tool          | Notes                                                                  |
+| ----------------------------------------------------------- | ------------- | ---------------------------------------------------------------------- |
+| "call this API with my login state / make a request for me" | `proxy_fetch` | Forwarded via the extension with cookie injection (single ad-hoc call) |
+| "pull SSE / watch streaming events"                         | `proxy_sse`   | Forward SSE and collect events                                         |
 
-## 六、仓库上下文
+About `proxy_fetch` / `proxy_sse`:
 
-- 架构、设计取舍、消息协议见根 `CLAUDE.md`（功能一/二/三）。
-- MCP 源码：`packages/mcp/src/`（`index.ts` 工具定义、`bridge.ts` WS 桥与报错文案、
-  `protocol.ts` 帧协议与端口常量 8787/8788）。
-- 扩展源码：`packages/extension/`（`lib/gateway/` 网关、`lib/mcp/handlers.ts` 按工具开关）。
+- Every call pops the **native confirmation dialog** (MCP `requiresUserInteraction`). This is the
+  primary gate by design — even auto/bypass modes cannot skip it. Tell the user to click Allow;
+  it is not a fault.
+- Cookies are injected only inside the extension and **never appear in tool results**; just relay
+  the response to the user.
+- Loopback / private-network / cloud-metadata addresses (including 169.254.169.254) are rejected
+  by SSRF protection — that is expected blocking.
+
+About `create_action` / `execute_action`:
+
+- These also pop the **native confirmation dialog** each time (creating shows the action name and
+  description; executing shows the action name and resolved parameters, so the user can verify
+  before approving).
+- Action steps only reference recorded callIds and **contain no credentials**; during replay the
+  extension gateway injects the user's cookies, and inter-step dependencies (upstream response
+  values → downstream request fields) are resolved automatically by `execute_action` — no manual
+  orchestration needed.
+
+## 4. Debugging Workflow (when modifying `packages/mcp` source)
+
+- `pnpm dev:mcp` — tsc --watch compiling dist live. **It does NOT hot-restart a running MCP
+  process**: after changing code, have the user `/mcp` reconnect that server, or restart the
+  session.
+- `pnpm start:mcp` — run it once manually to inspect startup logs (stdio + WS bridge).
+- Extension side: `pnpm dev` to load the dev build; after changing extension code you may
+  occasionally need to click refresh ↻ on `chrome://extensions`.
+
+## 5. Troubleshooting Quick Reference
+
+| Symptom                                      | Cause                                      | Fix                                                                                 |
+| -------------------------------------------- | ------------------------------------------ | ----------------------------------------------------------------------------------- |
+| `claude mcp list` missing this server or ✘   | Not registered / dist missing              | Section 1, steps 1 and 2                                                            |
+| Tool reports `No Chrome extension connected` | Chrome closed / toggle off / port mismatch | Section 1, step 3's three items                                                     |
+| Tool reports `RPC ... timed out`             | Service worker dormant / just reloaded     | Wake the extension, then retry                                                      |
+| Startup fatal: port conflict                 | 8787/8788 occupied                         | `lsof -nP -iTCP:<port>` to find the holder; kill it or change the port on both ends |
+| Source changes not taking effect             | tsc watch doesn't hot-restart              | `/mcp` reconnect or restart the session                                             |
+
+## 6. Repository Context
+
+- Architecture, design trade-offs, and the message protocol: see root `CLAUDE.md` (features 1/2/3).
+- MCP source: `packages/mcp/src/` (`index.ts` tool definitions, `bridge.ts` WS bridge and error
+  messages, `protocol.ts` frame protocol and port constants 8787/8788).
+- Extension source: `packages/extension/` (`lib/gateway/` gateway, `lib/action/` action types and
+  replay engine, `lib/mcp/handlers.ts` per-tool toggles, `components/action/` action tab UI).

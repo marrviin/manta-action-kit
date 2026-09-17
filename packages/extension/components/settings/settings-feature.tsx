@@ -8,7 +8,7 @@ const { Text } = Typography;
 
 /**
  * The gear-opened "Settings" view inside the side-panel home. Currently just a
- * language switch (English / 中文); it's the home for future global settings
+ * language switch (English / Chinese); it's the home for future global settings
  * (theme, etc.). The selected locale is stored in `settings.locale`, which drives
  * both react-i18next and antd's ConfigProvider locale (see app-providers.tsx).
  */

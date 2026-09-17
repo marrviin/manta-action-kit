@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from "react";
 import {
   App,
   Button,
@@ -13,48 +13,62 @@ import {
   Switch,
   Tag,
   Typography,
-} from 'antd';
-import { EditOutlined, SearchOutlined } from '@ant-design/icons';
-import type { MenuProps } from 'antd';
-import { useTranslation } from 'react-i18next';
-import type { TFunction } from 'i18next';
-import { useGatewayLogs } from '@/hooks/use-gateway-logs';
-import { useGatewayProxyRules } from '@/hooks/use-gateway-proxy-rules';
-import { settings } from '@/lib/storage';
-import { MethodBadge, StatusBadge } from '@/components/recording/method-badge';
-import { Block, Field, Section, headerText } from '@/components/recording/call-node';
-import { UnifiedListItem } from '@/components/common/unified-list-item';
-import { BottomTabBar } from '@/components/common/bottom-tab-bar';
-import { formatDateTimeShort, shortPath, schemeOf, prettyJson } from '@/lib/utils';
-import type { GatewayDecision, GatewayLog, GatewayProxyRule } from '@/lib/gateway/types';
+} from "antd";
+import { EditOutlined, SearchOutlined } from "@ant-design/icons";
+import type { MenuProps } from "antd";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
+import { useGatewayLogs } from "@/hooks/use-gateway-logs";
+import { useGatewayProxyRules } from "@/hooks/use-gateway-proxy-rules";
+import { settings } from "@/lib/storage";
+import { MethodBadge, StatusBadge } from "@/components/recording/method-badge";
+import {
+  Block,
+  Field,
+  Section,
+  headerText,
+} from "@/components/recording/call-node";
+import { UnifiedListItem } from "@/components/common/unified-list-item";
+import { BottomTabBar } from "@/components/common/bottom-tab-bar";
+import {
+  formatDateTimeShort,
+  shortPath,
+  schemeOf,
+  prettyJson,
+} from "@/lib/utils";
+import type {
+  GatewayDecision,
+  GatewayLog,
+  GatewayProxyRule,
+} from "@/lib/gateway/types";
 
 const { Text } = Typography;
 
 /**
- * "沙箱代理" side-panel feature. Two sub-tabs:
- *   - 审计日志: every gateway call, with decision/status and expandable detail
- *   - 代理规则: the script-driven gateway entry (sandbox prefix → target base).
+ * "Sandbox proxy" side-panel feature. Two sub-tabs:
+ *   - Audit logs: every gateway call, with decision/status and expandable detail
+ *   - Proxy rules: the script-driven gateway entry (sandbox prefix → target base).
  * Self-contained; mounts inside the home tab.
  */
-type GatewayTab = 'logs' | 'proxy';
+type GatewayTab = "logs" | "proxy";
 
 export function GatewayFeature() {
   const { t } = useTranslation();
-  const [tab, setTab] = useState<GatewayTab>('logs');
+  const [tab, setTab] = useState<GatewayTab>("logs");
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      {/* 内容区:撑满剩余空间,内部各自滚动 */}
+      {/* Content area: fills remaining space, each panel scrolls internally */}
       <div className="flex-1 min-h-0 flex flex-col relative">
-        {tab === 'logs' ? <LogsPanel /> : <ProxyRulesPanel />}
-        {/* 底部渐隐遮罩:从透明到白色,不拦截交互 */}
+        {tab === "logs" ? <LogsPanel /> : <ProxyRulesPanel />}
+        {/* Bottom fade mask: transparent → white, non-interactive */}
         <div className="pointer-events-none absolute left-0 right-0 bottom-0 h-8 z-[5] bg-[linear-gradient(to_bottom,rgba(255,255,255,0),rgba(255,255,255,1))]" />
       </div>
 
       <BottomTabBar
         tabs={[
-          { key: 'logs' as const, label: t('gateway.tabLogs') },
-          { key: 'proxy' as const, label: t('gateway.tabProxy') },
+          { key: "logs" as const, label: t("gateway.tabLogs") },
+          { key: "proxy" as const, label: t("gateway.tabProxy") },
         ]}
         active={tab}
         onChange={setTab}
@@ -64,30 +78,36 @@ export function GatewayFeature() {
 }
 
 const DECISION_COLOR: Record<GatewayDecision, string> = {
-  auto: 'blue',
-  allowed: 'green',
-  blocked: 'red',
+  auto: "blue",
+  allowed: "green",
+  blocked: "red",
 };
 
 const DECISION_LABEL_KEY = {
-  auto: 'gateway.decisionAuto',
-  allowed: 'gateway.decisionAllowed',
-  blocked: 'gateway.decisionBlocked',
+  auto: "gateway.decisionAuto",
+  allowed: "gateway.decisionAllowed",
+  blocked: "gateway.decisionBlocked",
 } as const;
 
-function decisionMeta(decision: GatewayDecision, t: TFunction): { color: string; label: string } {
+function decisionMeta(
+  decision: GatewayDecision,
+  t: TFunction,
+): { color: string; label: string } {
   const key = DECISION_LABEL_KEY[decision];
   return {
-    color: DECISION_COLOR[decision] ?? 'default',
-    label: key ? t(key) : t('gateway.decisionUnknown'),
+    color: DECISION_COLOR[decision] ?? "default",
+    label: key ? t(key) : t("gateway.decisionUnknown"),
   };
 }
 
 /** Human label for a log's authorization source. */
-function authSourceLabel(source: GatewayLog['authSource'], t: TFunction): string {
-  if (source === 'agent') return t('gateway.authAgent');
-  if (source === 'rule') return t('gateway.authRule');
-  return t('gateway.authNone');
+function authSourceLabel(
+  source: GatewayLog["authSource"],
+  t: TFunction,
+): string {
+  if (source === "agent") return t("gateway.authAgent");
+  if (source === "rule") return t("gateway.authRule");
+  return t("gateway.authNone");
 }
 
 /**
@@ -96,11 +116,13 @@ function authSourceLabel(source: GatewayLog['authSource'], t: TFunction): string
  * Returns null when there's nothing meaningful to badge.
  */
 function entryTagMeta(
-  source: GatewayLog['authSource'],
+  source: GatewayLog["authSource"],
   t: TFunction,
 ): { color: string; label: string } | null {
-  if (source === 'agent') return { color: 'geekblue', label: t('gateway.entryMcp') };
-  if (source === 'rule') return { color: 'purple', label: t('gateway.entryProxy') };
+  if (source === "agent")
+    return { color: "geekblue", label: t("gateway.entryMcp") };
+  if (source === "rule")
+    return { color: "purple", label: t("gateway.entryProxy") };
   return null;
 }
 
@@ -114,30 +136,40 @@ function formatLogEntry(log: GatewayLog, t: TFunction): string {
   const lines: string[] = [];
   lines.push(`[${formatDateTimeShort(log.at)}] ${log.method} ${log.url}`);
   lines.push(
-    `  ${t('gateway.logDecision')}: ${meta.label} | ${t('gateway.logStatus')}: ${log.status} ${log.statusText} | ${t('gateway.logKind')}: ${log.kind} | ${t('gateway.logDuration')}: ${log.durationMs}ms`,
+    `  ${t("gateway.logDecision")}: ${meta.label} | ${t("gateway.logStatus")}: ${log.status} ${log.statusText} | ${t("gateway.logKind")}: ${log.kind} | ${t("gateway.logDuration")}: ${log.durationMs}ms`,
   );
-  lines.push(`  ${t('gateway.logAuthSource')}: ${authSourceLabel(log.authSource, t)}`);
   lines.push(
-    `  ${t('gateway.logInjectedCookie')}: ${
+    `  ${t("gateway.logAuthSource")}: ${authSourceLabel(log.authSource, t)}`,
+  );
+  lines.push(
+    `  ${t("gateway.logInjectedCookie")}: ${
       log.injectedCookieNames.length > 0
-        ? t('gateway.injectedCookieValue', {
-            names: log.injectedCookieNames.join(', '),
+        ? t("gateway.injectedCookieValue", {
+            names: log.injectedCookieNames.join(", "),
             domain: log.cookieDomain,
           })
-        : t('common.none')
+        : t("common.none")
     }`,
   );
   if (Object.keys(log.reqHeaders).length > 0) {
-    lines.push(`  ${t('gateway.logReqHeaders')}: ${JSON.stringify(log.reqHeaders)}`);
+    lines.push(
+      `  ${t("gateway.logReqHeaders")}: ${JSON.stringify(log.reqHeaders)}`,
+    );
   }
-  if (log.reqBodyPreview) lines.push(`  ${t('gateway.logReqBody')}: ${log.reqBodyPreview}`);
+  if (log.reqBodyPreview)
+    lines.push(`  ${t("gateway.logReqBody")}: ${log.reqBodyPreview}`);
   if (Object.keys(log.resHeadersSafe).length > 0) {
-    lines.push(`  ${t('gateway.logResHeaders')}: ${JSON.stringify(log.resHeadersSafe)}`);
+    lines.push(
+      `  ${t("gateway.logResHeaders")}: ${JSON.stringify(log.resHeadersSafe)}`,
+    );
   }
-  if (log.resBodyPreview) lines.push(`  ${t('gateway.logResBody')}: ${log.resBodyPreview}`);
-  if (log.kind === 'sse') lines.push(`  ${t('gateway.logSseCount')}: ${log.sseEventCount ?? 0}`);
-  if (log.errored) lines.push(`  ${t('gateway.logError')}: ${log.errorText ?? ''}`);
-  return lines.join('\n');
+  if (log.resBodyPreview)
+    lines.push(`  ${t("gateway.logResBody")}: ${log.resBodyPreview}`);
+  if (log.kind === "sse")
+    lines.push(`  ${t("gateway.logSseCount")}: ${log.sseEventCount ?? 0}`);
+  if (log.errored)
+    lines.push(`  ${t("gateway.logError")}: ${log.errorText ?? ""}`);
+  return lines.join("\n");
 }
 
 /**
@@ -154,10 +186,10 @@ function buildCurlCommand(log: GatewayLog, t: TFunction): string {
   if (log.reqBodyPreview) {
     parts.push(`  --data-raw ${quote(log.reqBodyPreview)}`);
   }
-  const cmd = parts.join(' \\\n');
+  const cmd = parts.join(" \\\n");
   if (log.injectedCookieNames.length > 0) {
-    const comment = t('gateway.curlCookieComment', {
-      names: log.injectedCookieNames.join(', '),
+    const comment = t("gateway.curlCookieComment", {
+      names: log.injectedCookieNames.join(", "),
       domain: log.cookieDomain,
     });
     return `# ${comment}\n${cmd}`;
@@ -167,14 +199,18 @@ function buildCurlCommand(log: GatewayLog, t: TFunction): string {
 
 /** Serialize all audit logs and trigger a browser download as a .log text file. */
 function exportLogsToFile(logs: GatewayLog[], t: TFunction) {
-  const header = `# ${t('gateway.exportHeaderTitle')}\n# ${t('gateway.exportHeaderTime')}: ${formatDateTimeShort(Date.now())}\n# ${t('gateway.exportHeaderCount')}: ${logs.length}\n`;
-  const content = header + '\n' + logs.map((log) => formatLogEntry(log, t)).join('\n\n') + '\n';
-  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+  const header = `# ${t("gateway.exportHeaderTitle")}\n# ${t("gateway.exportHeaderTime")}: ${formatDateTimeShort(Date.now())}\n# ${t("gateway.exportHeaderCount")}: ${logs.length}\n`;
+  const content =
+    header +
+    "\n" +
+    logs.map((log) => formatLogEntry(log, t)).join("\n\n") +
+    "\n";
+  const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
+  const a = document.createElement("a");
   a.href = url;
   const ts = new Date();
-  const pad = (n: number) => String(n).padStart(2, '0');
+  const pad = (n: number) => String(n).padStart(2, "0");
   const stamp = `${ts.getFullYear()}${pad(ts.getMonth() + 1)}${pad(ts.getDate())}-${pad(ts.getHours())}${pad(ts.getMinutes())}${pad(ts.getSeconds())}`;
   a.download = `gateway-audit-${stamp}.log`;
   document.body.appendChild(a);
@@ -188,29 +224,36 @@ function LogsPanel() {
   const { t } = useTranslation();
   const { logs, loading, error } = useGatewayLogs();
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [search, setSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
 
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(search.trim().toLowerCase()), 300);
+    const timer = setTimeout(
+      () => setDebouncedSearch(search.trim().toLowerCase()),
+      300,
+    );
     return () => clearTimeout(timer);
   }, [search]);
 
   const filteredLogs = useMemo(() => {
     if (!debouncedSearch) return logs;
-    return logs.filter((log) => log.url.toLowerCase().includes(debouncedSearch));
+    return logs.filter((log) =>
+      log.url.toLowerCase().includes(debouncedSearch),
+    );
   }, [logs, debouncedSearch]);
 
   const onExport = () => {
     if (logs.length === 0) {
-      message.warning(t('gateway.noLogsToExport'));
+      message.warning(t("gateway.noLogsToExport"));
       return;
     }
     try {
       exportLogsToFile(logs, t);
-      message.success(t('gateway.exported', { count: logs.length }));
+      message.success(t("gateway.exported", { count: logs.length }));
     } catch (err) {
-      message.error(err instanceof Error ? err.message : t('gateway.exportFailed'));
+      message.error(
+        err instanceof Error ? err.message : t("gateway.exportFailed"),
+      );
     }
   };
 
@@ -219,35 +262,35 @@ function LogsPanel() {
       await navigator.clipboard.writeText(text);
       message.success(okMsg);
     } catch {
-      message.error(t('common.copyFailed'));
+      message.error(t("common.copyFailed"));
     }
   };
 
-  const buildRowMenu = (log: GatewayLog): MenuProps['items'] => [
+  const buildRowMenu = (log: GatewayLog): MenuProps["items"] => [
     {
-      key: 'copy',
-      label: t('common.copy'),
+      key: "copy",
+      label: t("common.copy"),
       children: [
         {
-          key: 'copy-url',
-          label: t('common.copyUrl'),
-          onClick: () => copyText(log.url, t('common.copied')),
+          key: "copy-url",
+          label: t("common.copyUrl"),
+          onClick: () => copyText(log.url, t("common.copied")),
         },
         {
-          key: 'copy-response',
-          label: t('gateway.copyResponse'),
-          onClick: () => copyText(log.resBodyPreview ?? '', t('common.copied')),
+          key: "copy-response",
+          label: t("gateway.copyResponse"),
+          onClick: () => copyText(log.resBodyPreview ?? "", t("common.copied")),
         },
         {
-          key: 'copy-curl',
-          label: t('gateway.copyCurl'),
-          onClick: () => copyText(buildCurlCommand(log, t), t('common.copied')),
+          key: "copy-curl",
+          label: t("gateway.copyCurl"),
+          onClick: () => copyText(buildCurlCommand(log, t), t("common.copied")),
         },
       ],
     },
     {
-      key: 'export',
-      label: t('gateway.exportLogs'),
+      key: "export",
+      label: t("gateway.exportLogs"),
       onClick: onExport,
     },
   ];
@@ -259,7 +302,7 @@ function LogsPanel() {
           <Input
             allowClear
             prefix={<SearchOutlined />}
-            placeholder={t('gateway.searchUrl')}
+            placeholder={t("gateway.searchUrl")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -274,7 +317,7 @@ function LogsPanel() {
           <div className="h-full flex items-center justify-center">
             <Empty
               image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description={t('gateway.loadFailed', { error })}
+              description={t("gateway.loadFailed", { error })}
             />
           </div>
         ) : logs.length === 0 ? (
@@ -283,7 +326,10 @@ function LogsPanel() {
           </div>
         ) : filteredLogs.length === 0 ? (
           <div className="h-full flex items-center justify-center">
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('gateway.noMatchRequest')} />
+            <Empty
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              description={t("gateway.noMatchRequest")}
+            />
           </div>
         ) : (
           <div>
@@ -294,13 +340,15 @@ function LogsPanel() {
                 <Dropdown
                   key={log.id}
                   menu={{ items: buildRowMenu(log) }}
-                  trigger={['contextMenu']}
+                  trigger={["contextMenu"]}
                 >
                   <div>
                     <UnifiedListItem
                       expandable
                       expanded={expandedId === log.id}
-                      onToggleExpand={() => setExpandedId((id) => (id === log.id ? null : log.id))}
+                      onToggleExpand={() =>
+                        setExpandedId((id) => (id === log.id ? null : log.id))
+                      }
                       title={
                         <Text ellipsis className="text-sm" title={log.url}>
                           {schemeOf(log.url)}
@@ -311,15 +359,23 @@ function LogsPanel() {
                       status={
                         <>
                           {entryMeta && (
-                            <Tag color={entryMeta.color} className="me-0 text-xs rounded">
+                            <Tag
+                              color={entryMeta.color}
+                              className="me-0 text-xs rounded"
+                            >
                               {entryMeta.label}
                             </Tag>
                           )}
-                          <Tag color={meta.color} className="me-0 text-xs rounded">
+                          <Tag
+                            color={meta.color}
+                            className="me-0 text-xs rounded"
+                          >
                             {meta.label}
                           </Tag>
                           <MethodBadge method={log.method} />
-                          {log.status > 0 && <StatusBadge status={log.status} />}
+                          {log.status > 0 && (
+                            <StatusBadge status={log.status} />
+                          )}
                         </>
                       }
                       timestamp={log.at}
@@ -340,50 +396,62 @@ function LogDetail({ log }: { log: GatewayLog }) {
   const { t } = useTranslation();
   return (
     <div className="flex flex-col gap-2 bg-[rgba(0,0,0,0.03)] border border-[rgba(5,5,5,0.06)] rounded-md px-2.5 py-2">
-      <Block title={t('gateway.summary')}>
+      <Block title={t("gateway.summary")}>
         <Text type="secondary" className="text-xs">
-          {formatDateTimeShort(log.at)} · {log.durationMs}ms · {t('gateway.logAuthSource')}：
-          {authSourceLabel(log.authSource, t)}
+          {formatDateTimeShort(log.at)} · {log.durationMs}ms ·{" "}
+          {t("gateway.logAuthSource")}：{authSourceLabel(log.authSource, t)}
         </Text>
       </Block>
 
       <Field label="URL" value={log.url} />
 
       <Field
-        label={t('gateway.injectedCookie')}
+        label={t("gateway.injectedCookie")}
         value={
           log.injectedCookieNames.length > 0
-            ? t('gateway.injectedCookieValue', {
-                names: log.injectedCookieNames.join(', '),
+            ? t("gateway.injectedCookieValue", {
+                names: log.injectedCookieNames.join(", "),
                 domain: log.cookieDomain,
               })
-            : t('common.none')
+            : t("common.none")
         }
       />
 
       {Object.keys(log.reqHeaders).length > 0 && (
-        <Section title={t('gateway.reqHeaders')} body={headerText(log.reqHeaders)} />
+        <Section
+          title={t("gateway.reqHeaders")}
+          body={headerText(log.reqHeaders)}
+        />
       )}
       {log.reqBodyPreview && (
-        <Section title={t('gateway.reqBody')} body={prettyJson(log.reqBodyPreview)} />
+        <Section
+          title={t("gateway.reqBody")}
+          body={prettyJson(log.reqBodyPreview)}
+        />
       )}
       {Object.keys(log.resHeadersSafe).length > 0 && (
-        <Section title={t('gateway.resHeaders')} body={headerText(log.resHeadersSafe)} />
+        <Section
+          title={t("gateway.resHeaders")}
+          body={headerText(log.resHeadersSafe)}
+        />
       )}
       <Section
         title={
-          log.kind === 'sse'
-            ? t('gateway.streamResponse', {
+          log.kind === "sse"
+            ? t("gateway.streamResponse", {
                 status: log.status,
                 statusText: log.statusText,
                 count: log.sseEventCount ?? 0,
               })
-            : t('gateway.response', { status: log.status, statusText: log.statusText })
+            : t("gateway.response", {
+                status: log.status,
+                statusText: log.statusText,
+              })
         }
         body={prettyJson(log.resBodyPreview)}
       />
       {log.errored && (
-        <Block title={t('gateway.error')}>
+        <Block title={t("gateway.error")}>
           <Text type="danger">{log.errorText}</Text>
         </Block>
       )}
@@ -404,7 +472,7 @@ interface ProxyRuleFormValues {
   /** Stored target base; decomposed into scheme + host for the form fields. */
   targetBase: string;
   /** Form-only: target scheme selector (http/https). */
-  targetScheme?: 'http' | 'https';
+  targetScheme?: "http" | "https";
   /** Form-only: target host + optional base path (no scheme). */
   targetHost?: string;
 }
@@ -448,7 +516,7 @@ function ProxyRuleModal({
         const m = /^(https?):\/\/(.*)$/i.exec(initialValues.targetBase.trim());
         form.setFieldsValue({
           ...initialValues,
-          targetScheme: (m?.[1]?.toLowerCase() as 'http' | 'https') ?? 'https',
+          targetScheme: (m?.[1]?.toLowerCase() as "http" | "https") ?? "https",
           targetHost: m ? m[2] : initialValues.targetBase.trim(),
         });
       }
@@ -465,7 +533,7 @@ function ProxyRuleModal({
     setSubmitting(true);
     try {
       const sandboxPrefix = values.sandboxPrefix.trim();
-      const targetBase = `${values.targetScheme ?? 'https'}://${(values.targetHost ?? '').trim()}`;
+      const targetBase = `${values.targetScheme ?? "https"}://${(values.targetHost ?? "").trim()}`;
       await onSubmit({
         sandboxPrefix,
         targetBase,
@@ -477,13 +545,13 @@ function ProxyRuleModal({
 
   return (
     <Modal
-      title={isEdit ? t('gateway.editProxyRule') : t('gateway.addProxyRule')}
+      title={isEdit ? t("gateway.editProxyRule") : t("gateway.addProxyRule")}
       open={open}
       centered
       onCancel={onCancel}
       onOk={handleOk}
-      okText={isEdit ? t('common.save') : t('common.add')}
-      cancelText={t('common.cancel')}
+      okText={isEdit ? t("common.save") : t("common.add")}
+      cancelText={t("common.cancel")}
       confirmLoading={submitting}
       destroyOnClose
     >
@@ -492,23 +560,25 @@ function ProxyRuleModal({
         layout="vertical"
         requiredMark={false}
         className="mt-6!"
-        initialValues={{ targetScheme: 'https' }}
+        initialValues={{ targetScheme: "https" }}
       >
         <Form.Item
-          label={t('gateway.pathPrefix')}
+          label={t("gateway.pathPrefix")}
           name="sandboxPrefix"
-          rules={[{ required: true, message: t('gateway.pathPrefixRequired') }]}
+          rules={[{ required: true, message: t("gateway.pathPrefixRequired") }]}
           className="mb-4!"
         >
           <Input
             addonBefore={`http://127.0.0.1:${proxyPort}`}
-            placeholder={t('gateway.pathPrefixPlaceholder')}
+            placeholder={t("gateway.pathPrefixPlaceholder")}
           />
         </Form.Item>
         <Form.Item
-          label={t('gateway.targetAddress')}
+          label={t("gateway.targetAddress")}
           name="targetHost"
-          rules={[{ required: true, message: t('gateway.targetAddressRequired') }]}
+          rules={[
+            { required: true, message: t("gateway.targetAddressRequired") },
+          ]}
         >
           <Input
             addonBefore={
@@ -516,8 +586,8 @@ function ProxyRuleModal({
                 <Select
                   className="w-[100px]"
                   options={[
-                    { label: 'https://', value: 'https' },
-                    { label: 'http://', value: 'http' },
+                    { label: "https://", value: "https" },
+                    { label: "http://", value: "http" },
                   ]}
                 />
               </Form.Item>
@@ -533,19 +603,21 @@ function ProxyRuleModal({
 function ProxyRulesPanel() {
   const { message, modal } = App.useApp();
   const { t } = useTranslation();
-  const { rules, loading, addRule, updateRule, removeRule } = useGatewayProxyRules();
+  const { rules, loading, addRule, updateRule, removeRule } =
+    useGatewayProxyRules();
 
   const confirmDelete = (rule: GatewayProxyRule) => {
     modal.confirm({
-      title: t('gateway.deleteProxyRuleTitle'),
-      content: t('gateway.deleteProxyRuleConfirm', {
+      title: t("gateway.deleteProxyRuleTitle"),
+      content: t("gateway.deleteProxyRuleConfirm", {
         prefix: rule.sandboxPrefix,
         target: rule.targetBase,
       }),
-      okText: t('common.delete'),
+      okText: t("common.delete"),
       okButtonProps: { danger: true },
-      cancelText: t('common.cancel'),
+      cancelText: t("common.cancel"),
       onOk: () => removeRule(rule.id),
+      centered: true,
     });
   };
   const [proxyPort, setProxyPort] = useState(8788);
@@ -553,8 +625,8 @@ function ProxyRulesPanel() {
   // The rule currently being edited (null = add mode).
   const [editingRule, setEditingRule] = useState<GatewayProxyRule | null>(null);
   // Search box (raw input) + its debounced value used for filtering.
-  const [search, setSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
 
   useEffect(() => {
     settings.proxyPort.getValue().then(setProxyPort);
@@ -564,7 +636,10 @@ function ProxyRulesPanel() {
 
   // Debounce the search input (300ms) to avoid filtering on every keystroke.
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(search.trim().toLowerCase()), 300);
+    const t = setTimeout(
+      () => setDebouncedSearch(search.trim().toLowerCase()),
+      300,
+    );
     return () => clearTimeout(t);
   }, [search]);
 
@@ -572,7 +647,9 @@ function ProxyRulesPanel() {
   const filteredRules = useMemo(() => {
     if (!debouncedSearch) return rules;
     return rules.filter((rule) =>
-      `${rule.sandboxPrefix} ${rule.targetBase}`.toLowerCase().includes(debouncedSearch),
+      `${rule.sandboxPrefix} ${rule.targetBase}`
+        .toLowerCase()
+        .includes(debouncedSearch),
     );
   }, [rules, debouncedSearch]);
 
@@ -590,10 +667,10 @@ function ProxyRulesPanel() {
     try {
       if (editingRule) {
         await updateRule(editingRule.id, values);
-        message.success(t('gateway.ruleSaved'));
+        message.success(t("gateway.ruleSaved"));
       } else {
         await addRule(values);
-        message.success(t('gateway.ruleAdded'));
+        message.success(t("gateway.ruleAdded"));
       }
       setModalOpen(false);
     } catch (err) {
@@ -601,8 +678,8 @@ function ProxyRulesPanel() {
         err instanceof Error
           ? err.message
           : editingRule
-            ? t('gateway.saveFailed')
-            : t('gateway.addFailed'),
+            ? t("gateway.saveFailed")
+            : t("gateway.addFailed"),
       );
       throw err; // keep the modal open on failure
     }
@@ -615,7 +692,7 @@ function ProxyRulesPanel() {
           <Input
             allowClear
             prefix={<SearchOutlined className="text-[rgba(0,0,0,0.25)]" />}
-            placeholder={t('gateway.searchRule')}
+            placeholder={t("gateway.searchRule")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -632,19 +709,22 @@ function ProxyRulesPanel() {
           </div>
         ) : filteredRules.length === 0 ? (
           <div className="h-full flex items-center justify-center">
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('gateway.noMatchRule')} />
+            <Empty
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              description={t("gateway.noMatchRule")}
+            />
           </div>
         ) : (
           <div>
             {filteredRules.map((rule) => (
               <Dropdown
                 key={rule.id}
-                trigger={['contextMenu']}
+                trigger={["contextMenu"]}
                 menu={{
                   items: [
                     {
-                      key: 'delete',
-                      label: t('common.delete'),
+                      key: "delete",
+                      label: t("common.delete"),
                       danger: true,
                       onClick: () => confirmDelete(rule),
                     },
@@ -670,18 +750,18 @@ function ProxyRulesPanel() {
                         size="small"
                         icon={<EditOutlined />}
                         onClick={() => openEdit(rule)}
-                        title={t('gateway.editRule')}
+                        title={t("gateway.editRule")}
                       />
                     }
                     status={
                       <Space size={6}>
                         <Tag
                           className="me-0 text-xs rounded"
-                          color={rule.createdBy === 'agent' ? 'blue' : 'green'}
+                          color={rule.createdBy === "agent" ? "blue" : "green"}
                         >
-                          {rule.createdBy === 'agent'
-                            ? t('gateway.createdByAgent')
-                            : t('gateway.createdByUser')}
+                          {rule.createdBy === "agent"
+                            ? t("gateway.createdByAgent")
+                            : t("gateway.createdByUser")}
                         </Tag>
                         <Switch
                           size="small"
@@ -691,7 +771,9 @@ function ProxyRulesPanel() {
                               await updateRule(rule.id, { enabled: v });
                             } catch (err) {
                               message.error(
-                                err instanceof Error ? err.message : t('common.updateFailed'),
+                                err instanceof Error
+                                  ? err.message
+                                  : t("common.updateFailed"),
                               );
                             }
                           }}
@@ -707,10 +789,10 @@ function ProxyRulesPanel() {
         )}
       </div>
 
-      {/* 底部添加按钮:吸底 block。抬到父级渐隐遮罩(zIndex:5)之上,避免被冲淡。 */}
+      {/* Bottom add button: pinned block, raised above the parent fade mask (zIndex:5) so it isn't washed out. */}
       <div className="flex-none px-3 py-2.5 border-t border-[rgba(5,5,5,0.06)] bg-white relative z-10">
         <Button type="primary" block onClick={openAdd}>
-          {t('gateway.addProxyRule')}
+          {t("gateway.addProxyRule")}
         </Button>
       </div>
 

@@ -8,8 +8,8 @@
  * Docs: https://tailwindcss.com/docs/theme
  */
 @layer theme, base, components, utilities;
-@import 'tailwindcss/theme.css' layer(theme);
-@import 'tailwindcss/utilities.css' layer(utilities);
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
 
 @theme {
   /* Brand tokens (kept for any utility usage / custom CSS).
@@ -43,7 +43,9 @@ body {
  * moving the dot/rail.
  * Bound to `.manta-action-kit-call-node` (not the whole Timeline) so it only affects
  * the recording call chain and never other lists or Timelines. */
-.manta-action-kit-call-timeline .ant-timeline-item-content .manta-action-kit-call-node {
+.manta-action-kit-call-timeline
+  .ant-timeline-item-content
+  .manta-action-kit-call-node {
   padding-top: 0;
 }
 
@@ -67,4 +69,73 @@ body {
 .ant-btn.ant-btn-primary:not(:disabled, .ant-btn-disabled):active {
   background-color: #1f1f1f !important;
   border-color: #1f1f1f !important;
+}
+
+/* Home feature tabs — capsule pills instead of the underlined tab bar.
+ * Bound to `.manta-action-kit-home-tabs` (only the side-panel home Tabs uses it)
+ * so other antd surfaces are untouched. No bottom border / ink bar: the active
+ * tab is a gray capsule with near-black text; inactive tabs are gray text and
+ * grow the same gray capsule on hover. antd is injected UNLAYERED (see the
+ * primary-button note above), so the state-dependent rules are pinned with
+ * !important to outrank antd's own hover/selected styles. */
+.manta-action-kit-home-tabs.ant-tabs .ant-tabs-nav::before {
+  display: none;
+}
+
+.manta-action-kit-home-tabs.ant-tabs .ant-tabs-ink-bar {
+  display: none;
+}
+
+/* Fixed 48px tab strip: the nav and its inner list both flex-center their
+ * children vertically, so the pills and the gear button stay centered without
+ * relying on padding math. */
+.manta-action-kit-home-tabs.ant-tabs .ant-tabs-nav {
+  height: 48px;
+  align-items: center;
+  border-bottom: 1px solid #e8e8ea;
+}
+
+.manta-action-kit-home-tabs.ant-tabs .ant-tabs-nav-list {
+  height: 100%;
+  align-items: center;
+}
+
+.manta-action-kit-home-tabs.ant-tabs .ant-tabs-tab {
+  margin-block: 2px !important;
+  margin-inline: 3px !important;
+  padding: 5px 12px !important;
+  border-radius: 8px !important;
+  transition: background-color 0.2s ease;
+}
+
+.manta-action-kit-home-tabs.ant-tabs .ant-tabs-tab:hover,
+.manta-action-kit-home-tabs.ant-tabs .ant-tabs-tab-active,
+.manta-action-kit-home-tabs.ant-tabs .ant-tabs-tab-active:hover {
+  background-color: rgba(0, 0, 0, 0.06) !important;
+}
+
+.manta-action-kit-home-tabs.ant-tabs .ant-tabs-tab-active .ant-tabs-tab-btn,
+.manta-action-kit-home-tabs.ant-tabs
+  .ant-tabs-tab-active:hover
+  .ant-tabs-tab-btn {
+  color: #1f1f1f !important;
+}
+
+/* Active tab goes bold, without shifting the bar: each label renders an
+ * invisible always-bold ghost (in flow, reserves width) plus a visible layer
+ * absolutely positioned on top (see home.tsx). Only the visible layer of the
+ * active tab is bolded, so tab widths never change on switch. */
+.manta-action-kit-home-tabs .manta-home-tab-ghost {
+  visibility: hidden;
+  font-weight: 700;
+}
+
+.manta-action-kit-home-tabs .manta-home-tab-view {
+  position: absolute;
+  inset: 0;
+  white-space: nowrap;
+}
+
+.manta-action-kit-home-tabs .ant-tabs-tab-active .manta-home-tab-view {
+  font-weight: 700;
 }

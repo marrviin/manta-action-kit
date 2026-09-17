@@ -10,8 +10,12 @@
  * ALL fetch/XHR here; the "record only when active" and "API-only" filtering happen
  * downstream in the content script / background so this hook stays dumb and cheap.
  */
-import { API_CALL_EVENT, type CapturedCall, type HeaderMap } from '@/lib/recording/types';
-import { createSseParser, type SseEvent } from '@/lib/sse-parse';
+import {
+  API_CALL_EVENT,
+  type CapturedCall,
+  type HeaderMap,
+} from "@/lib/recording/types";
+import { createSseParser, type SseEvent } from "@/lib/sse-parse";
 
 export default defineUnlistedScript(() => {
   const self = document.currentScript as HTMLScriptElement | null;
@@ -38,10 +42,27 @@ export default defineUnlistedScript(() => {
     }
   };
 
-  const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+  const now = () =>
+    typeof performance !== "undefined" ? performance.now() : Date.now();
   const epoch = () => Date.now();
 
-  function headersToMap(h: HeadersInit | Headers | null | undefined): HeaderMap {
+  /**
+   * Resolve a request URL to its absolute form. Pages routinely call
+   * fetch('/api/x') or xhr.open('GET', '/api/x') with relative URLs — captured
+   * as-is they lose the domain, making recordings unreplayable and endpoint
+   * samples host-less. Absolute inputs pass through unchanged.
+   */
+  function toAbsoluteUrl(url: string): string {
+    try {
+      return new URL(url, location.href).href;
+    } catch {
+      return url;
+    }
+  }
+
+  function headersToMap(
+    h: HeadersInit | Headers | null | undefined,
+  ): HeaderMap {
     const map: HeaderMap = {};
     if (!h) return map;
     try {
@@ -50,7 +71,8 @@ export default defineUnlistedScript(() => {
       } else if (Array.isArray(h)) {
         for (const [k, v] of h) map[k] = String(v);
       } else {
-        for (const k of Object.keys(h)) map[k] = String((h as Record<string, unknown>)[k]);
+        for (const k of Object.keys(h))
+          map[k] = String((h as Record<string, unknown>)[k]);
       }
     } catch {
       /* ignore */
@@ -61,23 +83,29 @@ export default defineUnlistedScript(() => {
   function parseRawHeaders(raw: string): HeaderMap {
     const map: HeaderMap = {};
     for (const line of raw.trim().split(/[\r\n]+/)) {
-      const idx = line.indexOf(':');
-      if (idx > 0) map[line.slice(0, idx).trim().toLowerCase()] = line.slice(idx + 1).trim();
+      const idx = line.indexOf(":");
+      if (idx > 0)
+        map[line.slice(0, idx).trim().toLowerCase()] = line
+          .slice(idx + 1)
+          .trim();
     }
     return map;
   }
 
   function looksJson(headers: HeaderMap, body: string | null): boolean {
-    const ct = headers['content-type'] || '';
-    if (ct.includes('application/json')) return true;
+    const ct = headers["content-type"] || "";
+    if (ct.includes("application/json")) return true;
     if (!body) return false;
     const t = body.trim();
-    return (t.startsWith('{') && t.endsWith('}')) || (t.startsWith('[') && t.endsWith(']'));
+    return (
+      (t.startsWith("{") && t.endsWith("}")) ||
+      (t.startsWith("[") && t.endsWith("]"))
+    );
   }
 
   /** Does this response look like a Server-Sent Events stream? */
   function isEventStream(headers: HeaderMap): boolean {
-    return (headers['content-type'] || '').includes('text/event-stream');
+    return (headers["content-type"] || "").includes("text/event-stream");
   }
 
   /**
@@ -86,7 +114,10 @@ export default defineUnlistedScript(() => {
    * page can't tell it apart from the original. Prefers Object.defineProperty;
    * falls back to a Proxy if the engine marks those getters non-configurable.
    */
-  function rebuildResponse(original: Response, body: ReadableStream<Uint8Array>): Response {
+  function rebuildResponse(
+    original: Response,
+    body: ReadableStream<Uint8Array>,
+  ): Response {
     const rebuilt = new Response(body, {
       status: original.status,
       statusText: original.statusText,
@@ -111,12 +142,12 @@ export default defineUnlistedScript(() => {
       // through (binding methods so they run against the real Response).
       return new Proxy(rebuilt, {
         get(target, prop, recv) {
-          if (prop === 'url') return carry.url;
-          if (prop === 'redirected') return carry.redirected;
-          if (prop === 'type') return carry.type;
-          if (prop === 'ok') return carry.ok;
+          if (prop === "url") return carry.url;
+          if (prop === "redirected") return carry.redirected;
+          if (prop === "type") return carry.type;
+          if (prop === "ok") return carry.ok;
           const v = Reflect.get(target, prop, recv);
-          return typeof v === 'function' ? v.bind(target) : v;
+          return typeof v === "function" ? v.bind(target) : v;
         },
       });
     }
@@ -129,7 +160,10 @@ export default defineUnlistedScript(() => {
    */
   async function drainStreamAndEmit(
     stream: ReadableStream<Uint8Array>,
-    base: Omit<CapturedCall, 'resBody' | 'resIsJson' | 'streaming' | 'sseEvents' | 'durationMs'>,
+    base: Omit<
+      CapturedCall,
+      "resBody" | "resIsJson" | "streaming" | "sseEvents" | "durationMs"
+    >,
     t0: number,
   ): Promise<void> {
     const events: SseEvent[] = [];
@@ -143,7 +177,7 @@ export default defineUnlistedScript(() => {
       // Race each read() against idle + overall deadlines, so a stream the page
       // aborts on its own (or one that never closes) still terminates.
       const readNext = (): Promise<
-        { kind: 'chunk'; value: Uint8Array } | { kind: 'end' }
+        { kind: "chunk"; value: Uint8Array } | { kind: "end" }
       > => {
         const msLeft = deadline - now();
         const wait = Math.max(0, Math.min(SSE_IDLE_MS, msLeft));
@@ -152,21 +186,21 @@ export default defineUnlistedScript(() => {
           const timer = setTimeout(() => {
             if (settled) return;
             settled = true;
-            resolve({ kind: 'end' });
+            resolve({ kind: "end" });
           }, wait);
           reader.read().then(
             ({ done, value }) => {
               if (settled) return;
               settled = true;
               clearTimeout(timer);
-              if (done) resolve({ kind: 'end' });
-              else resolve({ kind: 'chunk', value: value as Uint8Array });
+              if (done) resolve({ kind: "end" });
+              else resolve({ kind: "chunk", value: value as Uint8Array });
             },
             () => {
               if (settled) return;
               settled = true;
               clearTimeout(timer);
-              resolve({ kind: 'end' });
+              resolve({ kind: "end" });
             },
           );
         });
@@ -174,9 +208,11 @@ export default defineUnlistedScript(() => {
 
       readLoop: for (;;) {
         const r = await readNext();
-        if (r.kind === 'end') break;
+        if (r.kind === "end") break;
         bytes += r.value?.byteLength ?? 0;
-        for (const ev of parser.push(decoder.decode(r.value, { stream: true }))) {
+        for (const ev of parser.push(
+          decoder.decode(r.value, { stream: true }),
+        )) {
           events.push(ev);
           if (events.length >= SSE_MAX_EVENTS) break readLoop;
         }
@@ -197,18 +233,23 @@ export default defineUnlistedScript(() => {
     });
   }
 
-  async function bodyInitToText(body: BodyInit | null | undefined): Promise<string | null> {
+  async function bodyInitToText(
+    body: BodyInit | null | undefined,
+  ): Promise<string | null> {
     if (body == null) return null;
     try {
-      if (typeof body === 'string') return body;
+      if (typeof body === "string") return body;
       if (body instanceof URLSearchParams) return body.toString();
       if (body instanceof Blob) return await body.text();
       if (body instanceof ArrayBuffer) return new TextDecoder().decode(body);
-      if (ArrayBuffer.isView(body)) return new TextDecoder().decode(body as Uint8Array);
+      if (ArrayBuffer.isView(body))
+        return new TextDecoder().decode(body as Uint8Array);
       if (body instanceof FormData) {
         const parts: string[] = [];
-        body.forEach((v, k) => parts.push(`${k}=${typeof v === 'string' ? v : '[file]'}`));
-        return parts.join('&');
+        body.forEach((v, k) =>
+          parts.push(`${k}=${typeof v === "string" ? v : "[file]"}`),
+        );
+        return parts.join("&");
       }
     } catch {
       /* ignore */
@@ -226,13 +267,17 @@ export default defineUnlistedScript(() => {
     const startedAt = epoch();
     const t0 = now();
     const req = input instanceof Request ? input : null;
-    const url = req ? req.url : String(input);
-    const method = (init?.method || req?.method || 'GET').toUpperCase();
+    const url = toAbsoluteUrl(req ? req.url : String(input));
+    const method = (init?.method || req?.method || "GET").toUpperCase();
     const reqHeaders = headersToMap(init?.headers ?? req?.headers ?? undefined);
     let reqBody: string | null = null;
     try {
       if (init?.body != null) reqBody = await bodyInitToText(init.body);
-      else if (req) reqBody = await req.clone().text().catch(() => null);
+      else if (req)
+        reqBody = await req
+          .clone()
+          .text()
+          .catch(() => null);
     } catch {
       /* ignore */
     }
@@ -253,7 +298,7 @@ export default defineUnlistedScript(() => {
           void drainStreamAndEmit(
             forUs,
             {
-              source: 'fetch',
+              source: "fetch",
               method,
               url,
               reqHeaders,
@@ -281,7 +326,7 @@ export default defineUnlistedScript(() => {
         /* body may be opaque/streamed */
       }
       emit({
-        source: 'fetch',
+        source: "fetch",
         method,
         url,
         reqHeaders,
@@ -298,13 +343,13 @@ export default defineUnlistedScript(() => {
       return res;
     } catch (err) {
       emit({
-        source: 'fetch',
+        source: "fetch",
         method,
         url,
         reqHeaders,
         reqBody,
         status: 0,
-        statusText: '',
+        statusText: "",
         resHeaders: {},
         resBody: null,
         resIsJson: false,
@@ -340,8 +385,8 @@ export default defineUnlistedScript(() => {
     ...rest: unknown[]
   ) {
     this._dnd = {
-      method: (method || 'GET').toUpperCase(),
-      url: String(url),
+      method: (method || "GET").toUpperCase(),
+      url: toAbsoluteUrl(String(url)),
       reqHeaders: {},
       startedAt: 0,
       t0: 0,
@@ -359,36 +404,42 @@ export default defineUnlistedScript(() => {
     return originalSetHeader.call(this, name, value);
   };
 
-  XHR.send = function (this: XMLHttpRequest & Tapped, body?: Document | XMLHttpRequestBodyInit | null) {
+  XHR.send = function (
+    this: XMLHttpRequest & Tapped,
+    body?: Document | XMLHttpRequestBodyInit | null,
+  ) {
     const tap = this._dnd;
     if (tap) {
       tap.startedAt = epoch();
       tap.t0 = now();
       let reqBody: string | null = null;
       try {
-        if (typeof body === 'string') reqBody = body;
+        if (typeof body === "string") reqBody = body;
         else if (body instanceof URLSearchParams) reqBody = body.toString();
-        else if (body != null && 'toString' in body) reqBody = null;
+        else if (body != null && "toString" in body) reqBody = null;
       } catch {
         /* ignore */
       }
 
-      this.addEventListener('loadend', () => {
+      this.addEventListener("loadend", () => {
         try {
-          const resHeaders = parseRawHeaders(this.getAllResponseHeaders?.() || '');
+          const resHeaders = parseRawHeaders(
+            this.getAllResponseHeaders?.() || "",
+          );
           let resBody: string | null = null;
           try {
             // responseText throws for some responseTypes (blob/arraybuffer).
-            resBody = this.responseType === '' || this.responseType === 'text'
-              ? this.responseText
-              : this.response != null
-                ? String(this.response)
-                : null;
+            resBody =
+              this.responseType === "" || this.responseType === "text"
+                ? this.responseText
+                : this.response != null
+                  ? String(this.response)
+                  : null;
           } catch {
             resBody = null;
           }
           emit({
-            source: 'xhr',
+            source: "xhr",
             method: tap.method,
             url: tap.url,
             reqHeaders: tap.reqHeaders,
@@ -401,7 +452,7 @@ export default defineUnlistedScript(() => {
             startedAt: tap.startedAt,
             durationMs: Math.round(now() - tap.t0),
             errored: this.status === 0,
-            errorText: this.status === 0 ? 'network error' : undefined,
+            errorText: this.status === 0 ? "network error" : undefined,
           });
         } catch {
           /* ignore */

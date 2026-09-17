@@ -13,7 +13,7 @@ import { RecordingToolbar, TOOLBAR_CSS } from './toolbar';
  *     before the page's own scripts run.
  *  2. Relay captured API calls from the page to the background service worker.
  *  3. Mount/unmount the in-page recording toolbar (a shadow-root React UI) based on
- *     `toolbarState`, which the popup sets when the user picks "接口录制".
+ *     `toolbarState`, which the popup sets when the user picks "API recording".
  *
  * The background decides whether recording is active and whether to keep each call
  * (API-only filtering), so the capture relay stays thin.

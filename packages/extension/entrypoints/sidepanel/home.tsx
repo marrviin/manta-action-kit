@@ -1,19 +1,21 @@
-import { useEffect, useState } from 'react';
-import { Badge, Button, Tabs } from 'antd';
+import { useEffect, useState } from "react";
+import { Badge, Button, Tabs } from "antd";
 import {
   ApiOutlined,
   CloudServerOutlined,
   DeploymentUnitOutlined,
   SettingOutlined,
-} from '@ant-design/icons';
-import { useNavigate } from 'react-router-dom';
-import { useTranslation } from 'react-i18next';
-import { ApiRecordingFeature } from '@/components/recording/api-recording-feature';
-import { GatewayFeature } from '@/components/gateway/gateway-feature';
-import { McpFeature } from '@/components/mcp/mcp-feature';
-import { SettingsFeature } from '@/components/settings/settings-feature';
-import { useRecordingState } from '@/hooks/use-recording-state';
-import { sidePanelTab, lastSidePanelTab } from '@/lib/storage';
+  ThunderboltOutlined,
+} from "@ant-design/icons";
+import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
+import { ApiRecordingFeature } from "@/components/recording/api-recording-feature";
+import { ActionFeature } from "@/components/action/action-feature";
+import { GatewayFeature } from "@/components/gateway/gateway-feature";
+import { McpFeature } from "@/components/mcp/mcp-feature";
+import { SettingsFeature } from "@/components/settings/settings-feature";
+import { useRecordingState } from "@/hooks/use-recording-state";
+import { sidePanelTab, lastSidePanelTab } from "@/lib/storage";
 
 /**
  * The side panel home page: a top tab bar of features with a gear button pinned
@@ -22,31 +24,39 @@ import { sidePanelTab, lastSidePanelTab } from '@/lib/storage';
  * full-screen and replace the whole view, so the bar only shows on home.
  */
 
-type FeatureKey = 'api-recording' | 'gateway' | 'mcp';
+type FeatureKey = "api-recording" | "action" | "gateway" | "mcp";
 /** The active home view: a feature tab, or the gear-opened settings view. */
-type ActiveView = FeatureKey | 'settings';
+type ActiveView = FeatureKey | "settings";
 
 const FEATURES: {
   key: FeatureKey;
-  labelKey: 'home.apiRecording' | 'home.gateway' | 'home.mcp';
+  labelKey: "home.apiRecording" | "home.actions" | "home.gateway" | "home.mcp";
   icon: React.ReactNode;
 }[] = [
-  { key: 'mcp', labelKey: 'home.mcp', icon: <DeploymentUnitOutlined /> },
-  { key: 'api-recording', labelKey: 'home.apiRecording', icon: <ApiOutlined /> },
-  { key: 'gateway', labelKey: 'home.gateway', icon: <CloudServerOutlined /> },
+  { key: "mcp", labelKey: "home.mcp", icon: <DeploymentUnitOutlined /> },
+  { key: "action", labelKey: "home.actions", icon: <ThunderboltOutlined /> },
+  {
+    key: "api-recording",
+    labelKey: "home.apiRecording",
+    icon: <ApiOutlined />,
+  },
+  { key: "gateway", labelKey: "home.gateway", icon: <CloudServerOutlined /> },
 ];
 
 export function HomePage() {
   const navigate = useNavigate();
   const { t } = useTranslation();
   const state = useRecordingState();
-  const [active, setActive] = useState<ActiveView>('mcp');
+  // null = still resolving the initial tab (popup request → last tab → default).
+  // Stay unrendered until resolved so returning from a detail page doesn't flash
+  // the default tab before the persisted one activates.
+  const [active, setActive] = useState<ActiveView | null>(null);
 
   // On mount decide which tab to open, in priority order:
   //   1. A tab the popup explicitly requested (e.g. picking "MCP") — one-shot,
   //      cleared after use.
   //   2. Otherwise, the tab the user last viewed (persisted across restarts).
-  //   3. Otherwise, the default set above (first feature tab).
+  //   3. Otherwise, the default set below.
   useEffect(() => {
     (async () => {
       const requested = await sidePanelTab.getValue();
@@ -56,7 +66,7 @@ export function HomePage() {
         return;
       }
       const last = await lastSidePanelTab.getValue();
-      if (last) setActive(last);
+      setActive(last ?? "mcp");
     })();
   }, []);
 
@@ -64,51 +74,73 @@ export function HomePage() {
   // gear-opened settings view is not a feature tab, so it is not persisted.
   const selectTab = (view: ActiveView) => {
     setActive(view);
-    if (view !== 'settings') void lastSidePanelTab.setValue(view);
+    if (view !== "settings") void lastSidePanelTab.setValue(view);
   };
 
-  const items = FEATURES.map((f) => ({
-    key: f.key,
-    label: (
-      <span>
+  const items = FEATURES.map((f) => {
+    const showBadge = f.key === "api-recording" && state.active;
+    const content = (
+      <>
         {t(f.labelKey)}
-        {f.key === 'api-recording' && state.active && (
-          <Badge status="processing" className="ml-1.5" />
-        )}
-      </span>
-    ),
-  }));
+        {showBadge && <Badge status="processing" className="ml-1.5" />}
+      </>
+    );
+    return {
+      key: f.key,
+      label: (
+        <span className="relative inline-block">
+          {/* Bold ghost — an invisible always-bold copy that reserves the
+              active tab's (bold) width, so switching tabs never shifts the
+              bar. The visible layer sits absolutely on top and only goes
+              bold when active (CSS in assets/tailwind.css). */}
+          <span className="manta-home-tab-ghost" aria-hidden="true">
+            {content}
+          </span>
+          <span className="manta-home-tab-view">{content}</span>
+        </span>
+      ),
+    };
+  });
+
+  if (active === null) return null;
 
   return (
     <div className="flex flex-col h-full">
       <Tabs
+        // Capsule-styled tab bar — see `.manta-action-kit-home-tabs` in
+        // assets/tailwind.css (gray pill + black text when active, gray pill on
+        // hover when inactive; no bottom border / ink bar).
+        className="manta-action-kit-home-tabs"
         // When the settings view is open no feature tab is active; passing a key
         // that matches no item leaves the bar with nothing highlighted.
-        activeKey={active === 'settings' ? '' : active}
+        activeKey={active === "settings" ? "" : active}
         onChange={(k) => selectTab(k as FeatureKey)}
         items={items}
-        tabBarStyle={{ margin: 0, padding: '0 8px' }}
+        tabBarStyle={{ margin: 0, padding: "0 6px" }}
         tabBarExtraContent={{
           right: (
             <Button
               type="text"
               size="small"
-              aria-label={t('settings.title')}
+              aria-label={t("settings.title")}
               icon={<SettingOutlined />}
-              onClick={() => selectTab(active === 'settings' ? 'mcp' : 'settings')}
+              onClick={() =>
+                selectTab(active === "settings" ? "mcp" : "settings")
+              }
             />
           ),
         }}
-        indicator={{ size: 24, align: 'center' }}
         animated={false}
       />
 
       <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-        {active === 'api-recording' ? (
+        {active === "api-recording" ? (
           <ApiRecordingFeature onOpen={(id) => navigate(`/detail/${id}`)} />
-        ) : active === 'gateway' ? (
+        ) : active === "action" ? (
+          <ActionFeature />
+        ) : active === "gateway" ? (
           <GatewayFeature />
-        ) : active === 'mcp' ? (
+        ) : active === "mcp" ? (
           <McpFeature />
         ) : (
           <SettingsFeature />

@@ -1,6 +1,6 @@
 # manta-action-kit-mcp
 
-**English** | [中文](#中文文档)
+**English** | [Chinese](#chinese)
 
 MCP (Model Context Protocol) server for Manta Action Kit. Exposes the Chrome
 extension's recorded API calls to an AI agent as MCP tools, and provides a
@@ -23,7 +23,7 @@ agent ──stdio (MCP)──▶ manta-action-kit-mcp ──WS server ws://127.0
 - It also hosts a **local HTTP proxy** (`127.0.0.1:8788` by default) — the
   script-driven gateway. A script points its baseURL at a sandbox prefix and the
   extension rewrites + forwards the request with the user's cookies injected.
-- The extension, when **设置 → MCP 服务** is toggled on, **dials in** as a client
+- The extension, when **Settings → MCP service** is toggled on, **dials in** as a client
   and answers RPC calls from its IndexedDB.
 - Each agent tool call is forwarded as an `rpc` frame and correlated to its
   `rpc-result` by `id`.
@@ -92,7 +92,7 @@ Config (both must be distinct free ports):
 
 ## Wiring into an agent (e.g. Claude Code / Codex)
 
-The extension's settings page has a **复制安装说明（给 Agent）** button that copies
+The extension's settings page has a **Copy install instructions (for Agent)** button that copies
 a ready-to-paste instruction with the right command and current port. In a
 production build it uses the published package via `npx`; in a dev build it points
 at your locally-built `dist/index.js`.
@@ -125,15 +125,15 @@ Equivalent manual config — **production** (published package):
 }
 ```
 
-Then: open the extension → **设置** → turn on **MCP 服务** (same port). Once the
+Then: open the extension → **Settings** → turn on **MCP service** (same port). Once the
 extension connects, the tools return live data; otherwise they return an error
 telling you to connect.
 
 ---
 
-<a name="中文文档"></a>
+<a name="chinese"></a>
 
-# manta-action-kit-mcp（中文文档）
+# manta-action-kit-mcp (中文文档)
 
 [English](#manta-action-kit-mcp) | **中文**
 
