@@ -2,14 +2,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   App,
   Button,
-  Dropdown,
   Empty,
   Input,
   Spin,
   Tag,
   Typography,
 } from "antd";
-import { EditOutlined, SearchOutlined } from "@ant-design/icons";
+import { SearchOutlined } from "@ant-design/icons";
 import { useTranslation } from "react-i18next";
 import { useRecordings } from "@/hooks/use-recordings";
 import { getCalls } from "@/lib/db";
@@ -185,67 +184,52 @@ function RecordingRow({
   };
 
   return (
-    <Dropdown
-      trigger={["contextMenu"]}
-      menu={{
-        items: [
-          {
-            key: "delete",
-            label: t("common.delete"),
-            danger: true,
-            onClick: confirmDelete,
-          },
-        ],
-      }}
-    >
-      <div>
-        <UnifiedListItem
-          className="manta-action-kit-recording-item"
-          clickable={!editing}
-          onClick={() => !editing && onOpen()}
-          title={
-            editing ? (
-              <Input
-                autoFocus
-                size="small"
-                value={draft}
-                onClick={(e) => e.stopPropagation()}
-                onChange={(e) => setDraft(e.target.value)}
-                onBlur={commit}
-                onPressEnter={commit}
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") {
-                    setDraft(recording.name);
-                    setEditing(false);
-                  }
-                }}
-              />
-            ) : (
-              <Text ellipsis className="text-sm">
-                {recording.name}
-              </Text>
-            )
-          }
-          actions={
-            <Button
-              key="edit"
-              type="text"
-              size="small"
-              icon={<EditOutlined />}
-              onClick={(e) => {
-                e.stopPropagation();
-                setEditing(true);
-              }}
-            />
-          }
-          status={
-            <Tag color="blue" className="me-0 text-xs rounded">
-              {t("recording.callCount", { count: recording.callCount })}
-            </Tag>
-          }
-          timestamp={recording.createdAt}
-        />
-      </div>
-    </Dropdown>
+    <UnifiedListItem
+      className="manta-action-kit-recording-item"
+      clickable={!editing}
+      onClick={() => !editing && onOpen()}
+      menu={[
+        {
+          key: "rename",
+          label: t("common.rename"),
+          onClick: () => setEditing(true),
+        },
+        {
+          key: "delete",
+          label: t("common.delete"),
+          danger: true,
+          onClick: confirmDelete,
+        },
+      ]}
+      title={
+        editing ? (
+          <Input
+            autoFocus
+            size="small"
+            value={draft}
+            onClick={(e) => e.stopPropagation()}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={commit}
+            onPressEnter={commit}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                setDraft(recording.name);
+                setEditing(false);
+              }
+            }}
+          />
+        ) : (
+          <Text ellipsis className="text-sm">
+            {recording.name}
+          </Text>
+        )
+      }
+      status={
+        <Tag color="blue" className="me-0 text-[10px]! font-normal! rounded">
+          {t("recording.callCount", { count: recording.callCount })}
+        </Tag>
+      }
+      timestamp={recording.createdAt}
+    />
   );
 }

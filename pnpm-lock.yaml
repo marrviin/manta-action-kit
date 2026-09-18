@@ -50,6 +50,9 @@ importers:
       antd:
         specifier: ^6.6.1
         version: 6.6.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      classnames:
+        specifier: ^2.5.1
+        version: 2.5.1
       diff:
         specifier: 8.0.2
         version: 8.0.2
@@ -1258,6 +1261,9 @@ packages:
 
   citty@0.2.2:
     resolution: {integrity: sha512-+6vJA3L98yv+IdfKGZHBNiGW5KHn22e/JwID0Strsz8h4S/csAu/OuICwxrg44k5MRiZHWIo8XXuJgQTriRP4w==}
+
+  classnames@2.5.1:
+    resolution: {integrity: sha512-saHYOzhIQs6wy2sVxTM6bUDsQO4F50V9RQ22qBpEdCW+I+/Wmke2HOl6lS6dTpdxVhb88/I6+Hs+438c3lfUow==}
 
   cliui@8.0.1:
     resolution: {integrity: sha512-BSeNnyus75C4//NQ9gQt1/csTXyo/8Sb+afLAkzAptFuMsod9HFokGNudZpi/oQV73hnVK+sR+5PVRMd+Dr7YQ==}
@@ -4577,6 +4583,8 @@ snapshots:
       readdirp: 5.1.1
 
   citty@0.2.2: {}
+
+  classnames@2.5.1: {}
 
   cliui@8.0.1:
     dependencies:

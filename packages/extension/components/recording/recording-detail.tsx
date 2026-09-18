@@ -10,7 +10,7 @@ import { CallNode } from "./call-node";
 import { EndpointsPanel } from "./endpoints-panel";
 import { BottomTabBar } from "@/components/common/bottom-tab-bar";
 import { deleteCall, getCalls, getRecording } from "@/lib/db";
-import { formatGap } from "@/lib/utils";
+import { cn, formatGap } from "@/lib/utils";
 import type {
   ApiCall,
   FieldDependency,
@@ -89,7 +89,7 @@ export function RecordingDetail({ recordingId, onBack, initialTab }: Props) {
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      <div className="flex items-center gap-2 h-[48px] box-border px-3 border-b border-[rgba(5,5,5,0.06)]">
+      <div className="flex items-center gap-2 h-[48px] box-border px-3 border-b border-(--ant-color-border-secondary)">
         <Button icon={<LeftOutlined />} onClick={onBack} />
         <div className="min-w-0 flex-1">
           <Text strong ellipsis className="block">
@@ -144,14 +144,14 @@ function DescriptionCard({ description }: { description: string }) {
   }, [description]);
 
   return (
-    <div className="mb-3 rounded bg-[rgba(5,5,5,0.02)] border border-[rgba(5,5,5,0.06)] overflow-hidden">
+    <div className="mb-3 rounded bg-(--ant-color-fill-quaternary) border border-(--ant-color-border-secondary) overflow-hidden">
       <Paragraph
         ref={contentRef}
         type="secondary"
-        className="mb-0! whitespace-pre-wrap text-xs leading-relaxed py-2 px-3 overflow-hidden"
-        style={{
-          maxHeight: expanded ? undefined : collapsedMaxHeight,
-        }}
+        className={cn(
+          "mb-0! whitespace-pre-wrap text-xs leading-relaxed py-2 px-3 overflow-hidden",
+          expanded ? "max-h-none" : "max-h-[98px]",
+        )}
       >
         {description}
       </Paragraph>
@@ -169,7 +169,7 @@ function DescriptionCard({ description }: { description: string }) {
               setExpanded((v) => !v);
             }
           }}
-          className="mt-1 flex items-center justify-center gap-1 py-1 text-xs text-[rgba(5,5,5,0.45)] cursor-pointer border-t border-[rgba(5,5,5,0.06)] hover:text-[rgba(5,5,5,0.88)] transition-colors select-none"
+          className="mt-1 flex items-center justify-center gap-1 py-1 text-xs text-(--ant-color-text-tertiary) cursor-pointer border-t border-(--ant-color-border-secondary) hover:text-(--ant-color-text) transition-colors select-none"
         >
           {expanded ? <CaretUpOutlined /> : <CaretDownOutlined />}
         </div>

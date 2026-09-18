@@ -36,6 +36,35 @@ function buildCookieHeader(cookies: chrome.cookies.Cookie[]): string {
 }
 
 /**
+ * Pull `referer` out of the headers and return it as fetch's `referrer` option.
+ * `Referer` is a forbidden header name — putting it in RequestInit.headers is
+ * silently ignored — but fetch's `referrer` option is allowed. Only accept a
+ * well-formed http(s) URL; anything else is dropped rather than throwing.
+ */
+function splitReferrer(headers: Record<string, string> = {}): {
+  headers: Record<string, string>;
+  referrer?: string;
+} {
+  let referrer: string | undefined;
+  const rest: Record<string, string> = {};
+  for (const [k, v] of Object.entries(headers)) {
+    if (k.toLowerCase() === 'referer') {
+      try {
+        const u = new URL(v);
+        if (u.protocol === 'http:' || u.protocol === 'https:') {
+          referrer = u.toString();
+        }
+      } catch {
+        // Malformed referrer: drop it, fetch will use its default.
+      }
+      continue;
+    }
+    rest[k] = v;
+  }
+  return { headers: rest, referrer };
+}
+
+/**
  * Forward one request with the user's cookies injected. Returns the raw Response
  * (caller reads the body) plus which cookie names were injected, for the audit log.
  *
@@ -48,13 +77,27 @@ export async function forwardWithCookies(req: GatewayRequest): Promise<{
   injectedCookieNames: string[];
   cookieDomain: string;
 }> {
+  const { headers, referrer } = splitReferrer(req.headers);
   const cookies = await chrome.cookies.getAll({ url: req.url });
   const cookieHeader = buildCookieHeader(cookies);
   const injectedCookieNames = cookies.map((c) => c.name);
   const cookieDomain = cookies[0]?.domain ?? '';
 
   const ruleId = nextRuleId();
-  const usingRule = cookieHeader.length > 0;
+  // One session rule carries everything the browser won't let a SW fetch set
+  // directly (forbidden headers): the injected Cookie and, if requested, Referer.
+  const requestHeaders: chrome.declarativeNetRequest.ModifyHeaderInfo[] = [];
+  if (cookieHeader.length > 0) {
+    requestHeaders.push({
+      header: 'cookie',
+      operation: 'set',
+      value: cookieHeader,
+    });
+  }
+  if (referrer) {
+    requestHeaders.push({ header: 'referer', operation: 'set', value: referrer });
+  }
+  const usingRule = requestHeaders.length > 0;
 
   if (usingRule) {
     await chrome.declarativeNetRequest.updateSessionRules({
@@ -65,9 +108,7 @@ export async function forwardWithCookies(req: GatewayRequest): Promise<{
           priority: 1,
           action: {
             type: 'modifyHeaders',
-            requestHeaders: [
-              { header: 'cookie', operation: 'set', value: cookieHeader },
-            ],
+            requestHeaders,
           },
           condition: {
             // Anchor to the start of the exact URL we're about to fetch. We issue
@@ -83,7 +124,8 @@ export async function forwardWithCookies(req: GatewayRequest): Promise<{
   try {
     const res = await fetch(req.url, {
       method: req.method,
-      headers: req.headers,
+      headers,
+      referrer,
       body: req.body ?? undefined,
       // Cookies are injected via DNR; don't let fetch attach anything on its own.
       credentials: 'omit',

@@ -60,7 +60,7 @@ const THEME: ThemeConfig = {
   cssVar: { key: "manta-action-kit" },
   algorithm: antdTheme.defaultAlgorithm,
   token: {
-    colorPrimary: "#3768fa",
+    colorPrimary: "#0b57d0",
     // Functional colors aligned to the brand palette (antd's default
     // green/gold/red clash with charts and file-type icons).
     colorSuccess: "#00b26f",
@@ -69,16 +69,25 @@ const THEME: ThemeConfig = {
     // Softer border than antd's default #d9d9d9.
     colorBorder: "#e8e8ea",
     borderRadius: 8,
+    borderRadiusLG: 12,
     colorBgLayout: "#f2f2f2",
     colorBgContainer: "#fafafa",
     controlItemBgActive: "rgba(0,0,0,0.06)",
+    colorLink: 'rgba(0,0,0,0.9)'
   },
   components: {
-    // Flat buttons — drop antd's default primary/default/danger shadows.
+    // Flat buttons — drop antd's default primary/default/danger shadows, and
+    // keep the near-black primary button of the desktop theme: `colorPrimary`
+    // stays blue globally (focus rings / menu selection / links) while the
+    // Button-scoped override pins the primary button's face to black. Disabled
+    // state is left to antd (its greyed look is correct).
     Button: {
       primaryShadow: "none",
       defaultShadow: "none",
       dangerShadow: "none",
+      colorPrimary: "#333333",
+      colorPrimaryHover: "#434343",
+      colorPrimaryActive: "#1f1f1f",
     },
     // Tabs — all states (rest / hover / mousedown / selected) stay neutral:
     // antd's defaults derive hover/active/selected from the blue colorPrimary

@@ -21,12 +21,6 @@ import { addProxyRule, updateProxyRuleContent } from '@/lib/gateway/manage-rules
  * lives in storage.session / IndexedDB, not in module scope.
  */
 export default defineBackground(() => {
-  // Allow content scripts (untrusted contexts) to read session storage, so the
-  // in-page toolbar can watch recordingState / toolbarState. Defaults to trusted-only.
-  chrome.storage.session
-    .setAccessLevel({ accessLevel: 'TRUSTED_AND_UNTRUSTED_CONTEXTS' })
-    .catch((err) => console.error('[background] session setAccessLevel failed', err));
-
   // Open the side panel when the toolbar icon is clicked (Chromium only).
   if (chrome.sidePanel?.setPanelBehavior) {
     chrome.sidePanel
@@ -57,10 +51,6 @@ export default defineBackground(() => {
 
           case 'SET_PAUSED':
             sendResponse(await session.setPaused(msg.data.paused));
-            break;
-
-          case 'GET_TAB_ID':
-            sendResponse({ tabId: sender.tab?.id ?? null });
             break;
 
           case 'API_CALL_CAPTURED': {

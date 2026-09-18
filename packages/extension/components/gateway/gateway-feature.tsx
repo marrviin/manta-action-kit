@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import {
   App,
   Button,
-  Dropdown,
   Empty,
   Form,
   Input,
@@ -14,7 +13,7 @@ import {
   Tag,
   Typography,
 } from "antd";
-import { EditOutlined, SearchOutlined } from "@ant-design/icons";
+import { SearchOutlined } from "@ant-design/icons";
 import type { MenuProps } from "antd";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
@@ -337,52 +336,46 @@ function LogsPanel() {
               const meta = decisionMeta(log.decision, t);
               const entryMeta = entryTagMeta(log.authSource, t);
               return (
-                <Dropdown
+                <UnifiedListItem
                   key={log.id}
-                  menu={{ items: buildRowMenu(log) }}
-                  trigger={["contextMenu"]}
-                >
-                  <div>
-                    <UnifiedListItem
-                      expandable
-                      expanded={expandedId === log.id}
-                      onToggleExpand={() =>
-                        setExpandedId((id) => (id === log.id ? null : log.id))
-                      }
-                      title={
-                        <Text ellipsis className="text-sm" title={log.url}>
-                          {schemeOf(log.url)}
-                          {log.host}
-                          {shortPath(log.url)}
-                        </Text>
-                      }
-                      status={
-                        <>
-                          {entryMeta && (
-                            <Tag
-                              color={entryMeta.color}
-                              className="me-0 text-xs rounded"
-                            >
-                              {entryMeta.label}
-                            </Tag>
-                          )}
-                          <Tag
-                            color={meta.color}
-                            className="me-0 text-xs rounded"
-                          >
-                            {meta.label}
-                          </Tag>
-                          <MethodBadge method={log.method} />
-                          {log.status > 0 && (
-                            <StatusBadge status={log.status} />
-                          )}
-                        </>
-                      }
-                      timestamp={log.at}
-                      detail={<LogDetail log={log} />}
-                    />
-                  </div>
-                </Dropdown>
+                  expandable
+                  expanded={expandedId === log.id}
+                  onToggleExpand={() =>
+                    setExpandedId((id) => (id === log.id ? null : log.id))
+                  }
+                  menu={buildRowMenu(log)}
+                  title={
+                    <Text ellipsis className="text-sm" title={log.url}>
+                      {schemeOf(log.url)}
+                      {log.host}
+                      {shortPath(log.url)}
+                    </Text>
+                  }
+                  status={
+                    <>
+                      {entryMeta && (
+                        <Tag
+                          color={entryMeta.color}
+                          className="me-0 text-[10px]! font-normal! rounded"
+                        >
+                          {entryMeta.label}
+                        </Tag>
+                      )}
+                      <Tag
+                        color={meta.color}
+                        className="me-0 text-[10px]! font-normal! rounded"
+                      >
+                        {meta.label}
+                      </Tag>
+                      <MethodBadge method={log.method} />
+                      {log.status > 0 && (
+                        <StatusBadge status={log.status} />
+                      )}
+                    </>
+                  }
+                  timestamp={log.at}
+                  detail={<LogDetail log={log} />}
+                />
               );
             })}
           </div>
@@ -395,7 +388,7 @@ function LogsPanel() {
 function LogDetail({ log }: { log: GatewayLog }) {
   const { t } = useTranslation();
   return (
-    <div className="flex flex-col gap-2 bg-[rgba(0,0,0,0.03)] border border-[rgba(5,5,5,0.06)] rounded-md px-2.5 py-2">
+    <div className="flex flex-col gap-2 bg-(--ant-color-fill-quaternary) border border-(--ant-color-border-secondary) rounded-md px-2.5 py-2">
       <Block title={t("gateway.summary")}>
         <Text type="secondary" className="text-xs">
           {formatDateTimeShort(log.at)} · {log.durationMs}ms ·{" "}
@@ -688,10 +681,10 @@ function ProxyRulesPanel() {
   return (
     <div className="flex flex-col h-full">
       {rules.length > 0 && (
-        <div className="flex-none px-3 py-2.5 border-b border-[rgba(5,5,5,0.06)]">
+        <div className="flex-none px-3 py-2.5 border-b border-(--ant-color-border-secondary)">
           <Input
             allowClear
-            prefix={<SearchOutlined className="text-[rgba(0,0,0,0.25)]" />}
+            prefix={<SearchOutlined className="text-(--ant-color-text-quaternary)" />}
             placeholder={t("gateway.searchRule")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -717,80 +710,68 @@ function ProxyRulesPanel() {
         ) : (
           <div>
             {filteredRules.map((rule) => (
-              <Dropdown
+              <UnifiedListItem
                 key={rule.id}
-                trigger={["contextMenu"]}
-                menu={{
-                  items: [
-                    {
-                      key: "delete",
-                      label: t("common.delete"),
-                      danger: true,
-                      onClick: () => confirmDelete(rule),
-                    },
-                  ],
-                }}
-              >
-                <div>
-                  <UnifiedListItem
-                    title={
-                      <div className="min-w-0">
-                        <Text
-                          ellipsis
-                          className="text-sm block"
-                          title={`${rule.sandboxPrefix} → ${rule.targetBase}`}
-                        >
-                          {rule.sandboxPrefix} → {rule.targetBase}
-                        </Text>
-                      </div>
-                    }
-                    actions={
-                      <Button
-                        type="text"
-                        size="small"
-                        icon={<EditOutlined />}
-                        onClick={() => openEdit(rule)}
-                        title={t("gateway.editRule")}
-                      />
-                    }
-                    status={
-                      <Space size={6}>
-                        <Tag
-                          className="me-0 text-xs rounded"
-                          color={rule.createdBy === "agent" ? "blue" : "green"}
-                        >
-                          {rule.createdBy === "agent"
-                            ? t("gateway.createdByAgent")
-                            : t("gateway.createdByUser")}
-                        </Tag>
-                        <Switch
-                          size="small"
-                          checked={rule.enabled}
-                          onChange={async (v) => {
-                            try {
-                              await updateRule(rule.id, { enabled: v });
-                            } catch (err) {
-                              message.error(
-                                err instanceof Error
-                                  ? err.message
-                                  : t("common.updateFailed"),
-                              );
-                            }
-                          }}
-                        />
-                      </Space>
-                    }
-                    timestamp={rule.createdAt}
-                  />
-                </div>
-              </Dropdown>
+                menu={[
+                  {
+                    key: "edit",
+                    label: t("gateway.editRule"),
+                    onClick: () => openEdit(rule),
+                  },
+                  {
+                    key: "delete",
+                    label: t("common.delete"),
+                    danger: true,
+                    onClick: () => confirmDelete(rule),
+                  },
+                ]}
+                title={
+                  <div className="min-w-0">
+                    <Text
+                      ellipsis
+                      className="text-sm block"
+                      title={`${rule.sandboxPrefix} → ${rule.targetBase}`}
+                    >
+                      {rule.sandboxPrefix} → {rule.targetBase}
+                    </Text>
+                  </div>
+                }
+                status={
+                  <Space size={6}>
+                    <Tag
+                      className="me-0 text-[10px]! font-normal! rounded"
+                      color={rule.createdBy === "agent" ? "blue" : "green"}
+                    >
+                      {rule.createdBy === "agent"
+                        ? t("gateway.createdByAgent")
+                        : t("gateway.createdByUser")}
+                    </Tag>
+                    <Switch
+                      size="small"
+                      checked={rule.enabled}
+                      onChange={async (v) => {
+                        try {
+                          await updateRule(rule.id, { enabled: v });
+                        } catch (err) {
+                          message.error(
+                            err instanceof Error
+                              ? err.message
+                              : t("common.updateFailed"),
+                          );
+                        }
+                      }}
+                    />
+                  </Space>
+                }
+                timestamp={rule.createdAt}
+              />
             ))}
           </div>
         )}
       </div>
 
       {/* Bottom add button: pinned block, raised above the parent fade mask (zIndex:5) so it isn't washed out. */}
-      <div className="flex-none px-3 py-2.5 border-t border-[rgba(5,5,5,0.06)] bg-white relative z-10">
+      <div className="flex-none px-3 py-2.5 border-t border-(--ant-color-border-secondary) bg-(--ant-color-bg-elevated) relative z-10">
         <Button type="primary" block onClick={openAdd}>
           {t("gateway.addProxyRule")}
         </Button>

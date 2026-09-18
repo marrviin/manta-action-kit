@@ -26,16 +26,10 @@ export interface ProtocolMap {
     response: { recordingId: string | null; state: RecordingState };
   };
 
-  /** Toolbar -> background: pause/resume capture without ending the session. */
+  /** UI -> background: pause/resume capture without ending the session. */
   SET_PAUSED: {
     request: { paused: boolean };
     response: RecordingState;
-  };
-
-  /** Content script -> background: resolve the caller's own tab id (from sender). */
-  GET_TAB_ID: {
-    request: void;
-    response: { tabId: number | null };
   };
 
   /** Any context -> background: read current recording state. */

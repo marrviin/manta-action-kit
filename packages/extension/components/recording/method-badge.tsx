@@ -11,7 +11,7 @@ const METHOD_COLORS: Record<string, string> = {
 export function MethodBadge({ method }: { method: string }) {
   const color = METHOD_COLORS[method.toUpperCase()] ?? 'default';
   return (
-    <Tag color={color} className="me-0 font-semibold text-xs rounded">
+    <Tag color={color} className="me-0 text-[10px]! font-normal! rounded">
       {method.toUpperCase()}
     </Tag>
   );
@@ -20,7 +20,7 @@ export function MethodBadge({ method }: { method: string }) {
 export function StatusBadge({ status }: { status: number }) {
   const color = status === 0 ? 'default' : status < 300 ? 'green' : status < 400 ? 'orange' : 'red';
   return (
-    <Tag color={color} className="me-0 font-semibold text-xs rounded">
+    <Tag color={color} className="me-0 text-[10px]! font-normal! rounded">
       {status === 0 ? 'ERR' : status}
     </Tag>
   );

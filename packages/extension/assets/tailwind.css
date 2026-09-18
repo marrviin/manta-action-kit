@@ -26,6 +26,9 @@ body {
 
   /* Light-only UI, aligned with the desktop theme. */
   color-scheme: light;
+  font-feature-settings: 'tnum';
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-font-smoothing: antialiased;
 }
 
 #root {
@@ -49,27 +52,9 @@ body {
   padding-top: 0;
 }
 
-/* Primary button — near-black, matching the desktop theme.
- * There, colorPrimary stays blue (focus rings / menu selection / links) while
- * the primary *button* background is overridden to #333 via a CSS layer that
- * sits above antd's. manta-action-kit's antd is injected UNLAYERED (no StyleProvider
- * layer), so a plain rule can't beat antd's `:hover`/`:active`. We instead pin
- * every enabled state explicitly and use !important to outrank antd's unlayered
- * styles. Disabled state is left to antd (its greyed look is correct). */
-.ant-btn.ant-btn-primary:not(:disabled, .ant-btn-disabled) {
-  background-color: #333 !important;
-  border-color: #333 !important;
-}
-
-.ant-btn.ant-btn-primary:not(:disabled, .ant-btn-disabled):hover {
-  background-color: #434343 !important;
-  border-color: #434343 !important;
-}
-
-.ant-btn.ant-btn-primary:not(:disabled, .ant-btn-disabled):active {
-  background-color: #1f1f1f !important;
-  border-color: #1f1f1f !important;
-}
+/* Primary button — near-black, matching the desktop theme. Now configured via
+ * antd's Button component-token override in components/app-providers.tsx
+ * (Button.colorPrimary / Hover / Active) instead of CSS !important hacks. */
 
 /* Home feature tabs — capsule pills instead of the underlined tab bar.
  * Bound to `.manta-action-kit-home-tabs` (only the side-panel home Tabs uses it)
@@ -92,7 +77,7 @@ body {
 .manta-action-kit-home-tabs.ant-tabs .ant-tabs-nav {
   height: 48px;
   align-items: center;
-  border-bottom: 1px solid #e8e8ea;
+  border-bottom: 1px solid var(--ant-color-border);
 }
 
 .manta-action-kit-home-tabs.ant-tabs .ant-tabs-nav-list {
@@ -111,14 +96,14 @@ body {
 .manta-action-kit-home-tabs.ant-tabs .ant-tabs-tab:hover,
 .manta-action-kit-home-tabs.ant-tabs .ant-tabs-tab-active,
 .manta-action-kit-home-tabs.ant-tabs .ant-tabs-tab-active:hover {
-  background-color: rgba(0, 0, 0, 0.06) !important;
+  background-color: var(--ant-color-bg-layout) !important;
 }
 
 .manta-action-kit-home-tabs.ant-tabs .ant-tabs-tab-active .ant-tabs-tab-btn,
 .manta-action-kit-home-tabs.ant-tabs
   .ant-tabs-tab-active:hover
   .ant-tabs-tab-btn {
-  color: #1f1f1f !important;
+  color: var(--ant-color-text) !important;
 }
 
 /* Active tab goes bold, without shifting the bar: each label renders an

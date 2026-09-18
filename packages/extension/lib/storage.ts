@@ -20,8 +20,8 @@ export const settings = {
    * UI language. Drives both react-i18next (`t(...)`) and antd's ConfigProvider
    * locale. Defaults to the browser's UI language (e.g. a zh-CN browser gets
    * zh-CN), until the user picks one explicitly in settings. Synced across
-   * popup / side panel / content toolbar via WXT storage watchers (see
-   * lib/i18n/sync.ts + components/app-providers.tsx).
+   * popup / side panel via WXT storage watchers (see lib/i18n/sync.ts +
+   * components/app-providers.tsx).
    */
   locale: storage.defineItem<Locale>("sync:locale", {
     fallback: detectLocale(),
@@ -98,23 +98,6 @@ export const mcpConnStatus = storage.defineItem<McpConnStatus>(
   "session:mcpConnStatus",
   {
     fallback: "connecting",
-  },
-);
-
-/**
- * Which tab (if any) should show the in-page recording toolbar. Set by the popup
- * when the user picks "API recording"; watched by the content script to mount/unmount
- * its draggable toolbar. Session-scoped so it survives SW sleep but not restart.
- */
-export interface ToolbarState {
-  /** Tab id the toolbar is requested on, or null when hidden everywhere. */
-  tabId: number | null;
-}
-
-export const toolbarState = storage.defineItem<ToolbarState>(
-  "session:toolbarState",
-  {
-    fallback: { tabId: null },
   },
 );
 

@@ -2,16 +2,16 @@ import { useEffect, useState } from "react";
 import {
   App,
   Button,
-  Dropdown,
   Empty,
   Input,
   Spin,
   Tag,
   Typography,
 } from "antd";
-import { DeleteOutlined, SearchOutlined } from "@ant-design/icons";
+import { SearchOutlined } from "@ant-design/icons";
 import { useTranslation } from "react-i18next";
 import { deleteAction, listActions } from "@/lib/db";
+import { Block } from "@/components/recording/call-node";
 import { UnifiedListItem } from "@/components/common/unified-list-item";
 import type { Action, ActionStep } from "@/lib/action/types";
 
@@ -163,64 +163,44 @@ function ActionRow({
   };
 
   return (
-    <Dropdown
-      trigger={["contextMenu"]}
-      menu={{
-        items: [
-          {
-            key: "delete",
-            label: t("common.delete"),
-            danger: true,
-            onClick: confirmDelete,
-          },
-        ],
-      }}
-    >
-      <div>
-        <UnifiedListItem
-          className="manta-action-kit-action-item"
-          clickable
-          onClick={onToggle}
-          expandable
-          expanded={expanded}
-          onToggleExpand={onToggle}
-          title={
-            <Text ellipsis className="text-sm">
-              {action.name}
-            </Text>
-          }
-          actions={
-            <Button
-              key="delete"
-              type="text"
-              size="small"
-              icon={<DeleteOutlined />}
-              onClick={(e) => {
-                e.stopPropagation();
-                confirmDelete();
-              }}
-            />
-          }
-          status={
-            <>
-              <Tag color="blue" className="me-0 text-xs rounded">
-                {t("action.stepCount", { count: action.steps.length })}
-              </Tag>
-              <Tag
-                color={action.params.length > 0 ? "geekblue" : "default"}
-                className="me-0 text-xs rounded"
-              >
-                {action.params.length > 0
-                  ? t("action.paramCount", { count: action.params.length })
-                  : t("action.noParams")}
-              </Tag>
-            </>
-          }
-          timestamp={action.createdAt}
-          detail={<ActionDetail action={action} />}
-        />
-      </div>
-    </Dropdown>
+    <UnifiedListItem
+      className="manta-action-kit-action-item"
+      clickable
+      onClick={onToggle}
+      expandable
+      expanded={expanded}
+      onToggleExpand={onToggle}
+      menu={[
+        {
+          key: "delete",
+          label: t("common.delete"),
+          danger: true,
+          onClick: confirmDelete,
+        },
+      ]}
+      title={
+        <Text ellipsis className="text-sm">
+          {action.name}
+        </Text>
+      }
+      status={
+        <>
+          <Tag color="blue" className="me-0 text-[10px]! font-normal! rounded">
+            {t("action.stepCount", { count: action.steps.length })}
+          </Tag>
+          <Tag
+            color={action.params.length > 0 ? "geekblue" : "default"}
+            className="me-0 text-[10px]! font-normal! rounded"
+          >
+            {action.params.length > 0
+              ? t("action.paramCount", { count: action.params.length })
+              : t("action.noParams")}
+          </Tag>
+        </>
+      }
+      timestamp={action.createdAt}
+      detail={<ActionDetail action={action} />}
+    />
   );
 }
 
@@ -229,21 +209,20 @@ function ActionDetail({ action }: { action: Action }) {
   const { t } = useTranslation();
 
   return (
-    <div className="text-xs leading-relaxed">
-      <Text type="secondary" className="whitespace-pre-wrap">
-        {action.description}
-      </Text>
+    <div className="flex flex-col gap-2 bg-(--ant-color-fill-quaternary) border border-(--ant-color-border-secondary) rounded-md px-2.5 py-2">
+      <Block title={t("action.descriptionLabel")}>
+        <Text type="secondary" className="whitespace-pre-wrap">
+          {action.description}
+        </Text>
+      </Block>
 
       {action.params.length > 0 && (
-        <div className="mt-2">
-          <Text strong className="text-xs">
-            {t("action.paramsLabel")}
-          </Text>
-          <div className="mt-1 flex flex-col gap-0.5">
+        <Block title={t("action.paramsLabel")}>
+          <div className="flex flex-col gap-0.5">
             {action.params.map((p) => (
               <div key={p.name} className="flex items-baseline gap-1.5">
                 <Text className="font-mono">{p.name}</Text>
-                <Tag className="me-0 text-xs rounded">{p.type}</Tag>
+                <Tag className="me-0 text-[10px]! font-normal! rounded">{p.type}</Tag>
                 {!p.required && (
                   <Text type="secondary" className="text-xs">
                     {t("action.paramOptional")}
@@ -252,19 +231,16 @@ function ActionDetail({ action }: { action: Action }) {
               </div>
             ))}
           </div>
-        </div>
+        </Block>
       )}
 
-      <div className="mt-2">
-        <Text strong className="text-xs">
-          {t("action.stepsLabel")}
-        </Text>
-        <div className="mt-1 flex flex-col gap-0.5">
+      <Block title={t("action.stepsLabel")}>
+        <div className="flex flex-col gap-0.5">
           {action.steps.map((step, i) => (
             <StepLine key={i} index={i + 1} step={step} />
           ))}
         </div>
-      </div>
+      </Block>
     </div>
   );
 }
@@ -278,7 +254,7 @@ function StepLine({ index, step }: { index: number; step: ActionStep }) {
       </Text>
       <Tag
         color={step.kind === "sse" ? "purple" : "cyan"}
-        className="me-0 text-xs rounded"
+        className="me-0 text-[10px]! font-normal! rounded"
       >
         {step.kind}
       </Tag>

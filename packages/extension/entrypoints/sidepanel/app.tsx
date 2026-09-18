@@ -19,7 +19,7 @@ import { RecordingDetail } from '@/components/recording/recording-detail';
 export default function App() {
   return (
     <MemoryRouter>
-      <div className="h-screen">
+      <div className="h-screen rounded-(--ant-border-radius-lg) border-[2px] border-solid border-(--ant-color-border) box-border overflow-hidden">
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/detail/:id" element={<DetailRoute />} />

@@ -1,8 +1,16 @@
 /** Utility helpers shared across the extension. */
 
-/** Join class names, dropping falsy values. A tiny `clsx` stand-in. */
-export function cn(...classes: Array<string | false | null | undefined>): string {
-  return classes.filter(Boolean).join(' ');
+import classnames from "classnames";
+
+/** Accepted className argument shapes (strings, objects, arrays, falsy values). */
+type ClassValue = Parameters<typeof classnames>[number];
+
+/**
+ * Join class names, dropping falsy values. Thin wrapper over `classnames` so
+ * conditional className assembly never falls back to string concatenation.
+ */
+export function cn(...classes: ClassValue[]): string {
+  return classnames(...classes);
 }
 
 /** Generate a RFC4122-ish unique id, preferring the native crypto API. */

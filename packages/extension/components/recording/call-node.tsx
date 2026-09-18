@@ -1,10 +1,10 @@
 import { useState, type ReactNode } from "react";
-import { App, Dropdown, Tag, Tooltip, Typography } from "antd";
+import { App, Tag, Tooltip, Typography } from "antd";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { MethodBadge, StatusBadge } from "./method-badge";
 import { UnifiedListItem } from "@/components/common/unified-list-item";
-import { prettyJson } from "@/lib/utils";
+import { cn, prettyJson } from "@/lib/utils";
 import type { ApiCall, FieldDependency } from "@/lib/recording/types";
 
 const { Text } = Typography;
@@ -57,7 +57,7 @@ function FlowAnnotations({
     <div className="flex flex-col gap-1">
       {consumes.map((d) => (
         <Tooltip key={d.id} title={t("flow.valueTooltip", { value: d.value })}>
-          <Tag color="gold" className="w-fit m-0! text-[11px]!">
+          <Tag color="gold" className="w-fit m-0! text-[10px]! font-normal!">
             {t("flow.consumes", {
               target: `${locationLabel(d.toLocation, t)}${d.toPath ? ` · ${d.toPath}` : ""}`,
               fromSeq: d.fromSeq,
@@ -68,7 +68,7 @@ function FlowAnnotations({
       ))}
       {produces.map((d) => (
         <Tooltip key={d.id} title={t("flow.valueTooltip", { value: d.value })}>
-          <Tag color="blue" className="w-fit m-0! text-[11px]!">
+          <Tag color="blue" className="w-fit m-0! text-[10px]! font-normal!">
             {t("flow.produces", {
               fromPath: d.fromPath || "",
               toSeq: d.toSeq,
@@ -109,12 +109,24 @@ export function CallNode({ call, deps = [], onDelete }: Props) {
     });
   };
 
-  const node = (
+  return (
     <UnifiedListItem
       className="manta-action-kit-call-node px-0! border-0!"
       expandable
       expanded={expanded}
       onToggleExpand={() => setExpanded((v) => !v)}
+      menu={
+        onDelete
+          ? [
+              {
+                key: "delete",
+                label: t("common.delete"),
+                danger: true,
+                onClick: confirmDelete,
+              },
+            ]
+          : undefined
+      }
       title={
         <Text ellipsis className="text-sm" title={call.url}>
           {call.url}
@@ -127,7 +139,7 @@ export function CallNode({ call, deps = [], onDelete }: Props) {
         </>
       }
       detail={
-        <div className="flex flex-col gap-2 bg-[rgba(0,0,0,0.03)] border border-[rgba(5,5,5,0.06)] rounded-md px-2.5 py-2">
+        <div className="flex flex-col gap-2 bg-(--ant-color-fill-quaternary) border border-(--ant-color-border-secondary) rounded-md px-2.5 py-2">
           <FlowAnnotations call={call} deps={deps} />
           <Field label="URL" value={call.url} />
           {Object.keys(call.reqHeaders).length > 0 && (
@@ -162,26 +174,6 @@ export function CallNode({ call, deps = [], onDelete }: Props) {
       }
     />
   );
-
-  if (!onDelete) return node;
-
-  return (
-    <Dropdown
-      trigger={["contextMenu"]}
-      menu={{
-        items: [
-          {
-            key: "delete",
-            label: t("common.delete"),
-            danger: true,
-            onClick: confirmDelete,
-          },
-        ],
-      }}
-    >
-      <div>{node}</div>
-    </Dropdown>
-  );
 }
 
 export function Field({ label, value }: { label: string; value: string }) {
@@ -203,9 +195,12 @@ export function Block({
         {title}
       </Text>
       <div
-        className={`max-h-48 overflow-auto break-all mt-1 p-2 rounded-md text-[12px] leading-normal ${
-          highlight ? "bg-[rgba(250,173,20,0.1)]" : "bg-[rgba(255,255,255,0.6)]"
-        }`}
+        className={cn(
+          "max-h-48 overflow-auto break-all mt-1 p-2 rounded-md text-[12px] leading-normal",
+          highlight
+            ? "bg-(--ant-color-warning-bg)"
+            : "bg-(--ant-color-bg-elevated)",
+        )}
       >
         {children}
       </div>
@@ -253,7 +248,7 @@ function SseEvents({ call }: { call: ApiCall }) {
       </Text>
       <div className="max-h-64 overflow-auto mt-1 flex flex-col gap-1">
         {events.length === 0 ? (
-          <pre className="whitespace-pre-wrap break-all m-0 p-2 rounded-md text-[12px] bg-[rgba(255,255,255,0.6)]">
+          <pre className="whitespace-pre-wrap break-all m-0 p-2 rounded-md text-[12px] bg-(--ant-color-bg-elevated)">
             {t("detail.noEvents")}
           </pre>
         ) : (
@@ -264,7 +259,7 @@ function SseEvents({ call }: { call: ApiCall }) {
                 {ev.event ? ` · ${ev.event}` : ""}
                 {ev.id ? ` · id=${ev.id}` : ""}
               </Text>
-              <pre className="whitespace-pre-wrap break-all m-0 p-2 rounded-md text-[12px] leading-normal bg-[rgba(255,255,255,0.6)]">
+              <pre className="whitespace-pre-wrap break-all m-0 p-2 rounded-md text-[12px] leading-normal bg-(--ant-color-bg-elevated)">
                 {prettyJson(ev.data) || t("common.empty")}
               </pre>
             </div>
