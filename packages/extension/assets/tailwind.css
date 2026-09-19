@@ -5,20 +5,17 @@
  * fight antd's own component styling. Import order in main.tsx keeps this before
  * antd so antd wins any remaining overlap.
  *
+ * Only GLOBAL element styling lives here (scrollbars, html/body, antd-wide
+ * control-height pinning). Everything component-scoped is done with Tailwind
+ * utility classes — including antd-internal overrides via arbitrary variants
+ * like `[&_.ant-tabs-nav]:...` — directly on the JSX elements (see
+ * sidepanel/home.tsx, common/bottom-tab-bar.tsx, action/action-feature.tsx).
+ *
  * Docs: https://tailwindcss.com/docs/theme
  */
 @layer theme, base, components, utilities;
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities);
-
-@theme {
-  /* Brand tokens (kept for any utility usage / custom CSS).
-   * Aligned with the antd seed color #3768fa (see components/app-providers.tsx). */
-  --color-brand-50: #eef3ff;
-  --color-brand-500: #5a83fb;
-  --color-brand-600: #3768fa;
-  --color-brand-700: #2a52c8;
-}
 
 /* Scrollbars — thin, rounded, antd-themed. Applied globally so extension
  * surfaces (popup, side panel) and antd inner scroll areas share one look.
@@ -91,172 +88,6 @@ input.ant-input-outlined.ant-input-lg,
   height: var(--ant-control-height-lg);
 }
 
-/* Recording detail — align the call chain nodes with the Timeline rail.
- * antd v6's Timeline is built on Steps: each item is a flex row of
- *   [icon(dot)] [section(content)] with a [rail] connector, and the dot is
- *   flex-start aligned to the top of the content.
- * The call node (UnifiedListItem with class `manta-action-kit-call-node`) adds
- * py-2.5 (10px top padding) via the shared list-item wrapper, which pushes the
- * title row below the dot. We drop just this node's top padding so its first
- * line sits flush with the content top and lines up with the dot — without
- * moving the dot/rail.
- * Bound to `.manta-action-kit-call-node` (not the whole Timeline) so it only affects
- * the recording call chain and never other lists or Timelines. */
-.manta-action-kit-call-timeline
-  .ant-timeline-item-content
-  .manta-action-kit-call-node {
-  padding-top: 0;
-}
-
 /* Primary button — near-black, matching the desktop theme. Now configured via
  * antd's Button component-token override in components/app-providers.tsx
  * (Button.colorPrimary / Hover / Active) instead of CSS !important hacks. */
-
-/* Home feature tabs — capsule pills instead of the underlined tab bar.
- * Bound to `.manta-action-kit-home-tabs` (only the side-panel home Tabs uses it)
- * so other antd surfaces are untouched. No bottom border / ink bar: the active
- * tab is a gray capsule with near-black text; inactive tabs are gray text and
- * grow the same gray capsule on hover. antd is injected UNLAYERED (see the
- * primary-button note above), so the state-dependent rules are pinned with
- * !important to outrank antd's own hover/selected styles. */
-.manta-action-kit-home-tabs.ant-tabs .ant-tabs-nav::before {
-  display: none;
-}
-
-.manta-action-kit-home-tabs.ant-tabs .ant-tabs-ink-bar {
-  display: none;
-}
-
-/* Fixed 48px tab strip: the nav and its inner list both flex-center their
- * children vertically, so the pills and the gear button stay centered without
- * relying on padding math. */
-.manta-action-kit-home-tabs.ant-tabs .ant-tabs-nav {
-  height: 48px;
-  align-items: center;
-  border-bottom: 1px solid var(--ant-color-border);
-  /* No accidental text selection when clicking tabs. */
-  user-select: none;
-}
-
-.manta-action-kit-home-tabs.ant-tabs .ant-tabs-nav-list {
-  height: 100%;
-  align-items: center;
-}
-
-.manta-action-kit-home-tabs.ant-tabs .ant-tabs-tab {
-  margin-block: 2px !important;
-  margin-inline: 3px !important;
-  padding: 5px 12px !important;
-  border-radius: 8px !important;
-  transition: background-color 0.2s ease;
-}
-
-.manta-action-kit-home-tabs.ant-tabs .ant-tabs-tab:hover,
-.manta-action-kit-home-tabs.ant-tabs .ant-tabs-tab-active,
-.manta-action-kit-home-tabs.ant-tabs .ant-tabs-tab-active:hover {
-  background-color: #e8f0fe !important;
-}
-
-.manta-action-kit-home-tabs.ant-tabs .ant-tabs-tab-active .ant-tabs-tab-btn,
-.manta-action-kit-home-tabs.ant-tabs
-  .ant-tabs-tab-active:hover
-  .ant-tabs-tab-btn {
-  color: var(--ant-color-primary) !important;
-}
-
-/* Active tab goes bold, without shifting the bar: each label renders an
- * invisible always-bold ghost (in flow, reserves width) plus a visible layer
- * absolutely positioned on top (see home.tsx). Only the visible layer of the
- * active tab is bolded, so tab widths never change on switch. */
-.manta-action-kit-home-tabs .manta-home-tab-ghost {
-  visibility: hidden;
-}
-
-.manta-action-kit-home-tabs .manta-home-tab-view {
-  position: absolute;
-  inset: 0;
-  white-space: nowrap;
-}
-
-
-/* Bottom tab bar — liquid-glass Segmented pill (`shape="round"` gives root,
- * items and thumb the full capsule radius; the CSS below only deals with the
- * glass). The bar floats above scrolling content (see bottom-tab-bar.tsx), so
- * backdrop-filter blurs whatever passes underneath: translucent container
- * background + blur/saturate, hairline border, a specular top-edge inset
- * highlight and a soft drop shadow for lift. The active fill (gray, see below)
- * is relayed between the moving thumb and the selected item — both styled here.
- * antd is injected UNLAYERED (see the home-tabs note above), so rules that
- * compete with antd on the same property are pinned with !important. */
-.manta-action-kit-glass-tabs.ant-segmented {
-  background: color-mix(
-    in srgb,
-    var(--ant-color-bg-container) 58%,
-    transparent
-  ) !important;
-  backdrop-filter: blur(18px) saturate(1.8);
-  -webkit-backdrop-filter: blur(18px) saturate(1.8);
-  border: 1px solid
-    color-mix(in srgb, var(--ant-color-border) 60%, transparent);
-  box-shadow:
-    0 8px 24px color-mix(in srgb, var(--ant-color-text) 12%, transparent),
-    inset 0 1px 0 rgba(255, 255, 255, 0.55);
-  /* No accidental text selection when clicking segments. */
-  user-select: none;
-}
-
-/* The active fill is relayed between two elements: during the slide motion the
- * moving thumb paints it (rc-segmented only adds `item-selected` AFTER the
- * motion ends, thumbShow gate), then the selected item takes over. Style both
- * identically — they never show at the same time. Same fill as the
- * non-selected hover state (itemHoverBg = colorFillSecondary), so hover and
- * active read as one gray level; the token is translucent rgba so the glass
- * base still shows through. */
-/* .manta-action-kit-glass-tabs .ant-segmented-item-selected,
-.manta-action-kit-glass-tabs .ant-segmented-thumb {
-  background: var(--ant-color-primary-bg-hover) !important;
-} */
-
-.manta-action-kit-glass-tabs .ant-segmented-thumb {
-  backdrop-filter: blur(8px) saturate(1.5);
-  -webkit-backdrop-filter: blur(8px) saturate(1.5);
-  box-shadow:
-    0 2px 8px color-mix(in srgb, var(--ant-color-text) 14%, transparent),
-    inset 0 1px 0 rgba(255, 255, 255, 0.45) !important;
-}
-
-/* Feature intro card (action library) — brand-tinted hero card, deliberately
- * NOT an antd Alert: a soft primary-tinted gradient fading into the page
- * background, hairline brand border, specular top-edge inset highlight and a
- * soft brand-colored drop shadow — same design language as the glass bottom
- * tab bar. Pair with `relative overflow-hidden rounded-xl` in the JSX; ::after
- * paints a decorative radial glow in the top corner. All colors read from
- * antd's CSS vars so the card tracks the theme. */
-.manta-action-kit-intro-card {
-  background: linear-gradient(
-    135deg,
-    color-mix(in srgb, var(--ant-color-primary-bg) 85%, transparent),
-    color-mix(in srgb, var(--ant-color-bg-container) 97%, transparent) 60%
-  );
-  border: 1px solid
-    color-mix(in srgb, var(--ant-color-primary-border) 50%, transparent);
-  box-shadow:
-    0 6px 20px color-mix(in srgb, var(--ant-color-primary) 9%, transparent),
-    inset 0 1px 0 rgba(255, 255, 255, 0.7);
-}
-
-.manta-action-kit-intro-card::after {
-  content: '';
-  position: absolute;
-  top: -48px;
-  inset-inline-end: -32px;
-  width: 128px;
-  height: 128px;
-  border-radius: 9999px;
-  background: radial-gradient(
-    circle,
-    color-mix(in srgb, var(--ant-color-primary) 16%, transparent),
-    transparent 70%
-  );
-  pointer-events: none;
-}

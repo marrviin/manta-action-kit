@@ -201,7 +201,7 @@ function ResultPanel({
             <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={false} />
           </div>
         ) : (
-          <div className="manta-action-kit-call-timeline">
+          <div>
             <Text type="secondary" className="block mb-3 text-sm">
               {t("detail.callChainTitle")}
             </Text>

@@ -8,6 +8,7 @@ import {
 } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { cn } from "@/lib/utils";
 import { ApiRecordingFeature } from "@/components/recording/api-recording-feature";
 import { ActionFeature } from "@/components/action/action-feature";
 import { GatewayFeature } from "@/components/gateway/gateway-feature";
@@ -109,11 +110,11 @@ export function HomePage() {
           {/* Bold ghost — an invisible always-bold copy that reserves the
               active tab's (bold) width, so switching tabs never shifts the
               bar. The visible layer sits absolutely on top and only goes
-              bold when active (CSS in assets/tailwind.css). */}
-          <span className="manta-home-tab-ghost" aria-hidden="true">
+              bold when active (styled on the Tabs root below). */}
+          <span className="invisible" aria-hidden="true">
             {content}
           </span>
-          <span className="manta-home-tab-view">{content}</span>
+          <span className="absolute inset-0 whitespace-nowrap">{content}</span>
         </span>
       ),
     };
@@ -124,16 +125,27 @@ export function HomePage() {
   return (
     <div className="flex flex-col h-full">
       <Tabs
-        // Capsule-styled tab bar — see `.manta-action-kit-home-tabs` in
-        // assets/tailwind.css (gray pill + black text when active, gray pill on
-        // hover when inactive; no bottom border / ink bar).
-        className="manta-action-kit-home-tabs"
+        // Capsule-styled tab bar (arbitrary variants target antd internals;
+        // they must outrank antd's unlayered styles, hence the `!` pins):
+        // gray pill + primary text when active, gray pill on hover when
+        // inactive; no bottom border / ink bar; fixed 48px strip.
+        className={cn(
+          "[&_.ant-tabs-nav::before]:hidden [&_.ant-tabs-ink-bar]:hidden",
+          "[&_.ant-tabs-nav]:m-0! [&_.ant-tabs-nav]:px-1.5! [&_.ant-tabs-nav]:h-12 [&_.ant-tabs-nav]:items-center [&_.ant-tabs-nav]:border-b [&_.ant-tabs-nav]:border-(--ant-color-border) [&_.ant-tabs-nav]:select-none",
+          "[&_.ant-tabs-nav-list]:h-full [&_.ant-tabs-nav-list]:items-center",
+          // Fixed 48px strip: pills and the gear button stay vertically
+          // centered via the nav's flex-center (no padding math).
+          "[&_.ant-tabs-tab]:my-[2px]! [&_.ant-tabs-tab]:mx-[3px]! [&_.ant-tabs-tab]:py-[5px]! [&_.ant-tabs-tab]:px-3! [&_.ant-tabs-tab]:rounded-lg! [&_.ant-tabs-tab]:transition-colors [&_.ant-tabs-tab]:duration-200",
+          // Hover/active pill fill = the theme's primaryBgHover token (same
+          // level the Segmented bottom bar uses).
+          "[&_.ant-tabs-tab:hover]:bg-(--ant-color-primary-bg-hover)! [&_.ant-tabs-tab-active]:bg-(--ant-color-primary-bg-hover)! [&_.ant-tabs-tab-active:hover]:bg-(--ant-color-primary-bg-hover)!",
+          "[&_.ant-tabs-tab-active_.ant-tabs-tab-btn]:text-(--ant-color-primary)! [&_.ant-tabs-tab-active:hover_.ant-tabs-tab-btn]:text-(--ant-color-primary)!",
+        )}
         // When the settings view is open no feature tab is active; passing a key
         // that matches no item leaves the bar with nothing highlighted.
         activeKey={active === "settings" ? "" : active}
         onChange={(k) => selectTab(k as FeatureKey)}
         items={items}
-        tabBarStyle={{ margin: 0, padding: "0 6px" }}
         tabBarExtraContent={{
           right: (
             <Button

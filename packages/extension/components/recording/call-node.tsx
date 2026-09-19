@@ -111,7 +111,10 @@ export function CallNode({ call, deps = [], onDelete }: Props) {
 
   return (
     <UnifiedListItem
-      className="manta-action-kit-call-node px-0! border-0!"
+      // pt-0! drops the shared list-item top padding so the title row sits
+      // flush with the Timeline dot (the rail/dot stay unmoved); px-0! /
+      // border-0! remove the shared list separators inside the chain.
+      className="pt-0! px-0! border-0!"
       expandable
       expanded={expanded}
       onToggleExpand={() => setExpanded((v) => !v)}

@@ -45,10 +45,9 @@ export interface UnifiedListItemProps {
   onClick?: () => void;
   clickable?: boolean;
   /**
-   * Extra class(es) appended to the outer row container. Each feature list
-   * should pass its own scoped class (e.g. `manta-action-kit-recording-item`,
-   * `manta-action-kit-gateway-item`, `manta-action-kit-call-node`) so per-list style
-   * tweaks stay isolated and never leak across lists.
+   * Extra classes appended to the outer row container. Each feature list
+   * should pass its own Tailwind overrides (e.g. `pt-0!`, `border-0!`) so
+   * per-list style tweaks stay isolated and never leak across lists.
    */
   className?: string;
 }
@@ -72,7 +71,7 @@ export function UnifiedListItem({
   return (
     <div
       className={cn(
-        'manta-action-kit-list-item group block py-4 mx-2 border-b border-(--ant-color-border-secondary)',
+        'group block py-4 mx-2 border-b border-(--ant-color-border-secondary)',
         clickable ? 'cursor-pointer' : 'cursor-default',
         className,
       )}

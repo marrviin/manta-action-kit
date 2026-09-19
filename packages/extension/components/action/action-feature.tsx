@@ -15,6 +15,7 @@ import { settings } from "@/lib/storage";
 import { buildInstallPrompt, ensureMcpAuthToken } from "@/lib/mcp/install-prompt";
 import { Block } from "@/components/recording/call-node";
 import { UnifiedListItem } from "@/components/common/unified-list-item";
+import { cn } from "@/lib/utils";
 import type { Action, ActionStep } from "@/lib/action/types";
 
 const { Text } = Typography;
@@ -179,7 +180,22 @@ function ActionIntroCard() {
 
   return (
     <div className="px-2 py-2">
-      <div className="manta-action-kit-intro-card relative overflow-hidden rounded-xl p-3">
+      {/* Brand-tinted hero card, deliberately NOT an antd Alert: soft
+          primary-tinted gradient fading into the page background, hairline
+          brand border, specular top-edge inset highlight and a soft
+          brand-colored drop shadow — same design language as the glass bottom
+          tab bar. All colors read from antd's CSS vars so the card tracks the
+          theme; ::after paints a decorative radial glow in the top corner. */}
+      <div
+        className={cn(
+          'relative overflow-hidden rounded-xl p-3',
+          'bg-[image:linear-gradient(135deg,color-mix(in_srgb,var(--ant-color-primary-bg)_85%,transparent),color-mix(in_srgb,var(--ant-color-bg-container)_97%,transparent)_60%)]',
+          'border border-[color:color-mix(in_srgb,var(--ant-color-primary-border)_50%,transparent)]',
+          'shadow-[0_6px_20px_color-mix(in_srgb,var(--ant-color-primary)_9%,transparent),inset_0_1px_0_rgba(255,255,255,0.7)]',
+          '[&::after]:content-[""] [&::after]:absolute [&::after]:-top-12 [&::after]:-end-8 [&::after]:size-32 [&::after]:rounded-full [&::after]:pointer-events-none',
+          '[&::after]:bg-[image:radial-gradient(circle,color-mix(in_srgb,var(--ant-color-primary)_16%,transparent),transparent_70%)]',
+        )}
+      >
         <div className="relative flex gap-2.5">
           <img src="/icon/128.png" alt="" className="size-9 shrink-0" />
           <div className="min-w-0">
@@ -194,7 +210,6 @@ function ActionIntroCard() {
         <Button
           type="primary"
           block
-          icon={<CopyOutlined />}
           className="mt-3"
           onClick={copyInstallPrompt}
         >
@@ -233,7 +248,6 @@ function ActionRow({
 
   return (
     <UnifiedListItem
-      className="manta-action-kit-action-item"
       clickable
       onClick={onToggle}
       expandable

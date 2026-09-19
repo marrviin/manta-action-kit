@@ -168,7 +168,6 @@ function RecordingRow({
 
   return (
     <UnifiedListItem
-      className="manta-action-kit-recording-item"
       clickable={!editing}
       onClick={() => !editing && onOpen()}
       menu={[

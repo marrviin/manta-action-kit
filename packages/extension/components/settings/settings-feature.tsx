@@ -6,6 +6,7 @@ import { useMcpConnStatus } from '@/hooks/use-mcp-conn-status';
 import { settings, type McpConnStatus } from '@/lib/storage';
 import { SUPPORTED_LOCALES, type Locale } from '@/lib/i18n';
 import { sendMessage } from '@/lib/messaging';
+import { cn } from '@/lib/utils';
 import { McpToolList } from '@/components/mcp/tool-list';
 
 const { Text } = Typography;
@@ -129,7 +130,10 @@ export function SettingsFeature() {
                   e.stopPropagation();
                   if (!devMode) onTapVersion();
                 }}
-                className={`mr-0 px-1.5! text-xs! leading-4! shrink-0 select-none ${devMode ? '' : 'cursor-default'}`}
+                className={cn(
+                  'mr-0 px-1.5! text-xs! leading-4! shrink-0 select-none',
+                  !devMode && 'cursor-default',
+                )}
               >
                 v{MANIFEST.version}
               </Tag>
