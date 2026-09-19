@@ -12,7 +12,7 @@ import { CopyOutlined, SearchOutlined } from "@ant-design/icons";
 import { useTranslation } from "react-i18next";
 import { deleteAction, listActions } from "@/lib/db";
 import { settings } from "@/lib/storage";
-import { buildInstallPrompt } from "@/lib/mcp/install-prompt";
+import { buildInstallPrompt, ensureMcpAuthToken } from "@/lib/mcp/install-prompt";
 import { Block } from "@/components/recording/call-node";
 import { UnifiedListItem } from "@/components/common/unified-list-item";
 import type { Action, ActionStep } from "@/lib/action/types";
@@ -167,8 +167,9 @@ function ActionIntroCard() {
 
   const copyInstallPrompt = async () => {
     try {
+      const token = await ensureMcpAuthToken();
       await navigator.clipboard.writeText(
-        buildInstallPrompt(ports.mcp, ports.proxy),
+        buildInstallPrompt(ports.mcp, ports.proxy, token),
       );
       message.success(t("mcp.installPromptCopied"));
     } catch {

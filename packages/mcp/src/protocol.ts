@@ -334,11 +334,35 @@ export interface RpcResults {
  *  - `peer`: another MCP server process that lost the port race and now forwards
  *    its agent's tool calls to us (the owner) instead of talking to the extension
  *    directly. See index.ts's single-instance election.
+ *
+ * Carries a fresh nonce the server must answer with a token-derived proof
+ * (see auth.ts) — the socket is untrusted until the challenge-response
+ * exchange completes on both sides.
  */
 export interface HelloFrame {
   type: "hello";
   role: "extension" | "peer";
   version: string;
+  /** Fresh random nonce; the server proves it knows the token over this. */
+  nonce: string;
+}
+
+/**
+ * Server's reply to a client's hello: proves the server knows the shared token
+ * (which never crosses the wire) and challenges the client back.
+ */
+export interface WelcomeFrame {
+  type: "welcome";
+  /** HMAC(token, "manta/welcome/" + hello.nonce) — verified by the client. */
+  proof: string;
+  /** Server's challenge nonce; the client answers with HMAC(token, "manta/auth/" + nonce). */
+  nonce: string;
+}
+
+/** A client's answer to the welcome challenge: proves it knows the token. */
+export interface AuthFrame {
+  type: "auth";
+  proof: string;
 }
 
 export interface RpcRequestFrame {
@@ -369,10 +393,17 @@ export type PeerRpcResultFrame =
   | { type: "peer-rpc-result"; id: string; ok: false; error: string };
 
 /** Frames a client (extension or peer) may send to the owner. */
-export type ClientFrame = HelloFrame | RpcResultFrame | PeerRpcRequestFrame;
+export type ClientFrame =
+  | HelloFrame
+  | RpcResultFrame
+  | PeerRpcRequestFrame
+  | AuthFrame;
 
-/** Frames the owner may send back to a peer. */
-export type PeerServerFrame = RpcRequestFrame | PeerRpcResultFrame;
+/** Frames the owner may send back to a peer (or any pre-auth client). */
+export type PeerServerFrame =
+  | RpcRequestFrame
+  | PeerRpcResultFrame
+  | WelcomeFrame;
 
 export const DEFAULT_MCP_PORT = 8787;
 

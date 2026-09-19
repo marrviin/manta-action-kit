@@ -17,6 +17,8 @@
  *
  * Config:
  *   MANTA_WS_PORT — local bridge port (must match the extension setting).
+ *   MANTA_PROXY_PORT — local HTTP proxy port for script-driven rules.
+ *   MANTA_TOKEN — handshake secret shared with the extension (from its install prompt).
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -35,6 +37,21 @@ import {
 
 const port = Number(process.env.MANTA_WS_PORT) || DEFAULT_MCP_PORT;
 const proxyPort = Number(process.env.MANTA_PROXY_PORT) || DEFAULT_PROXY_PORT;
+/**
+ * Shared secret for the WS bridge handshake (see auth.ts). Injected into the
+ * user's MCP config env by the extension's install prompt; both sides prove
+ * knowledge of it during the handshake — the token itself never crosses the
+ * wire. Without it every client is rejected (fail closed).
+ */
+const token = process.env.MANTA_TOKEN;
+
+if (!token) {
+  console.error(
+    `[manta-action-kit-mcp] warning: MANTA_TOKEN is not set. The bridge will reject every ` +
+      `client (the extension's handshake requires it). Re-copy the install prompt from the ` +
+      `extension (Action tab → Copy install prompt) and update your MCP config env.`,
+  );
+}
 
 // Single source of truth for the server version: derive it from package.json at
 // runtime so the reported version can never drift from the published one. tsconfig
@@ -1020,7 +1037,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * else owns it — we should become a peer instead).
  */
 async function tryBecomeOwner(): Promise<boolean> {
-  const bridge = startBridge(port);
+  const bridge = startBridge(port, token);
   try {
     await bridge.whenReady();
   } catch {
@@ -1059,6 +1076,7 @@ async function tryBecomeOwner(): Promise<boolean> {
 async function tryBecomePeer(): Promise<boolean> {
   const peer = startPeerClient(port, "127.0.0.1", {
     version: PKG_VERSION,
+    token: token ?? "",
     onOwnerLost: () => {
       console.error("[manta-action-kit-mcp] owner lost — re-electing.");
       // Re-run the election. Any error just leaves us disconnected; tool calls

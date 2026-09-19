@@ -1,7 +1,7 @@
 {
   "name": "@manta-action-kit/mcp",
   "description": "MCP server for Manta Action Kit — exposes recorded API calls to agents, bridged to the Chrome extension over a local WebSocket",
-  "version": "0.1.3",
+  "version": "0.2.0",
   "license": "MIT",
   "repository": {
     "type": "git",

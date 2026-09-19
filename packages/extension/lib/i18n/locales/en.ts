@@ -240,6 +240,7 @@ export const en = {
     connected: "Connected",
     connecting: "Connecting",
     disconnected: "Disconnected",
+    unauthorized: "Auth failed",
     copyInstallPrompt: "Copy install prompt",
     installPromptCopied:
       "Install instructions copied — paste them to your Agent",

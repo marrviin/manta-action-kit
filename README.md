@@ -40,12 +40,16 @@ A pnpm **monorepo** with two packages:
 
 ### 2. MCP service — let an agent read recordings
 
-Settings has an **MCP service** toggle. When on, the extension background dials
-into the local MCP server (`packages/mcp`) as a **WebSocket client** (an MV3
-service worker can't listen on a port, so the socket direction is inverted). The
-server speaks MCP over **stdio** to the agent and runs the WS server the
-extension connects to. Tools include `list_recordings` / `get_recording` /
-`get_call` / `get_endpoints` / `get_flow`.
+There is no MCP master switch: the extension background dials into the local MCP
+server (`packages/mcp`) as a **WebSocket client** (an MV3 service worker can't
+listen on a port, so the socket direction is inverted). The server speaks MCP
+over **stdio** to the agent and runs the WS server the extension connects to.
+The loopback bridge is **mutually authenticated** with a token-based
+challenge-response (`MANTA_TOKEN` from the extension's install prompt; the
+token never crosses the wire). Tools include the recording readers
+(`list_recordings` / `get_recording` / `get_call` / `get_endpoints` /
+`get_flow`) and the **actions** toolset (create, update, and execute reusable,
+parameterized flows distilled from a recording).
 
 ### 3. Sandbox proxy — let an agent call authenticated APIs
 
@@ -53,8 +57,9 @@ The reverse direction: a `proxy_fetch` tool takes only `method/url/headers/body`
 (**no credentials**). The extension injects the user's browser cookies at
 forward time via `chrome.cookies` + a short-lived `declarativeNetRequest`
 session rule — so **cookies never reach the AI**. Guards: a per-tool kill
-switch, human-in-the-loop confirmation (the MCP tool's native permission
-prompt), and an audit log (cookie **names** logged, values never). See
+switch, an extension-side human-in-the-loop confirmation popup (covers both the
+agent path and the script-driven path, independent of MCP client behavior), and
+an audit log (cookie **names** logged, values never). See
 [`packages/mcp/README.md`](packages/mcp/README.md) and `lib/gateway/`.
 
 ## Prerequisites
@@ -90,7 +95,9 @@ mode, "Load unpacked", select `packages/extension/.output/chrome-mv3/`.
 
 Tests cover the pure, security-critical modules — proxy-rule resolution
 (origin-escape prevention), schema inference, example redaction (credential
-masking), SSE parsing, and endpoint aggregation. See `lib/**/*.test.ts`.
+masking), SSE parsing, endpoint aggregation, and the WS bridge handshake auth
+(cross-checked against the server's node:crypto implementation). See
+`lib/**/*.test.ts`.
 
 ## Project structure
 

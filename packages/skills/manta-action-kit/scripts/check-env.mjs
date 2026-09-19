@@ -17,12 +17,15 @@
  * MANTA_WS_PORT / MANTA_PROXY_PORT.
  */
 import { spawnSync } from 'node:child_process';
+import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
 const MCP_PORT = Number(process.env.MANTA_WS_PORT) || 8787;
+/** Handshake secret shared with the extension (from its install prompt env). */
+const MANTA_TOKEN = process.env.MANTA_TOKEN;
 
 const results = [];
 const report = (ok, label, detail = '') => {
@@ -70,6 +73,10 @@ if (typeof WebSocket === 'undefined') {
 
 /** Connect to ws://127.0.0.1:<MCP_PORT> and probe the extension as a peer. Returns exit code. */
 async function probeBridge() {
+  if (!MANTA_TOKEN) {
+    report(false, 'MANTA_TOKEN not set', 're-copy the install prompt from the extension (Action tab → Copy install prompt) and update the MCP config env, then run this script with MANTA_TOKEN=<token>');
+    return 1;
+  }
   let ws;
   try {
     ws = await new Promise((resolve, reject) => {
@@ -108,8 +115,10 @@ async function probeBridge() {
     return 0;
   } catch (err) {
     const msg = String(err?.message ?? err);
-    if (msg.includes('No Chrome extension connected')) {
-      report(false, 'Bridge up but extension not connected', 'confirm Chrome is open with the extension loaded; the "MCP service" switch in the side-panel settings is on; the port matches the server');
+    if (msg.includes('token mismatch') || msg.includes('MANTA_TOKEN')) {
+      report(false, 'Handshake failed: token mismatch', 'the MCP config env MANTA_TOKEN does not match the extension — re-copy the install prompt and update the config');
+    } else if (msg.includes('No authenticated Chrome extension') || msg.includes('No Chrome extension connected')) {
+      report(false, 'Bridge up but extension not connected', 'confirm Chrome is running with the extension installed (the MCP tab in its side panel shows the connection status)');
     } else if (msg.includes('timed out')) {
       report(false, 'Extension connected but unresponsive', 'the extension was just reloaded or its service worker slept; wake the side panel and retry');
     } else {
@@ -121,12 +130,50 @@ async function probeBridge() {
   }
 }
 
-/** Send hello(peer) + peer-rpc, await the peer-rpc-result with the matching id. */
-function rpc(ws, method, params, timeoutMs) {
+const hmac = (token, message) => createHmac('sha256', token).update(message).digest('hex');
+
+/**
+ * Full client handshake (mirror of packages/mcp/src/peer-client.ts):
+ * hello{nonce} → verify welcome proof → auth proof → then the peer-rpc.
+ * Rejects with a descriptive error on any handshake failure.
+ */
+function handshake(ws) {
+  return new Promise((resolve, reject) => {
+    const nonce = randomUUID();
+    const timer = setTimeout(() => reject(new Error('handshake timed out after 10s')), 10_000);
+    const onMessage = (ev) => {
+      let frame;
+      try {
+        frame = JSON.parse(String(ev.data));
+      } catch {
+        return;
+      }
+      if (frame.type !== 'welcome') return;
+      clearTimeout(timer);
+      ws.removeEventListener('message', onMessage);
+      const expected = hmac(MANTA_TOKEN, `manta/welcome/${nonce}`);
+      const actual = Buffer.from(String(frame.proof ?? ''), 'hex');
+      const expectedBuf = Buffer.from(expected, 'hex');
+      const ok = actual.length === expectedBuf.length && timingSafeEqual(actual, expectedBuf);
+      if (!ok) {
+        reject(new Error('Handshake failed: token mismatch (MANTA_TOKEN does not match the extension)'));
+        return;
+      }
+      ws.send(JSON.stringify({ type: 'auth', proof: hmac(MANTA_TOKEN, `manta/auth/${frame.nonce}`) }));
+      resolve();
+    };
+    ws.addEventListener('message', onMessage);
+    ws.send(JSON.stringify({ type: 'hello', role: 'peer', version: '0.0.0', nonce }));
+  });
+}
+
+/** Handshake, then send peer-rpc and await the peer-rpc-result with the matching id. */
+async function rpc(ws, method, params, timeoutMs) {
+  await handshake(ws);
   return new Promise((resolve, reject) => {
     const id = `check-${Date.now()}`;
     const timer = setTimeout(() => reject(new Error(`peer RPC "${method}" timed out after ${timeoutMs}ms`)), timeoutMs);
-    ws.addEventListener('message', (ev) => {
+    const onMessage = (ev) => {
       let frame;
       try {
         frame = JSON.parse(String(ev.data));
@@ -135,14 +182,15 @@ function rpc(ws, method, params, timeoutMs) {
       }
       if (frame.type === 'peer-rpc-result' && frame.id === id) {
         clearTimeout(timer);
+        ws.removeEventListener('message', onMessage);
         if (frame.ok) {
           resolve(frame.result);
         } else {
           reject(new Error(frame.error));
         }
       }
-    });
-    ws.send(JSON.stringify({ type: 'hello', role: 'peer', version: '0.0.0' }));
+    };
+    ws.addEventListener('message', onMessage);
     ws.send(JSON.stringify({ type: 'peer-rpc', id, method, params }));
   });
 }

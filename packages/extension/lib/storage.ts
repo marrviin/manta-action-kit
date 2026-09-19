@@ -43,6 +43,17 @@ export const settings = {
   }),
 
   /**
+   * Shared secret for the local WS bridge handshake (injected into the install
+   * prompt as the MCP process's MANTA_TOKEN). Generated once on first use and
+   * never sent over the wire — both sides only exchange token-derived HMAC
+   * proofs (see lib/mcp/auth.ts). Local-area: it pairs THIS machine's MCP
+   * process with THIS browser profile, so it must not sync across devices.
+   */
+  mcpAuthToken: storage.defineItem<string>("local:mcpAuthToken", {
+    fallback: "",
+  }),
+
+  /**
    * Per-tool kill switches for the MCP tools exposed to the agent, keyed by RPC
    * method name. A method is DISABLED only when its value is explicitly `false`;
    * missing / `true` means enabled. So the default (empty object) is "everything
@@ -131,9 +142,15 @@ export const recordingFilterRules = storage.defineItem<RecordingFilterRule[]>(
  *
  * There is no MCP master switch anymore: the bridge always tries to connect to the
  * local MCP server, and the real per-call gate is the tool's native permission
- * prompt. So this is a status readout, not a setting.
+ * prompt. So this is a status readout, not a setting. `unauthorized` means the
+ * handshake failed (token mismatch) — the fix is re-copying the install prompt
+ * and updating the MCP config env.
  */
-export type McpConnStatus = "connecting" | "connected" | "disconnected";
+export type McpConnStatus =
+  | "connecting"
+  | "connected"
+  | "disconnected"
+  | "unauthorized";
 
 export const mcpConnStatus = storage.defineItem<McpConnStatus>(
   "session:mcpConnStatus",

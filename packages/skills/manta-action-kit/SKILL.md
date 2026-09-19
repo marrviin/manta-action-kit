@@ -19,8 +19,11 @@ The suite consists of two parts; see the repo root `CLAUDE.md` for how they coll
 **Run the bundled script first (one command covers all checks, printing ✅/❌ per item with fix suggestions):**
 
 ```bash
-node packages/skills/manta-action-kit/scripts/check-env.mjs
+MANTA_TOKEN=<from the MCP config env> node packages/skills/manta-action-kit/scripts/check-env.mjs
 ```
+
+The script needs `MANTA_TOKEN` (the handshake secret in the MCP config env — read it from the
+config you installed) and performs a full authenticated probe.
 
 The script covers steps 1–3 below (including an end-to-end probe as a peer, distinguishing "bridge
 up but extension not connected" from "full chain works"). Exit code 0 = all pass. **For any ❌ item,
@@ -40,7 +43,9 @@ claude mcp list 2>/dev/null | grep manta-action-kit
 
   ```bash
   pnpm build:mcp   # make sure dist exists first, see step 2
-  claude mcp add manta-action-kit --scope local -- node "$(pwd)/packages/mcp/dist/index.js"
+  claude mcp add manta-action-kit --scope local \
+    --env MANTA_TOKEN=<from the extension's install prompt, Action tab → Copy install prompt> \
+    -- node "$(pwd)/packages/mcp/dist/index.js"
   ```
 
   Then ask the user to run `/mcp` reconnect or restart the session.
@@ -65,13 +70,15 @@ Just call `mcp__manta-action-kit__list_recordings` (probe for errors; ignore the
 
 - ✅ Pass: returns JSON (even an empty list). **An empty list ≠ a fault** — it just means nothing
   has been recorded yet.
-- ❌ Error `No Chrome extension connected. Open the extension (its MCP tab shows the
-connection status) and make sure the configured port matches.` → have the user confirm, in order:
+- ❌ Error `No authenticated Chrome extension connected...` → have the user confirm, in order:
   1. Chrome is open with the extension loaded (`chrome://extensions`, developer mode, load
      `packages/extension/.output/chrome-mv3/`, or run `pnpm dev`);
-  2. Sidebar → Settings → **the "MCP Service" toggle is ON** (only the extension-side switch
-     controls the outbound connection);
-  3. The port on the extension settings page matches the server port (default 8787).
+  2. The port on the extension settings page matches the server port (default 8787);
+  3. If the extension's MCP tab shows **"Auth failed"** (handshake token mismatch): re-copy the
+     install prompt (Action tab → Copy install prompt) and update the MCP config env
+     `MANTA_TOKEN` to the new value, then reconnect (`/mcp`).
+- ❌ Error `MCP bridge has no MANTA_TOKEN configured...` → the MCP config env is missing
+  `MANTA_TOKEN`; re-copy the install prompt from the extension and update the config env.
 - ❌ Error `RPC "..." timed out after ...ms` → the extension's WS is connected but unresponsive,
   usually because the extension just reloaded / the service worker went dormant. Ask the user to
   click the extension sidebar once to wake it, then retry.
@@ -91,8 +98,8 @@ Run in order; the first two steps are repo builds, the last two are user-side ac
 2. Register the MCP server (the `claude mcp add` command from step 1 above).
 3. Guide the user: Chrome → `chrome://extensions` → developer mode → Load unpacked → select
    `packages/extension/.output/chrome-mv3/`.
-4. Guide the user: open the sidebar → Settings → turn ON the "MCP Service" toggle (keep the
-   default port 8787).
+4. No toggle to flip — the extension dials in automatically once Chrome is running with it
+   loaded; just confirm the extension's MCP port matches the server port (default 8787).
 5. Run the environment check above (at least items 1 and 3) to confirm the chain works.
 
 ## 3. Feature Usage (trigger phrase → tool)
@@ -137,9 +144,10 @@ only for ad-hoc, one-off single calls.
 
 About `proxy_fetch` / `proxy_sse`:
 
-- Every call pops the **native confirmation dialog** (MCP `requiresUserInteraction`). This is the
-  primary gate by design — even auto/bypass modes cannot skip it. Tell the user to click Allow;
-  it is not a fault.
+- Every call pops the **extension's own confirmation popup** (human-in-the-loop, rendered by the
+  extension itself). This is the primary gate by design — it also covers the script-driven gateway
+  path and does not depend on the MCP client honoring native prompts. Tell the user to click
+  Allow; it is not a fault.
 - Cookies are injected only inside the extension and **never appear in tool results**; just relay
   the response to the user.
 - Loopback / private-network / cloud-metadata addresses (including 169.254.169.254) are rejected
@@ -147,9 +155,9 @@ About `proxy_fetch` / `proxy_sse`:
 
 About `create_action` / `execute_action`:
 
-- These also pop the **native confirmation dialog** each time (creating shows the action name and
-  description; executing shows the action name and resolved parameters, so the user can verify
-  before approving).
+- These also pass the **extension's confirmation popup** (creating/updating shows the action name
+  and description; executing confirms once per target host for the whole run, so the user can
+  verify before approving).
 - Action steps only reference recorded callIds and **contain no credentials**; during replay the
   extension gateway injects the user's cookies, and inter-step dependencies (upstream response
   values → downstream request fields) are resolved automatically by `execute_action` — no manual
@@ -169,7 +177,7 @@ About `create_action` / `execute_action`:
 | Symptom                                      | Cause                                      | Fix                                                                                 |
 | -------------------------------------------- | ------------------------------------------ | ----------------------------------------------------------------------------------- |
 | `claude mcp list` missing this server or ✘   | Not registered / dist missing              | Section 1, steps 1 and 2                                                            |
-| Tool reports `No Chrome extension connected` | Chrome closed / toggle off / port mismatch | Section 1, step 3's three items                                                     |
+| Tool reports `No Chrome extension connected` | Chrome closed / port mismatch / token mismatch | Section 1, step 3's three items                                                     |
 | Tool reports `RPC ... timed out`             | Service worker dormant / just reloaded     | Wake the extension, then retry                                                      |
 | Startup fatal: port conflict                 | 8787/8788 occupied                         | `lsof -nP -iTCP:<port>` to find the holder; kill it or change the port on both ends |
 | Source changes not taking effect             | tsc watch doesn't hot-restart              | `/mcp` reconnect or restart the session                                             |

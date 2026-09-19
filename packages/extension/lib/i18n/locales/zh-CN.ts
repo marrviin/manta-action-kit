@@ -224,6 +224,7 @@ export const zhCN: Messages = {
     connected: "已连接",
     connecting: "连接中",
     disconnected: "未连接",
+    unauthorized: "认证失败",
     copyInstallPrompt: "复制安装提示词",
     installPromptCopied: "安装说明已复制，粘贴给你的 Agent 即可",
     tools: "工具",

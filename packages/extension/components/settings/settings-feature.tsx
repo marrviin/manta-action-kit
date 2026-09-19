@@ -32,9 +32,10 @@ const CONN_META = {
   connected: { tagColor: 'success', labelKey: 'mcp.connected' },
   connecting: { tagColor: 'processing', labelKey: 'mcp.connecting' },
   disconnected: { tagColor: 'default', labelKey: 'mcp.disconnected' },
+  unauthorized: { tagColor: 'error', labelKey: 'mcp.unauthorized' },
 } as const satisfies Record<
   McpConnStatus,
-  { tagColor: 'success' | 'processing' | 'default'; labelKey: string }
+  { tagColor: 'success' | 'processing' | 'default' | 'error'; labelKey: string }
 >;
 
 /**

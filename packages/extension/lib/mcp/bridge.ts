@@ -19,6 +19,8 @@
  */
 import { settings, mcpConnStatus, type McpConnStatus } from '@/lib/storage';
 import { handleRpc } from './handlers';
+import { authProof, newNonce, verifyWelcomeProof } from './auth';
+import { ensureMcpAuthToken } from './install-prompt';
 import {
   DEFAULT_MCP_PORT,
   type ClientFrame,
@@ -32,6 +34,15 @@ const KEEPALIVE_PERIOD_MIN = 1;
 
 let socket: WebSocket | null = null;
 let desiredPort = DEFAULT_MCP_PORT;
+/** Shared handshake secret (settings.mcpAuthToken) — see lib/mcp/auth.ts. */
+let desiredToken = '';
+/** True when the CURRENT attempt failed the handshake, so onclose reports
+ * 'unauthorized' (token mismatch) instead of a plain 'disconnected'. */
+let unauthorized = false;
+/** Nonce of the in-flight hello, needed to verify the matching welcome proof. */
+let helloNonce = '';
+/** Set once the server proved it knows the token; rpc frames before this are dropped. */
+let handshakeOk = false;
 /** Bumped on every (re)configuration so stale timers/handlers no-op. */
 let generation = 0;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -97,7 +108,19 @@ function scheduleReconnect(gen: number) {
 function connect(gen: number) {
   if (gen !== generation) return;
   teardownSocketOnly();
+  unauthorized = false;
+  handshakeOk = false;
   publishStatus('connecting');
+
+  // Never dial without the token — an unauthenticated socket is useless (the
+  // server drops it) and initMcpBridge guarantees one; this is just a guard.
+  if (!desiredToken) {
+    log('no auth token — skipping dial');
+    unauthorized = true;
+    publishStatus('unauthorized');
+    scheduleReconnect(gen);
+    return;
+  }
 
   const url = `ws://127.0.0.1:${desiredPort}`;
   log('connecting', url);
@@ -116,11 +139,14 @@ function connect(gen: number) {
     if (gen !== generation) return;
     backoffMs = 1000;
     log('connected');
-    publishStatus('connected');
+    // NOT 'connected' yet — the socket is unauthenticated until the handshake
+    // completes (see onMessage's welcome branch).
+    helloNonce = newNonce();
     send({
       type: 'hello',
       role: 'extension',
       version: browser.runtime.getManifest().version,
+      nonce: helloNonce,
     });
   };
 
@@ -137,7 +163,7 @@ function connect(gen: number) {
   ws.onclose = () => {
     if (gen !== generation) return;
     socket = null;
-    publishStatus('disconnected');
+    publishStatus(unauthorized ? 'unauthorized' : 'disconnected');
     scheduleReconnect(gen);
   };
 }
@@ -163,7 +189,36 @@ async function onMessage(ev: MessageEvent) {
     log('bad frame (not JSON)');
     return;
   }
+
+  // Handshake step 2: the server proves it knows the token over OUR hello nonce.
+  // Until this passes we send nothing else and accept nothing else; a failed
+  // proof means the server doesn't share our token (MANTA_TOKEN out of sync) —
+  // drop the socket and surface 'unauthorized' so the UI can point at the fix.
+  if (frame.type === 'welcome') {
+    const ok = await verifyWelcomeProof(desiredToken, helloNonce, frame.proof).catch(
+      () => false,
+    );
+    if (!ok) {
+      log('server failed the welcome proof — token mismatch (re-copy the install prompt)');
+      unauthorized = true;
+      publishStatus('unauthorized');
+      socket?.close(); // onclose schedules the next attempt
+      return;
+    }
+    log('handshake ok');
+    handshakeOk = true;
+    send({ type: 'auth', proof: await authProof(desiredToken, frame.nonce) });
+    publishStatus('connected'); // server drops us if the auth proof fails — onclose reports it
+    return;
+  }
+
   if (frame.type !== 'rpc') return;
+  // Never serve an unauthenticated peer: a port squatter could otherwise send
+  // rpc frames before the handshake and walk away with recording data.
+  if (!handshakeOk) {
+    log('dropping rpc frame before handshake completed');
+    return;
+  }
 
   const req = frame as RpcRequestFrame;
   try {
@@ -223,6 +278,9 @@ function ensureKeepaliveAlarm() {
  * port setting changes. Call once from the background entrypoint.
  */
 export async function initMcpBridge() {
+  // Ensure the shared handshake token exists before the first dial (generated
+  // once, injected into the install prompt as MANTA_TOKEN).
+  desiredToken = await ensureMcpAuthToken();
   const port = await settings.mcpPort.getValue();
   reconfigure(port ?? DEFAULT_MCP_PORT);
 

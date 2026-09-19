@@ -297,12 +297,36 @@ export interface RpcMap {
   };
 }
 
-/** Frame the extension sends right after the socket opens. */
+/**
+ * Frame the extension sends right after the socket opens. Carries a fresh
+ * nonce the server must answer with a token-derived proof (see lib/mcp/auth.ts)
+ * before the socket is trusted.
+ */
 export interface HelloFrame {
   type: "hello";
   role: "extension";
   /** Extension version, for the server to log. */
   version: string;
+  /** Fresh random nonce; the server proves it knows the token over this. */
+  nonce: string;
+}
+
+/**
+ * Server's reply to our hello: proves the peer is the real MCP server (it knows
+ * the shared token, which itself never crosses the wire) and challenges us back.
+ */
+export interface WelcomeFrame {
+  type: "welcome";
+  /** HMAC(token, "manta/welcome/" + hello.nonce) — verified before trusting the socket. */
+  proof: string;
+  /** Server's challenge nonce; we answer with HMAC(token, "manta/auth/" + nonce). */
+  nonce: string;
+}
+
+/** The extension's answer to the welcome challenge: proves we know the token. */
+export interface AuthFrame {
+  type: "auth";
+  proof: string;
 }
 
 /** Frame the server sends to invoke a method on the extension. */
@@ -319,10 +343,10 @@ export type RpcResultFrame<M extends RpcMethod = RpcMethod> =
   | { type: "rpc-result"; id: string; ok: false; error: string };
 
 /** Anything the extension may send to the server. */
-export type ClientFrame = HelloFrame | RpcResultFrame;
+export type ClientFrame = HelloFrame | RpcResultFrame | AuthFrame;
 
 /** Anything the server may send to the extension. */
-export type ServerFrame = RpcRequestFrame;
+export type ServerFrame = RpcRequestFrame | WelcomeFrame;
 
 /** Default port; overridable via the settings page / MANTA_WS_PORT env. */
 export const DEFAULT_MCP_PORT = 8787;

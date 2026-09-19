@@ -10,7 +10,16 @@
  * At most one extension is expected; if several connect, the most recent wins.
  */
 import { WebSocketServer, type WebSocket } from 'ws';
-import type { ClientFrame, PeerRpcResultFrame, RpcMethod, RpcRequestFrame } from './protocol.js';
+import type { IncomingMessage } from 'node:http';
+import { newNonce, verifyAuthProof, welcomeProof } from './auth.js';
+import type {
+  AuthFrame,
+  ClientFrame,
+  HelloFrame,
+  PeerRpcResultFrame,
+  RpcMethod,
+  RpcRequestFrame,
+} from './protocol.js';
 
 interface Pending {
   resolve: (value: unknown) => void;
@@ -38,7 +47,13 @@ function makeIdGen() {
   return () => `rpc-${++n}`;
 }
 
-export function startBridge(port: number, host = '127.0.0.1'): Bridge {
+/**
+ * @param token Shared handshake secret (the MANTA_TOKEN env the user's MCP
+ *   config injects). Clients prove knowledge of it during the handshake (see
+ *   auth.ts) — the token itself never crosses the wire. `undefined` (env not
+ *   set) means every client is rejected; `call()` then explains the fix.
+ */
+export function startBridge(port: number, token: string | undefined, host = '127.0.0.1'): Bridge {
   const wss = new WebSocketServer({ port, host });
   const pending = new Map<string, Pending>();
   const nextId = makeIdGen();
@@ -70,9 +85,33 @@ export function startBridge(port: number, host = '127.0.0.1'): Bridge {
   // resolves while a peer/extension is still attached.
   const sockets = new Set<WebSocket>();
 
-  wss.on('connection', (ws) => {
+  wss.on('connection', (ws, req: IncomingMessage) => {
+    // Web-page guard (defense in depth behind the token handshake): browsers
+    // attach an Origin to cross-origin WebSockets, so a page dialing
+    // ws://127.0.0.1 from the open web announces itself. Our real clients — the
+    // extension's service worker and node's `ws` — send either no Origin or a
+    // chrome-extension:// one (dev builds have their own id, so any extension
+    // origin passes; the token handshake still gates them).
+    const origin = req.headers.origin;
+    if (origin && !origin.startsWith('chrome-extension://')) {
+      log(`rejecting web-originated client (Origin: ${origin})`);
+      ws.terminate();
+      return;
+    }
+
     sockets.add(ws);
     let role: 'extension' | 'peer' | 'unknown' = 'unknown';
+    // Handshake stages: awaiting hello → awaiting the auth challenge answer →
+    // authenticated. Only 'authed' sockets may speak the business frames below.
+    let stage: 'hello' | 'auth' | 'authed' = 'hello';
+    let serverNonce = '';
+    const stageTimer = setTimeout(() => {
+      if (stage !== 'authed') {
+        log('handshake timed out — dropping client');
+        ws.terminate();
+      }
+    }, 10_000);
+    ws.on('close', () => clearTimeout(stageTimer));
 
     ws.on('message', (data) => {
       let frame: ClientFrame;
@@ -82,16 +121,64 @@ export function startBridge(port: number, host = '127.0.0.1'): Bridge {
         log('dropping non-JSON frame');
         return;
       }
-      if (frame.type === 'hello') {
-        role = frame.role;
-        if (frame.role === 'extension') {
-          log(`hello from extension v${frame.version}`);
-          active = ws;
-        } else {
-          log(`hello from peer v${frame.version}`);
+
+      // ── pre-auth: challenge-response, token never on the wire (see auth.ts) ──
+      if (stage !== 'authed') {
+        if (frame.type === 'hello' && stage === 'hello') {
+          if (!token) {
+            log(
+              'rejecting client: no MANTA_TOKEN configured — re-copy the install prompt from the extension (Action tab) and update the MCP config env',
+            );
+            ws.terminate();
+            return;
+          }
+          const hello = frame as HelloFrame;
+          // Remember the declared role now; it only takes EFFECT after the
+          // auth challenge below succeeds.
+          role = hello.role;
+          if (typeof hello.nonce !== 'string' || hello.nonce.length === 0) {
+            log('hello without nonce — dropping client');
+            ws.terminate();
+            return;
+          }
+          serverNonce = newNonce();
+          stage = 'auth';
+          ws.send(
+            JSON.stringify({
+              type: 'welcome',
+              proof: welcomeProof(token, hello.nonce),
+              nonce: serverNonce,
+            }),
+          );
+          return;
         }
+        if (frame.type === 'auth' && stage === 'auth') {
+          const auth = frame as AuthFrame;
+          // token is guaranteed non-undefined here: the hello branch rejects
+          // clients before the stage can advance when it isn't configured.
+          if (token && verifyAuthProof(token, serverNonce, auth.proof)) {
+            clearTimeout(stageTimer);
+            stage = 'authed';
+            if (role === 'extension') {
+              log('extension authenticated');
+              active = ws;
+            } else {
+              log('peer authenticated');
+            }
+            return;
+          }
+          log('client failed the auth challenge — token mismatch (re-copy the install prompt)');
+          ws.terminate();
+          return;
+        }
+        // Any other frame before/at the wrong stage: the peer isn't playing our
+        // protocol — drop it instead of processing untrusted input.
+        log(`dropping unexpected "${(frame as { type: string }).type}" frame before auth`);
+        ws.terminate();
         return;
       }
+
+      // ── authenticated business frames ──
       if (frame.type === 'rpc-result') {
         const p = pending.get(frame.id);
         if (!p) return;
@@ -144,9 +231,11 @@ export function startBridge(port: number, host = '127.0.0.1'): Bridge {
 
   function call(method: RpcMethod, params: unknown, timeoutMs = 10000): Promise<unknown> {
     if (!active || active.readyState !== active.OPEN) {
-      const hint = listening
-        ? 'No Chrome extension connected. Open the extension (its MCP tab shows the connection status) and make sure the configured port matches.'
-        : `MCP bridge not listening on port ${port} (failed to bind — is another instance running?).`;
+      const hint = !token
+        ? 'MCP bridge has no MANTA_TOKEN configured — re-copy the install prompt from the extension (Action tab) and update your MCP config env.'
+        : listening
+          ? 'No authenticated Chrome extension connected. Confirm Chrome is running with the extension and the port matches; if the extension shows "auth failed", re-copy the install prompt and update the MCP config env.'
+          : `MCP bridge not listening on port ${port} (failed to bind — is another instance running?).`;
       return Promise.reject(new Error(hint));
     }
     const id = nextId();
