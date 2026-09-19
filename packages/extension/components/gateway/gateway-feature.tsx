@@ -13,14 +13,21 @@ import {
   Tag,
   Typography,
 } from "antd";
-import { DownloadOutlined, SearchOutlined } from "@ant-design/icons";
+import {
+  CheckOutlined,
+  CloseOutlined,
+  DeleteOutlined,
+  DownloadOutlined,
+  SearchOutlined,
+} from "@ant-design/icons";
 import type { MenuProps } from "antd";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { useGatewayLogs } from "@/hooks/use-gateway-logs";
 import { useGatewayProxyRules } from "@/hooks/use-gateway-proxy-rules";
+import { useStorage } from "@/hooks/use-storage";
 import { settings } from "@/lib/storage";
-import { MethodBadge, StatusBadge } from "@/components/recording/method-badge";
+import { normalizeDomain } from "@/lib/gateway/authorize";
 import {
   Block,
   Field,
@@ -99,30 +106,70 @@ function decisionMeta(
   };
 }
 
+/**
+ * Tag-1 (来源·确认状态) for the list row. Color carries the decision (green =
+ * user-approved, blue = auto-allowed, red = blocked); the label packs the
+ * entrypoint (MCP / 代理规则) with the authorization outcome — e.g.
+ * "MCP·已确认"、"代理·白名单"、"已拦截" (no entrypoint recorded on old rows).
+ */
+function sourceTagMeta(
+  log: GatewayLog,
+  t: TFunction,
+): { color: string; label: string } {
+  const via = log.via
+    ? log.via === "agent"
+      ? t("gateway.entryMcp")
+      : t("gateway.entryProxy")
+    : null;
+  let confirm: string;
+  if (log.decision === "allowed") confirm = t("gateway.decisionAllowed");
+  else if (log.decision === "auto")
+    confirm =
+      log.authSource === "allowlist"
+        ? t("gateway.authAllowlist")
+        : t("gateway.decisionAuto");
+  else if (log.decision === "blocked")
+    // Distinguish the refusal reason: denylist hit vs the other blocks
+    // (SSRF guard, bad URL, user denied at the popup).
+    confirm =
+      log.authSource === "denylist"
+        ? t("gateway.authDenylist")
+        : t("gateway.decisionBlocked");
+  else confirm = t("gateway.decisionUnknown");
+  return {
+    // Allowlist hits are as trustworthy as an explicit allow — render green
+    // instead of the default "auto" blue.
+    color:
+      log.decision === "auto" && log.authSource === "allowlist"
+        ? "green"
+        : (DECISION_COLOR[log.decision] ?? "default"),
+    label: via ? `${via} · ${confirm}` : confirm,
+  };
+}
+
+/**
+ * Tag-2 (方法·状态码): one tag like "GET · 200" — blue normally, red on 4xx/5xx
+ * or a transport error so failing rows still stand out.
+ */
+function requestTagMeta(log: GatewayLog): { color: string; label: string } {
+  const failed = log.status >= 400 || log.errored;
+  return {
+    color: failed ? "red" : "blue",
+    label: log.status > 0 ? `${log.method} · ${log.status}` : log.method,
+  };
+}
+
 /** Human label for a log's authorization source. */
 function authSourceLabel(
   source: GatewayLog["authSource"],
   t: TFunction,
 ): string {
+  if (source === "prompt") return t("gateway.authPrompt");
+  if (source === "allowlist") return t("gateway.authAllowlist");
   if (source === "agent") return t("gateway.authAgent");
   if (source === "rule") return t("gateway.authRule");
+  if (source === "denylist") return t("gateway.authDenylist");
   return t("gateway.authNone");
-}
-
-/**
- * Which entrypoint a call came through, for the list-row tag. `agent` = the
- * agent-driven MCP tool (proxy_fetch); `rule` = the script-driven proxy rules.
- * Returns null when there's nothing meaningful to badge.
- */
-function entryTagMeta(
-  source: GatewayLog["authSource"],
-  t: TFunction,
-): { color: string; label: string } | null {
-  if (source === "agent")
-    return { color: "geekblue", label: t("gateway.entryMcp") };
-  if (source === "rule")
-    return { color: "purple", label: t("gateway.entryProxy") };
-  return null;
 }
 
 /**
@@ -301,7 +348,7 @@ function LogsPanel() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
-          <Button icon={<DownloadOutlined />} onClick={onExport}>
+          <Button onClick={onExport}>
             {t("gateway.export")}
           </Button>
         </div>
@@ -332,8 +379,8 @@ function LogsPanel() {
         ) : (
           <div>
             {filteredLogs.map((log) => {
-              const meta = decisionMeta(log.decision, t);
-              const entryMeta = entryTagMeta(log.authSource, t);
+              const sourceMeta = sourceTagMeta(log, t);
+              const requestMeta = requestTagMeta(log);
               return (
                 <UnifiedListItem
                   key={log.id}
@@ -352,24 +399,18 @@ function LogsPanel() {
                   }
                   status={
                     <>
-                      {entryMeta && (
-                        <Tag
-                          color={entryMeta.color}
-                          className="me-0 text-[10px]! font-normal! rounded"
-                        >
-                          {entryMeta.label}
-                        </Tag>
-                      )}
                       <Tag
-                        color={meta.color}
+                        color={sourceMeta.color}
                         className="me-0 text-[10px]! font-normal! rounded"
                       >
-                        {meta.label}
+                        {sourceMeta.label}
                       </Tag>
-                      <MethodBadge method={log.method} />
-                      {log.status > 0 && (
-                        <StatusBadge status={log.status} />
-                      )}
+                      <Tag
+                        color={requestMeta.color}
+                        className="me-0 text-[10px]! font-normal! rounded"
+                      >
+                        {requestMeta.label}
+                      </Tag>
                     </>
                   }
                   timestamp={log.at}
@@ -476,44 +517,27 @@ interface ProxyRuleSubmit {
 }
 
 /**
- * Modal form for adding or editing a proxy rule. Validation lives in the
- * background too. When `initialValues` is provided the modal switches to edit
- * mode (title/button text change and fields are pre-filled).
+ * Modal form for adding a proxy rule. Validation lives in the background too.
  */
 function ProxyRuleModal({
   open,
   proxyPort,
-  initialValues,
   onCancel,
   onSubmit,
 }: {
   open: boolean;
   proxyPort: number;
-  initialValues?: ProxyRuleFormValues;
   onCancel: () => void;
   onSubmit: (values: ProxyRuleSubmit) => Promise<void>;
 }) {
   const [form] = Form.useForm<ProxyRuleFormValues>();
   const { t } = useTranslation();
   const [submitting, setSubmitting] = useState(false);
-  const isEdit = !!initialValues;
 
-  // Reset fields whenever the modal opens, pre-filling the edit draft (if any)
-  // so a prior draft doesn't linger. The target address is split into a scheme
-  // selector (http/https) + host input, so we decompose an existing targetBase.
+  // Reset fields whenever the modal opens so a prior draft doesn't linger.
   useEffect(() => {
-    if (open) {
-      form.resetFields();
-      if (initialValues) {
-        const m = /^(https?):\/\/(.*)$/i.exec(initialValues.targetBase.trim());
-        form.setFieldsValue({
-          ...initialValues,
-          targetScheme: (m?.[1]?.toLowerCase() as "http" | "https") ?? "https",
-          targetHost: m ? m[2] : initialValues.targetBase.trim(),
-        });
-      }
-    }
-  }, [open, form, initialValues]);
+    if (open) form.resetFields();
+  }, [open, form]);
 
   const handleOk = async () => {
     let values: ProxyRuleFormValues;
@@ -537,12 +561,12 @@ function ProxyRuleModal({
 
   return (
     <Modal
-      title={isEdit ? t("gateway.editProxyRule") : t("gateway.addProxyRule")}
+      title={t("gateway.addProxyRule")}
       open={open}
       centered
       onCancel={onCancel}
       onOk={handleOk}
-      okText={isEdit ? t("common.save") : t("common.add")}
+      okText={t("common.add")}
       cancelText={t("common.cancel")}
       confirmLoading={submitting}
       destroyOnClose
@@ -595,8 +619,7 @@ function ProxyRuleModal({
 function ProxyRulesPanel() {
   const { message, modal } = App.useApp();
   const { t } = useTranslation();
-  const { rules, loading, addRule, updateRule, removeRule } =
-    useGatewayProxyRules();
+  const { rules, loading, addRule, removeRule } = useGatewayProxyRules();
 
   const confirmDelete = (rule: GatewayProxyRule) => {
     modal.confirm({
@@ -614,11 +637,15 @@ function ProxyRulesPanel() {
   };
   const [proxyPort, setProxyPort] = useState(8788);
   const [modalOpen, setModalOpen] = useState(false);
-  // The rule currently being edited (null = add mode).
-  const [editingRule, setEditingRule] = useState<GatewayProxyRule | null>(null);
-  // Search box (raw input) + its debounced value used for filtering.
-  const [search, setSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
+  // Sandbox domain policy: per-call confirmation switch + allow/deny lists.
+  // User-managed only — no agent-facing tool can read or mutate them.
+  const [confirmRequired, setConfirmRequired] = useStorage(
+    settings.gatewayConfirmRequired,
+  );
+  const [allowDomains, setAllowDomains] = useStorage(
+    settings.gatewayAllowDomains,
+  );
+  const [denyDomains, setDenyDomains] = useStorage(settings.gatewayDenyDomains);
 
   useEffect(() => {
     settings.proxyPort.getValue().then(setProxyPort);
@@ -626,52 +653,16 @@ function ProxyRulesPanel() {
     return () => u();
   }, []);
 
-  // Debounce the search input (300ms) to avoid filtering on every keystroke.
-  useEffect(() => {
-    const t = setTimeout(
-      () => setDebouncedSearch(search.trim().toLowerCase()),
-      300,
-    );
-    return () => clearTimeout(t);
-  }, [search]);
-
-  // Fuzzy match against the sandbox prefix and target base of each rule.
-  const filteredRules = useMemo(() => {
-    if (!debouncedSearch) return rules;
-    return rules.filter((rule) =>
-      `${rule.sandboxPrefix} ${rule.targetBase}`
-        .toLowerCase()
-        .includes(debouncedSearch),
-    );
-  }, [rules, debouncedSearch]);
-
-  const openAdd = () => {
-    setEditingRule(null);
-    setModalOpen(true);
-  };
-
-  const openEdit = (rule: GatewayProxyRule) => {
-    setEditingRule(rule);
-    setModalOpen(true);
-  };
+  const openAdd = () => setModalOpen(true);
 
   const onSubmit = async (values: ProxyRuleSubmit) => {
     try {
-      if (editingRule) {
-        await updateRule(editingRule.id, values);
-        message.success(t("gateway.ruleSaved"));
-      } else {
-        await addRule(values);
-        message.success(t("gateway.ruleAdded"));
-      }
+      await addRule(values);
+      message.success(t("gateway.ruleAdded"));
       setModalOpen(false);
     } catch (err) {
       message.error(
-        err instanceof Error
-          ? err.message
-          : editingRule
-            ? t("gateway.saveFailed")
-            : t("gateway.addFailed"),
+        err instanceof Error ? err.message : t("gateway.addFailed"),
       );
       throw err; // keep the modal open on failure
     }
@@ -679,112 +670,218 @@ function ProxyRulesPanel() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex-none flex items-center gap-2 px-3 py-2.5 border-b border-(--ant-color-border-secondary)">
-        <Input
-          allowClear
-          prefix={<SearchOutlined className="text-(--ant-color-text-quaternary)" />}
-          placeholder={t("gateway.searchRule")}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="flex-1 min-w-0"
-        />
-        <Button type="primary" className="flex-none" onClick={openAdd}>
-          {t("gateway.addProxyRule")}
-        </Button>
-      </div>
-      <div className="flex-1 min-h-0 overflow-auto pb-14">
-        {loading ? (
-          <div className="p-8 text-center">
-            <Spin />
-          </div>
-        ) : rules.length === 0 ? (
-          <div className="h-full flex items-center justify-center">
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={false} />
-          </div>
-        ) : filteredRules.length === 0 ? (
-          <div className="h-full flex items-center justify-center">
-            <Empty
-              image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description={t("gateway.noMatchRule")}
+      <div className="flex-1 min-h-0 overflow-auto pb-14 flex flex-col gap-3 p-3">
+        {/* Per-call confirmation switch — the master human-in-the-loop gate. */}
+        <section className="flex-none rounded-xl border border-(--ant-color-border-secondary) bg-(--ant-color-bg-container) px-3 py-2.5">
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <Text strong className="text-sm block">
+                {t("gateway.confirmRequiredTitle")}
+              </Text>
+              <Text type="secondary" className="text-xs!">
+                {t("gateway.confirmRequiredDesc")}
+              </Text>
+            </div>
+            <Switch
+              checked={confirmRequired}
+              onChange={(v) => void setConfirmRequired(v)}
             />
           </div>
-        ) : (
+        </section>
+
+        {/* Allow / deny domain management (user-only; deny wins over allow). */}
+        <DomainListCard
+          title={t("gateway.allowDomainsTitle")}
+          description={t("gateway.allowDomainsDesc")}
+          domains={allowDomains}
+          onChange={(next) => void setAllowDomains(next)}
+        />
+        <DomainListCard
+          title={t("gateway.denyDomainsTitle")}
+          description={t("gateway.denyDomainsDesc")}
+          domains={denyDomains}
+          onChange={(next) => void setDenyDomains(next)}
+        />
+
+        {/* Proxy rules (script-driven gateway entry) */}
+        <section className="flex-none rounded-xl border border-(--ant-color-border-secondary) bg-(--ant-color-bg-container) overflow-hidden">
+          {/* Header mirrors DomainListCard: title + description + add button */}
+          <div className="flex items-center justify-between gap-2 px-3 py-2.5 border-b border-(--ant-color-border-secondary)">
+            <div className="min-w-0">
+              <Text strong className="text-sm block">
+                {t("gateway.proxyRulesTitle")}
+              </Text>
+              <Text type="secondary" className="text-xs!">
+                {t("gateway.proxyRulesDesc")}
+              </Text>
+            </div>
+            <Button className="flex-none" onClick={openAdd}>
+              {t("common.add")}
+            </Button>
+          </div>
+          {loading ? (
+            <div className="p-8 text-center">
+              <Spin />
+            </div>
+          ) : rules.length === 0 ? null : (
           <div>
-            {filteredRules.map((rule) => (
+            {rules.map((rule) => (
               <UnifiedListItem
                 key={rule.id}
-                menu={[
-                  {
-                    key: "edit",
-                    label: t("gateway.editRule"),
-                    onClick: () => openEdit(rule),
-                  },
-                  {
-                    key: "delete",
-                    label: t("common.delete"),
-                    danger: true,
-                    onClick: () => confirmDelete(rule),
-                  },
-                ]}
+                // Hover-revealed direct delete (no three-dot menu, no edit).
+                actions={
+                  <Button
+                    type="text"
+                    size="small"
+                    className="w-5 h-5 p-0 text-xs"
+                    icon={<DeleteOutlined />}
+                    onClick={() => confirmDelete(rule)}
+                  />
+                }
                 title={
-                  <div className="min-w-0">
+                  // User-created rules render plain — only agent-created ones
+                  // carry the source tag.
+                  <div className="flex items-center gap-2 min-w-0">
                     <Text
                       ellipsis
-                      className="text-sm block"
+                      className="text-sm min-w-0"
                       title={`${rule.sandboxPrefix} → ${rule.targetBase}`}
                     >
                       {rule.sandboxPrefix} → {rule.targetBase}
                     </Text>
+                    {rule.createdBy === "agent" && (
+                      <Tag className="flex-none me-0 text-[10px]! font-normal! rounded">
+                        {t("gateway.createdByAgent")}
+                      </Tag>
+                    )}
                   </div>
                 }
-                status={
-                  <Space size={6}>
-                    <Tag
-                      className="me-0 text-[10px]! font-normal! rounded"
-                      color={rule.createdBy === "agent" ? "blue" : "green"}
-                    >
-                      {rule.createdBy === "agent"
-                        ? t("gateway.createdByAgent")
-                        : t("gateway.createdByUser")}
-                    </Tag>
-                    <Switch
-                      size="small"
-                      checked={rule.enabled}
-                      onChange={async (v) => {
-                        try {
-                          await updateRule(rule.id, { enabled: v });
-                        } catch (err) {
-                          message.error(
-                            err instanceof Error
-                              ? err.message
-                              : t("common.updateFailed"),
-                          );
-                        }
-                      }}
-                    />
-                  </Space>
-                }
-                timestamp={rule.createdAt}
               />
             ))}
           </div>
         )}
+        </section>
       </div>
 
       <ProxyRuleModal
         open={modalOpen}
         proxyPort={proxyPort}
-        initialValues={
-          editingRule
-            ? {
-                sandboxPrefix: editingRule.sandboxPrefix,
-                targetBase: editingRule.targetBase,
-              }
-            : undefined
-        }
         onCancel={() => setModalOpen(false)}
         onSubmit={onSubmit}
       />
     </div>
+  );
+}
+
+/**
+ * Allow/deny domain management card. Inline add row (input + confirm/cancel,
+ * validated with normalizeDomain) over a list of domain rows with a hover
+ * delete menu — same visual system as the rest of the panel. Domains match
+ * themselves and all their subdomains (see matchesDomain in authorize.ts).
+ * Empty state is a collapsed card (header only); the list area appears once
+ * content exists.
+ */
+function DomainListCard({
+  title,
+  description,
+  domains,
+  onChange,
+}: {
+  title: string;
+  description: string;
+  domains: string[];
+  onChange: (next: string[]) => void;
+}) {
+  const { message } = App.useApp();
+  const { t } = useTranslation();
+  const [adding, setAdding] = useState(false);
+  const [draft, setDraft] = useState("");
+
+  const submit = () => {
+    const domain = normalizeDomain(draft);
+    if (!domain) {
+      message.error(t("gateway.domainInvalid"));
+      return;
+    }
+    if (domains.some((d) => d === domain)) {
+      message.error(t("gateway.domainDuplicate"));
+      return;
+    }
+    onChange([...domains, domain].sort());
+    setDraft("");
+    setAdding(false);
+    message.success(t("gateway.domainAdded"));
+  };
+
+  return (
+    <section className="flex-none rounded-xl border border-(--ant-color-border-secondary) bg-(--ant-color-bg-container) overflow-hidden">
+      <div className="flex items-center justify-between gap-2 px-3 py-2.5 border-b border-(--ant-color-border-secondary)">
+        <div className="min-w-0">
+          <Text strong className="text-sm block">
+            {title}
+          </Text>
+          <Text type="secondary" className="text-xs!">
+            {description}
+          </Text>
+        </div>
+        <Button className="flex-none" onClick={() => setAdding(true)}>
+          {t("common.add")}
+        </Button>
+      </div>
+
+      {adding && (
+        <div className="flex items-center gap-2 px-3 py-2 border-b border-(--ant-color-border-secondary)">
+          <Input
+            autoFocus
+            allowClear
+            placeholder={t("gateway.addDomainPlaceholder")}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onPressEnter={submit}
+            className="flex-1 min-w-0"
+          />
+          <Button
+            type="text"
+            size="small"
+            className="flex-none w-6 h-6 p-0"
+            disabled={!draft.trim()}
+            icon={<CheckOutlined className="text-(--ant-color-success)" />}
+            onClick={submit}
+          />
+          <Button
+            type="text"
+            size="small"
+            className="flex-none w-6 h-6 p-0"
+            icon={<CloseOutlined className="text-(--ant-color-text-quaternary)" />}
+            onClick={() => {
+              setAdding(false);
+              setDraft("");
+            }}
+          />
+        </div>
+      )}
+
+      {domains.length > 0 &&
+        domains.map((domain) => (
+          <UnifiedListItem
+            key={domain}
+            // Hover-revealed direct delete (no three-dot menu).
+            actions={
+              <Button
+                type="text"
+                size="small"
+                className="w-5 h-5 p-0 text-xs"
+                icon={<DeleteOutlined />}
+                onClick={() => onChange(domains.filter((d) => d !== domain))}
+              />
+            }
+            title={
+              <Text ellipsis className="text-sm block" title={domain}>
+                {domain}
+              </Text>
+            }
+          />
+        ))}
+    </section>
   );
 }

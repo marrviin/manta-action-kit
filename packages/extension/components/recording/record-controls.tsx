@@ -87,7 +87,15 @@ export function RecordControls({ variant }: { variant: "menu" | "block" }) {
               />
             </Tooltip>
             <Tooltip title={t("recording.stopAndSave")}>
-              <Button type="text" size="small" danger icon={<StopIcon />} onClick={stop} />
+              {/* Keep the light-red fill constant (antd would only show it on hover). */}
+              <Button
+                type="text"
+                size="small"
+                danger
+                className="bg-(--ant-color-error-bg)!"
+                icon={<StopIcon />}
+                onClick={stop}
+              />
             </Tooltip>
           </>
         )}
@@ -132,7 +140,13 @@ export function RecordControls({ variant }: { variant: "menu" | "block" }) {
           icon={state.paused ? <RecordIcon /> : <PauseIcon />}
           onClick={togglePause}
         />
-        <Button danger icon={<StopIcon />} onClick={stop} />
+        {/* Keep the light-red fill constant (antd would only show it on hover). */}
+        <Button
+          danger
+          className="bg-(--ant-color-error-bg)!"
+          icon={<StopIcon />}
+          onClick={stop}
+        />
       </div>
     </div>
   );

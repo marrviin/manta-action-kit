@@ -50,7 +50,8 @@ export const settings = {
    * the real safety gate for the forwarding tools stays the per-call native
    * permission prompt (requiresUserInteraction), which can't be turned off.
    *
-   * Managed from the MCP side-panel tab (see components/mcp/mcp-feature.tsx) and
+   * Managed from the settings page's connector card (see
+   * components/settings/settings-feature.tsx) and
    * enforced at the RPC entry point (see lib/mcp/handlers.ts).
    */
   mcpToolEnabled: storage.defineItem<Partial<Record<RpcMethod, boolean>>>(
@@ -59,6 +60,46 @@ export const settings = {
       fallback: {},
     },
   ),
+
+  /**
+   * Sandbox allowlist domains. A gateway call to one of these hosts skips the
+   * confirmation popup entirely (auto-allow). User-managed only — there is no
+   * MCP tool that can read or mutate it. `local` area: contains browsing hints,
+   * no need to sync across devices.
+   */
+  gatewayAllowDomains: storage.defineItem<string[]>(
+    "local:gatewayAllowDomains",
+    { fallback: [] },
+  ),
+
+  /**
+   * Sandbox denylist domains. Requests to these hosts are refused before any
+   * other check. Deny wins over allow when a host matches both lists.
+   */
+  gatewayDenyDomains: storage.defineItem<string[]>(
+    "local:gatewayDenyDomains",
+    { fallback: [] },
+  ),
+
+  /**
+   * Whether every sandbox call requires the extension-side confirmation popup
+   * (default true). This is THE human-in-the-loop gate now — it replaced the
+   * MCP tool's native permission prompt, so turning it off auto-allows every
+   * non-denylisted host. Allowlist/denylist and the SSRF guard still apply.
+   */
+  gatewayConfirmRequired: storage.defineItem<boolean>(
+    "local:gatewayConfirmRequired",
+    { fallback: true },
+  ),
+
+  /**
+   * Developer mode on the settings page. Hidden by default; revealed by tapping
+   * the version tag in the about card 5 times in a row. Turning it off hides
+   * the whole card again (tap the version tag to bring it back).
+   */
+  devMode: storage.defineItem<boolean>("local:devMode", {
+    fallback: false,
+  }),
 };
 
 /**
@@ -103,13 +144,19 @@ export const mcpConnStatus = storage.defineItem<McpConnStatus>(
 
 /**
  * Which feature tab the side panel home page should select when it next opens.
- * Set by the popup (e.g. picking "MCP") right before calling `sidePanel.open`,
+ * Set by the popup (e.g. picking "Actions") right before calling `sidePanel.open`,
  * then consumed and cleared by the home page on mount. `null` means "no request —
  * keep the default tab". Session-scoped so it survives SW sleep but not restart.
  */
-export type SidePanelTab = "api-recording" | "action" | "gateway" | "mcp";
+export type SidePanelTab = "api-recording" | "action" | "gateway";
 
-export const sidePanelTab = storage.defineItem<SidePanelTab | null>(
+/**
+ * One-shot open request for the side panel home view: a feature tab, or the
+ * gear-opened "settings" view (transient — never persisted as the last tab).
+ */
+export type SidePanelTabRequest = SidePanelTab | "settings";
+
+export const sidePanelTab = storage.defineItem<SidePanelTabRequest | null>(
   "session:sidePanelTab",
   {
     fallback: null,

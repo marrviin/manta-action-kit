@@ -14,5 +14,28 @@
   "actionTitle": {
     "message": "Manta Action Kit",
     "description": "Toolbar action tooltip."
+  },
+  "notifyRecordDoneTitle": {
+    "message": "Recording saved",
+    "description": "System notification title when a recording session is saved."
+  },
+  "notifyRecordDoneMessage": {
+    "message": "Captured $COUNT$ API calls",
+    "description": "System notification body with the captured call count.",
+    "placeholders": {
+      "count": { "content": "$1" }
+    }
+  },
+  "notifyConfirmTitle": {
+    "message": "Sandbox request confirmation",
+    "description": "System notification title when a sandbox call awaits confirmation."
+  },
+  "notifyConfirmMessage": {
+    "message": "$METHOD$ $HOST$ is waiting for your confirmation",
+    "description": "System notification body with the request method and target host.",
+    "placeholders": {
+      "method": { "content": "$1" },
+      "host": { "content": "$2" }
+    }
   }
 }

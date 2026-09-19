@@ -66,6 +66,31 @@ body {
   height: 100%;
 }
 
+/* Pin antd Input heights to the control-height token, matching Button.
+ * Button declares `height: controlHeight` directly, but Input derives its
+ * height from padding + a unitless line-height (1.5714… × 14px = 22px). Under
+ * browser zoom or a fractional device-pixel ratio the two snap to physical
+ * pixels independently, so an input next to a button can render sub-pixel
+ * shorter (e.g. 31.24 vs 31.99). An explicit height makes every control snap
+ * the same way and line up exactly at any zoom level.
+ * `input.` (not textarea) keeps TextArea's auto height intact; the inner
+ * <input> inside an affix wrapper never carries `-outlined`, so wrappers and
+ * standalone inputs are covered without double-constraining the inner one. */
+input.ant-input-outlined,
+.ant-input-affix-wrapper {
+  height: var(--ant-control-height);
+}
+
+input.ant-input-outlined.ant-input-sm,
+.ant-input-affix-wrapper-sm {
+  height: var(--ant-control-height-sm);
+}
+
+input.ant-input-outlined.ant-input-lg,
+.ant-input-affix-wrapper-lg {
+  height: var(--ant-control-height-lg);
+}
+
 /* Recording detail — align the call chain nodes with the Timeline rail.
  * antd v6's Timeline is built on Steps: each item is a flex row of
  *   [icon(dot)] [section(content)] with a [rail] connector, and the dot is
@@ -109,6 +134,8 @@ body {
   height: 48px;
   align-items: center;
   border-bottom: 1px solid var(--ant-color-border);
+  /* No accidental text selection when clicking tabs. */
+  user-select: none;
 }
 
 .manta-action-kit-home-tabs.ant-tabs .ant-tabs-nav-list {
@@ -143,7 +170,6 @@ body {
  * active tab is bolded, so tab widths never change on switch. */
 .manta-action-kit-home-tabs .manta-home-tab-ghost {
   visibility: hidden;
-  font-weight: 700;
 }
 
 .manta-action-kit-home-tabs .manta-home-tab-view {
@@ -152,9 +178,6 @@ body {
   white-space: nowrap;
 }
 
-.manta-action-kit-home-tabs .ant-tabs-tab-active .manta-home-tab-view {
-  font-weight: 700;
-}
 
 /* Bottom tab bar — liquid-glass Segmented pill (`shape="round"` gives root,
  * items and thumb the full capsule radius; the CSS below only deals with the
@@ -178,6 +201,8 @@ body {
   box-shadow:
     0 8px 24px color-mix(in srgb, var(--ant-color-text) 12%, transparent),
     inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  /* No accidental text selection when clicking segments. */
+  user-select: none;
 }
 
 /* The active fill is relayed between two elements: during the slide motion the
@@ -198,4 +223,40 @@ body {
   box-shadow:
     0 2px 8px color-mix(in srgb, var(--ant-color-text) 14%, transparent),
     inset 0 1px 0 rgba(255, 255, 255, 0.45) !important;
+}
+
+/* Feature intro card (action library) — brand-tinted hero card, deliberately
+ * NOT an antd Alert: a soft primary-tinted gradient fading into the page
+ * background, hairline brand border, specular top-edge inset highlight and a
+ * soft brand-colored drop shadow — same design language as the glass bottom
+ * tab bar. Pair with `relative overflow-hidden rounded-xl` in the JSX; ::after
+ * paints a decorative radial glow in the top corner. All colors read from
+ * antd's CSS vars so the card tracks the theme. */
+.manta-action-kit-intro-card {
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--ant-color-primary-bg) 85%, transparent),
+    color-mix(in srgb, var(--ant-color-bg-container) 97%, transparent) 60%
+  );
+  border: 1px solid
+    color-mix(in srgb, var(--ant-color-primary-border) 50%, transparent);
+  box-shadow:
+    0 6px 20px color-mix(in srgb, var(--ant-color-primary) 9%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+.manta-action-kit-intro-card::after {
+  content: '';
+  position: absolute;
+  top: -48px;
+  inset-inline-end: -32px;
+  width: 128px;
+  height: 128px;
+  border-radius: 9999px;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--ant-color-primary) 16%, transparent),
+    transparent 70%
+  );
+  pointer-events: none;
 }

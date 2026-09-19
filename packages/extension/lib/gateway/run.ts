@@ -8,22 +8,23 @@
  *     → write an audit-log row (cookie values never stored)
  *     → return the sanitized response to the agent.
  *
- * The human-in-the-loop gate lives on the MCP/agent side as the tool's NATIVE
- * permission prompt: each proxy_fetch/proxy_sse tool carries
- * `_meta["anthropic/requiresUserInteraction"]`, so Claude Code forces a native
- * approval prompt before the tool runs — on every call, even in auto/bypass modes.
- * Reaching the forward RPC therefore means the user already approved. There is no
- * separate confirmation prompt here and no whitelist admission check: approving the
- * native prompt IS the authorization. The per-tool kill switch (handlers.ts) is the
- * only extension-side gate.
+ * The human-in-the-loop gate lives HERE, extension-side (see confirm.ts): every
+ * call passes the sandbox domain policy — denylist refusal → allowlist
+ * auto-allow → (default-on) confirmation popup the user must approve. This
+ * replaced the MCP tool's native `requiresUserInteraction` prompt so the gate
+ * covers the script-driven proxy path too and doesn't depend on the MCP client.
+ * The per-tool kill switch (handlers.ts) and the SSRF guard remain as
+ * independent layers on top.
  *
  * Every terminal outcome (blocked / errored / ok) is logged exactly once.
  *
  * Runs in the background service worker (invoked from the RPC handlers).
  */
 import { addGatewayLog } from '@/lib/db';
+import { settings } from '@/lib/storage';
 import { uuid, originOf } from '@/lib/utils';
-import { parseHttpUrl, isBlockedHost } from './authorize';
+import { parseHttpUrl, isBlockedHost, classifyHost } from './authorize';
+import { requestGatewayConfirmation } from './confirm';
 import { forwardWithCookies } from './dnr';
 import { createSseParser, type SseEvent } from '@/lib/sse-parse';
 import {
@@ -42,10 +43,20 @@ import {
 
 /**
  * Which entrypoint invoked the gateway:
- *  - 'agent': the proxy_fetch/proxy_sse MCP tool (gated by a per-call native prompt).
- *  - 'rule': the script-driven proxy, authorized by an enabled proxy rule.
+ *  - 'agent': the proxy_fetch/proxy_sse MCP tool or an action replay step.
+ *  - 'rule': the script-driven proxy, addressed by an enabled proxy rule.
  */
 export type GatewayVia = 'agent' | 'rule';
+
+/**
+ * Host-level confirmer, injected by callers that batch several calls behind one
+ * user decision (action replay: one popup per distinct host per run instead of
+ * one per step). Returns true to let calls to `host` proceed.
+ */
+export type ConfirmHostFn = (
+  host: string,
+  req: GatewayRequest,
+) => Promise<boolean>;
 
 /** Request headers we never forward from the agent — credentials must come from us. */
 const STRIPPED_REQUEST_HEADERS = new Set(['cookie', 'authorization']);
@@ -99,6 +110,11 @@ const blockBadUrl = (url: string) => `Invalid URL: ${url} (only http/https is su
 const blockPrivateHost = (host: string) =>
   `Refused: ${host} is a loopback/private/link-local address. The gateway injects ` +
   `your cookies, so it never forwards to local or internal hosts (SSRF guard).`;
+const blockDenyHost = (host: string) =>
+  `Refused: ${host} is on the sandbox denylist. Remove it from the deny list in ` +
+  `the extension's sandbox settings to allow access.`;
+const deniedByUser = (url: string) =>
+  `Denied: the user declined the confirmation popup for ${url}. Do not retry the same call.`;
 
 /**
  * Shared preamble for a forwarding call. Validates the URL (defense in depth —
@@ -112,12 +128,13 @@ async function prepareCall(
   req: GatewayRequest,
   kind: 'fetch' | 'sse',
   via: GatewayVia,
+  confirmHost?: ConfirmHostFn,
 ): Promise<{
   log: GatewayLog;
   reqHeaders: Record<string, string>;
   finish: () => Promise<void>;
 }> {
-  const { log, finish, reqHeaders } = startLog(req, kind);
+  const { log, finish, reqHeaders } = startLog(req, kind, via);
 
   const parsed = parseHttpUrl(req.url);
   if (!parsed) {
@@ -128,25 +145,56 @@ async function prepareCall(
 
   // SSRF guard: never forward cookie-injected requests to loopback/private/
   // link-local hosts (localhost, 10.x, 192.168.x, 169.254.169.254 metadata, …).
-  // Enforced for BOTH the agent and rule paths, since both reach here.
+  // Enforced for BOTH the agent and rule paths, since both reach here. Checked
+  // before the domain policy — neither list can bypass it.
   if (isBlockedHost(parsed.host)) {
     log.decision = 'blocked';
     await finish();
     throw new GatewayRefusedError(blockPrivateHost(parsed.host), 'blocked');
   }
 
-  if (via === 'rule') {
-    // Script-driven path: authorization is the existence of the enabled proxy rule
-    // (checked before we got here). No agent, no native prompt — record it as an
-    // auto-allowed rule call.
+  // Sandbox domain policy: denylist refusal → allowlist auto-allow → (default-on)
+  // extension-side confirmation popup (confirm.ts). This is THE human gate, for
+  // both the agent and script paths — the MCP native prompt is gone.
+  const [allowDomains, denyDomains, confirmRequired] = await Promise.all([
+    settings.gatewayAllowDomains.getValue(),
+    settings.gatewayDenyDomains.getValue(),
+    settings.gatewayConfirmRequired.getValue(),
+  ]);
+  const verdict = classifyHost(parsed.host, allowDomains, denyDomains);
+  if (verdict === 'deny') {
+    log.decision = 'blocked';
+    log.authSource = 'denylist';
+    await finish();
+    throw new GatewayRefusedError(blockDenyHost(parsed.host), 'blocked');
+  }
+  if (verdict === 'allow') {
     log.decision = 'auto';
-    log.authSource = 'rule';
+    log.authSource = 'allowlist';
     return { log, reqHeaders, finish };
   }
-
-  // Agent path: reaching here means the user approved the native prompt → authorized.
+  if (!confirmRequired) {
+    // The user switched confirmation off: auto-allow, attributed to the path so
+    // the audit log still shows how the call was authorized.
+    log.decision = 'auto';
+    log.authSource = via;
+    return { log, reqHeaders, finish };
+  }
+  const approved = await (confirmHost
+    ? confirmHost(parsed.host, req)
+    : requestGatewayConfirmation({
+        method: req.method,
+        url: req.url,
+        bodyPreview: capBody(req.body ?? null).body,
+        via,
+      }));
+  if (!approved) {
+    log.decision = 'blocked';
+    await finish();
+    throw new GatewayRefusedError(deniedByUser(req.url), 'blocked');
+  }
   log.decision = 'allowed';
-  log.authSource = 'agent';
+  log.authSource = 'prompt';
   return { log, reqHeaders, finish };
 }
 
@@ -154,6 +202,7 @@ async function prepareCall(
 function startLog(
   req: GatewayRequest,
   kind: 'fetch' | 'sse',
+  via: GatewayVia,
 ): { log: GatewayLog; finish: () => Promise<void>; reqHeaders: Record<string, string> } {
   const at = Date.now();
   const parsed = parseHttpUrl(req.url);
@@ -168,6 +217,7 @@ function startLog(
     host: parsed?.host ?? '',
     decision: 'blocked',
     authSource: null,
+    via,
     injectedCookieNames: [],
     cookieDomain: '',
     reqHeaders,
@@ -195,9 +245,14 @@ function startLog(
  */
 export async function runGatewayFetch(
   req: GatewayRequest,
-  opts: { via?: GatewayVia } = {},
+  opts: { via?: GatewayVia; confirmHost?: ConfirmHostFn } = {},
 ): Promise<GatewayResponse> {
-  const { log, reqHeaders, finish } = await prepareCall(req, 'fetch', opts.via ?? 'agent');
+  const { log, reqHeaders, finish } = await prepareCall(
+    req,
+    'fetch',
+    opts.via ?? 'agent',
+    opts.confirmHost,
+  );
 
   try {
     const { res, injectedCookieNames, cookieDomain } = await forwardWithCookies({
@@ -247,8 +302,14 @@ export async function runGatewayFetch(
  */
 export async function runGatewaySse(
   req: GatewaySseRequest,
+  opts: { via?: GatewayVia; confirmHost?: ConfirmHostFn } = {},
 ): Promise<GatewaySseResponse> {
-  const { log, reqHeaders, finish } = await prepareCall(req, 'sse', 'agent');
+  const { log, reqHeaders, finish } = await prepareCall(
+    req,
+    'sse',
+    opts.via ?? 'agent',
+    opts.confirmHost,
+  );
 
   // Default the Accept header for SSE if the agent didn't set one.
   const hasAccept = Object.keys(reqHeaders).some((k) => k.toLowerCase() === 'accept');

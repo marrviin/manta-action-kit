@@ -29,6 +29,7 @@ export const en = {
     recording: "Recording",
     apiRecording: "API Recording",
     actions: "Actions",
+    gateway: "Secure Sandbox",
     settings: "Settings",
     noActiveTab: "Unable to get the current tab",
     unsupportedPage:
@@ -38,7 +39,6 @@ export const en = {
     apiRecording: "API Recording",
     actions: "Actions",
     gateway: "Secure Sandbox",
-    mcp: "MCP",
     settings: "Settings",
   },
   recording: {
@@ -53,6 +53,9 @@ export const en = {
     pauseRecording: "Pause recording",
     resumeRecording: "Resume recording",
     stopAndSave: "Stop and save",
+    filterRulesTitle: "Filter rules",
+    filterRulesDesc:
+      "Requests matching these rules are excluded from recording",
     addFilterRule: "Add filter rule",
     urlPattern: "URL pattern",
     urlPatternTip:
@@ -60,6 +63,7 @@ export const en = {
     urlPatternRequired: "Please enter a URL pattern",
     urlPatternPlaceholder: "e.g. */analytics*",
     ruleAdded: "Filter rule added",
+    ruleDuplicate: "This filter rule already exists",
     deleteRuleTitle: "Delete this filter rule",
     deleteRuleConfirm: 'Delete "{{pattern}}"?',
     searchRule: "Search filter rule",
@@ -73,6 +77,9 @@ export const en = {
     deleteRecordingConfirm: 'Delete "{{name}}"?',
   },
   action: {
+    introTitle: "Distill recordings into reusable actions",
+    introDesc:
+      "Your Agent distills recordings into actions and replays them through the Secure Sandbox with your login state — each run needs your confirmation. This page is for browsing and management only.",
     loadFailed: "Failed to load actions",
     searchPlaceholder: "Search action name or description",
     noMatch: "No matching action found",
@@ -166,13 +173,9 @@ export const en = {
       "Stream Response · {{status}} {{statusText}} · {{count}} events",
     error: "Error",
     createdByAgent: "AI",
-    createdByUser: "User",
     addProxyRule: "Add proxy rule",
-    editProxyRule: "Edit proxy rule",
     deleteProxyRuleTitle: "Delete this proxy rule",
     deleteProxyRuleConfirm: 'Delete "{{prefix}} → {{target}}"?',
-    searchRule: "Search prefix or target",
-    noMatchRule: "No matching proxy rule found",
     pathPrefix: "Path Prefix",
     pathPrefixRequired: "Please enter a path prefix",
     pathPrefixPlaceholder: "e.g. /api",
@@ -180,9 +183,7 @@ export const en = {
     targetAddressRequired: "Please enter a target address",
     ruleSaved: "Proxy rule saved",
     ruleAdded: "Proxy rule added",
-    saveFailed: "Save failed",
     addFailed: "Add failed",
-    editRule: "Edit rule",
     // Plain-text export file labels.
     exportHeaderTitle: "Secure Sandbox Audit Log Export",
     exportHeaderTime: "Exported at",
@@ -201,26 +202,47 @@ export const en = {
     logError: "Error",
     curlCookieComment:
       "Injected cookies (values not stored, names only): {{names}} ({{domain}})",
+    authAllowlist: "Allowed domain",
+    authDenylist: "Denied domain",
+    authPrompt: "User confirmed",
+    confirmRequiredTitle: "Per-call confirmation",
+    confirmRequiredDesc:
+      "Require confirmation for each request forwarded by the sandbox. Turn off to allow automatically.",
+    allowDomainsTitle: "Allowed domains",
+    allowDomainsDesc:
+      "Requests matching these domains skip confirmation and are allowed directly.",
+    denyDomainsTitle: "Denied domains",
+    denyDomainsDesc: "Requests matching these domains are rejected.",
+    addDomainPlaceholder: "e.g. api.example.com",
+    domainAdded: "Domain added",
+    domainInvalid: "Enter a valid domain, e.g. api.example.com",
+    domainDuplicate: "This domain is already in the list",
+    proxyRulesTitle: "Proxy rules",
+    proxyRulesDesc:
+      "Map a sandbox prefix to a target address, allowing scripts to call it with your login state.",
+    confirmTitle: "Sandbox request confirmation",
+    confirmDesc:
+      "This request is forwarded via the sandbox proxy with your login session attached. Cookies are injected within the extension and never exposed to the AI. Confirm to allow this request.",
+    confirmUrl: "Request URL",
+    confirmBodyPreview: "Request body preview",
+    confirmAllow: "Allow",
+    confirmDeny: "Deny",
+    confirmCountdown: "Auto-deny in {{s}}s",
+    confirmExpired:
+      "This confirmation has expired (timed out or the background restarted). Ask the caller to retry.",
+    confirmAddAllowDomain:
+      "Add {{host}} to allowed domains; future requests skip confirmation",
+    confirmDecisionFailed: "Failed to submit: {{error}}",
+    confirmSourceMcp: "MCP call",
+    confirmSourceScript: "Script proxy",
   },
   mcp: {
     connected: "Connected",
     connecting: "Connecting",
     disconnected: "Disconnected",
-    introTitle: "Connect your AI Agent via the MCP protocol",
-    introDesc:
-      "Manta Action Kit MCP opens the Chrome extension's capabilities to your Agent:",
-    introBullet1:
-      "Query and inspect locally recorded API data (list / call chain detail / single request & response)",
-    introBullet2:
-      'Forward authorized APIs reusing your browser login via the "Secure Sandbox" — cookies are never exposed to the Agent',
-    introFooter:
-      "Copy the install prompt below and send it to your Agent to auto-write the MCP config and connect.",
     copyInstallPrompt: "Copy install prompt",
     installPromptCopied:
       "Install instructions copied — paste them to your Agent",
-    status: "Status",
-    port: "Bridge Port",
-    proxyPort: "Secure Sandbox Port",
     tools: "Tools",
     toolEnabled: 'Enabled "{{label}}"',
     toolDisabled: 'Disabled "{{label}}"',
@@ -300,6 +322,18 @@ export const en = {
     language: "Language",
     languageChinese: "中文",
     languageEnglish: "English",
+    connectorTitle: "Connector",
+    connectorDesc: "Connection status and ports of the local MCP service",
+    mcpPackageDesc:
+      "Local MCP service paired with this extension: speaks stdio to AI agents and bridges over a local WebSocket to read recordings, run actions, and forward requests through the sandbox proxy",
+    confirmTestTitle: "Confirmation test",
+    confirmTestDesc: "Trigger the sandbox confirm dialog with a mock request to verify its UI; nothing is forwarded",
+    confirmTestButton: "Test",
+    confirmTestAllowed: "Test request allowed",
+    confirmTestDenied: "Test request denied",
+    devModeTitle: "Developer mode",
+    devModeDesc: "Internal debugging tools",
+    devModeUnlockToast: "Developer mode unlocked",
   },
 } as const;
 

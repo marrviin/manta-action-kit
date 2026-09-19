@@ -23,6 +23,7 @@ import {
   runGatewaySse,
   GatewayRefusedError,
 } from "@/lib/gateway/run";
+import { requestGatewayConfirmation } from "@/lib/gateway/confirm";
 import type {
   GatewayRequest,
   GatewayResponse,
@@ -430,6 +431,24 @@ export async function runAction(
   };
   const ctx: TemplateContext = { params, stepOutputs: {} };
 
+  // One user decision per distinct host per run: each step hands the gateway a
+  // confirmHost (instead of letting it pop up per call), so the first step
+  // reaching a new host triggers ONE confirmation popup that covers every later
+  // step to that host. Denylist/allowlist/SSRF are still enforced per call in
+  // prepareCall — this hook is only consulted for hosts needing confirmation.
+  const approvedHosts = new Set<string>();
+  const confirmHost = async (host: string, req: GatewayRequest) => {
+    if (approvedHosts.has(host)) return true;
+    const ok = await requestGatewayConfirmation({
+      method: req.method,
+      url: req.url,
+      bodyPreview: req.body ?? null,
+      via: "agent",
+    });
+    if (ok) approvedHosts.add(host);
+    return ok;
+  };
+
   for (let i = 0; i < action.steps.length; i++) {
     const step: ActionStep = action.steps[i]!;
     const recorded = callById.get(step.callId)!;
@@ -451,8 +470,8 @@ export async function runAction(
 
       const res =
         step.kind === "sse"
-          ? await runGatewaySse(req as GatewaySseRequest)
-          : await runGatewayFetch(req);
+          ? await runGatewaySse(req as GatewaySseRequest, { confirmHost })
+          : await runGatewayFetch(req, { confirmHost });
 
       const outputs = extractOutputs(step.outputs, res);
       ctx.stepOutputs[i] = outputs;

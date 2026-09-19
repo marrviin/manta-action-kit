@@ -420,9 +420,10 @@ server.registerTool(
       "You provide only method/url and optionally headers/body — DO NOT send any " +
       "credentials (no Cookie, no Authorization); the extension injects the user's " +
       "browser cookies for the target site at forward time, so you never see them. " +
-      "⚠️ EVERY call requires the user to approve a native confirmation prompt before it " +
-      "runs (the prompt shows the method and url below — the user should verify them). " +
-      "Approving is also what authorizes the endpoint. " +
+      "⚠️ EVERY call passes the extension's sandbox gate: the user must approve a " +
+      "confirmation popup in the browser (unless the target domain is on the user's " +
+      "allowlist). If the call fails with a user-declined/timeout error, do NOT retry " +
+      "the same call. " +
       "Returns the sanitized response (Set-Cookie stripped; large bodies truncated). " +
       "The response includes injectedCookieCount (a COUNT, never names/values): if it " +
       "is 0 and you get a 401/403, the user is NOT logged in to that site — tell them " +
@@ -441,19 +442,16 @@ server.registerTool(
         ),
       body: z.string().optional().describe("Optional request body as text."),
     },
-    // Force a native permission prompt on EVERY call — even in auto/acceptEdits/
-    // bypassPermissions modes, and even if an allow rule matches. This is the
-    // human-in-the-loop gate (see CLAUDE.md / the gateway plan). Requires Claude
-    // Code v2.1.199+.
-    _meta: {
-      "anthropic/requiresUserInteraction": true,
-    },
+    // NO requiresUserInteraction meta here: the human gate lives extension-side
+    // (a confirmation popup per call, run by lib/gateway/confirm.ts in the
+    // extension background). That gate covers the script-driven proxy path too
+    // and doesn't depend on the MCP client honoring client-side prompt metas.
   },
   async ({ method, url, headers, body }) => {
     try {
       const req = { method, url, headers, body };
-      // The native confirmation prompt already gated this call (requiresUserInteraction),
-      // so reaching here means the user approved. Forward straight through.
+      // Authorization happens inside the extension (sandbox domain policy +
+      // confirmation popup) — forward straight through.
       const res = (await call(
         "proxy_fetch",
         { req },
@@ -486,7 +484,8 @@ server.registerTool(
       "Also includes injectedCookieCount (a COUNT, never names/values): 0 alongside a " +
       "401/403 status means the user is not logged in to that site — surface that rather " +
       "than retrying. " +
-      "⚠️ EVERY call requires the user to approve a native confirmation prompt before it runs.",
+      "⚠️ EVERY call passes the extension's sandbox gate: the user must approve a " +
+      "confirmation popup in the browser (unless the target domain is on the user's allowlist).",
     inputSchema: {
       method: z
         .enum(["GET", "POST", "PUT", "PATCH", "DELETE"])
@@ -512,15 +511,13 @@ server.registerTool(
           'Stop once an event\'s data equals this exact string (e.g. "[DONE]").',
         ),
     },
-    // Force a native permission prompt on every call (see proxy_fetch).
-    _meta: {
-      "anthropic/requiresUserInteraction": true,
-    },
+    // NO requiresUserInteraction meta — extension-side confirmation gate (see proxy_fetch).
   },
   async ({ method, url, headers, body, stopOnEventName, stopOnData }) => {
     try {
       const req = { method, url, headers, body, stopOnEventName, stopOnData };
-      // Gated by the native confirmation prompt (requiresUserInteraction) — forward.
+      // Authorization happens inside the extension (sandbox domain policy +
+      // confirmation popup) — forward straight through.
       const res = (await call(
         "proxy_sse",
         { req },
@@ -873,8 +870,9 @@ server.registerTool(
       "for running a recorded flow — the steps are orchestrated for you (same gateway channel as " +
       "proxy_fetch, with dependencies resolved and params templated in); do not re-implement a " +
       "recording's call chain by hand via proxy_fetch. " +
-      "\u26A0\uFE0F Requires the user to approve a native confirmation prompt showing the " +
-      "action\u2019s name and the resolved params — the user should verify them before approving.",
+      "\u26A0\uFE0F The run passes the extension's sandbox gate: the user confirms each target " +
+      "host via a confirmation popup in the browser (once per host per run, unless the host is " +
+      "on the user's allowlist); a denied host aborts the run with a refused step.",
     inputSchema: {
       id: z
         .string()
@@ -890,11 +888,8 @@ server.registerTool(
             'value starting with "[" or "{" is parsed as JSON — pass arrays/objects as JSON text.',
         ),
     },
-    // Like proxy_fetch/proxy_sse: every run sends authenticated requests as the user,
-    // so the native confirmation prompt gates it (shows the action's name + params).
-    _meta: {
-      "anthropic/requiresUserInteraction": true,
-    },
+    // NO requiresUserInteraction meta — the run is gated per-host by the
+    // extension-side confirmation popup (see proxy_fetch).
   },
   async ({ id, params: runtimeParams }) => {
     try {

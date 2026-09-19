@@ -14,5 +14,28 @@
   "actionTitle": {
     "message": "Manta Action Kit",
     "description": "Toolbar action tooltip."
+  },
+  "notifyRecordDoneTitle": {
+    "message": "录制已保存",
+    "description": "System notification title when a recording session is saved."
+  },
+  "notifyRecordDoneMessage": {
+    "message": "已捕获 $COUNT$ 个 API 调用",
+    "description": "System notification body with the captured call count.",
+    "placeholders": {
+      "count": { "content": "$1" }
+    }
+  },
+  "notifyConfirmTitle": {
+    "message": "安全沙箱请求确认",
+    "description": "System notification title when a sandbox call awaits confirmation."
+  },
+  "notifyConfirmMessage": {
+    "message": "$METHOD$ $HOST$ 请求等待你的确认",
+    "description": "System notification body with the request method and target host.",
+    "placeholders": {
+      "method": { "content": "$1" },
+      "host": { "content": "$2" }
+    }
   }
 }

@@ -1,19 +1,18 @@
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import {
   App,
   Button,
   Empty,
-  Form,
   Input,
-  Modal,
-  Space,
   Spin,
-  Switch,
-  Tag,
-  Tooltip,
   Typography,
 } from "antd";
-import { InfoCircleOutlined, SearchOutlined } from "@ant-design/icons";
+import {
+  CheckOutlined,
+  CloseOutlined,
+  DeleteOutlined,
+  SearchOutlined,
+} from "@ant-design/icons";
 import { useTranslation } from "react-i18next";
 import { RecordingList } from "./recording-list";
 import { RecordControls } from "./record-controls";
@@ -95,180 +94,105 @@ function RecordsPanel({ onOpen }: { onOpen: (recordingId: string) => void }) {
   );
 }
 
-/** Add-rule modal: a single wildcard URL pattern. */
-function FilterRuleModal({
-  open,
-  onCancel,
-  onSubmit,
-}: {
-  open: boolean;
-  onCancel: () => void;
-  onSubmit: (pattern: string) => Promise<void>;
-}) {
-  const [form] = Form.useForm<{ pattern: string }>();
-  const [submitting, setSubmitting] = useState(false);
-  const { t } = useTranslation();
-
-  const handleOk = async () => {
-    let values: { pattern: string };
-    try {
-      values = await form.validateFields();
-    } catch {
-      return;
-    }
-    setSubmitting(true);
-    try {
-      await onSubmit(values.pattern.trim());
-      form.resetFields();
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <Modal
-      title={t("recording.addFilterRule")}
-      open={open}
-      centered
-      onCancel={onCancel}
-      onOk={handleOk}
-      okText={t("common.add")}
-      cancelText={t("common.cancel")}
-      confirmLoading={submitting}
-      destroyOnClose
-    >
-      <Form
-        form={form}
-        layout="vertical"
-        requiredMark={false}
-        className="mt-6!"
-      >
-        <Form.Item
-          label={
-            <span className="inline-flex items-center gap-1">
-              {t("recording.urlPattern")}
-              <Tooltip title={t("recording.urlPatternTip")}>
-                <InfoCircleOutlined className="text-(--ant-color-text-tertiary)" />
-              </Tooltip>
-            </span>
-          }
-          name="pattern"
-          rules={[
-            { required: true, message: t("recording.urlPatternRequired") },
-          ]}
-        >
-          <Input placeholder={t("recording.urlPatternPlaceholder")} />
-        </Form.Item>
-      </Form>
-    </Modal>
-  );
-}
-
-/** The filter-rules panel: a URL blacklist. */
+/**
+ * The filter-rules panel: a URL blacklist, presented as a card mirroring the
+ * gateway's deny-domains card — header (title + description + add button that
+ * expands an inline add row), then one row per rule with a hover delete menu.
+ * Empty state is a collapsed card (header only).
+ */
 function FilterRulesPanel() {
   const { message } = App.useApp();
   const { t } = useTranslation();
-  const { rules, loading, addRule, updateRule, removeRule } =
-    useRecordingFilterRules();
-  const [modalOpen, setModalOpen] = useState(false);
-  // Search box (raw input) + its debounced value used for filtering.
-  const [search, setSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const { rules, loading, addRule, removeRule } = useRecordingFilterRules();
+  const [adding, setAdding] = useState(false);
+  const [draft, setDraft] = useState("");
 
-  // Debounce the search input (300ms) to avoid filtering on every keystroke.
-  useEffect(() => {
-    const timer = setTimeout(
-      () => setDebouncedSearch(search.trim().toLowerCase()),
-      300,
-    );
-    return () => clearTimeout(timer);
-  }, [search]);
-
-  const filteredRules = useMemo(() => {
-    if (!debouncedSearch) return rules;
-    return rules.filter((rule) =>
-      rule.pattern.toLowerCase().includes(debouncedSearch),
-    );
-  }, [rules, debouncedSearch]);
-
-  const onSubmit = async (pattern: string) => {
+  const submit = async () => {
+    const pattern = draft.trim();
     if (!pattern) return;
+    if (rules.some((rule) => rule.pattern === pattern)) {
+      message.error(t("recording.ruleDuplicate"));
+      return;
+    }
     await addRule(pattern);
     message.success(t("recording.ruleAdded"));
-    setModalOpen(false);
+    setDraft("");
+    setAdding(false);
   };
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex-none flex items-center gap-2 px-3 py-2.5 border-b border-(--ant-color-border-secondary)">
-        <Input
-          allowClear
-          prefix={<SearchOutlined className="text-(--ant-color-text-quaternary)" />}
-          placeholder={t("recording.searchRule")}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="flex-1 min-w-0"
-        />
-        <Button type="primary" className="flex-none" onClick={() => setModalOpen(true)}>
-          {t("recording.addFilterRule")}
-        </Button>
-      </div>
-      <div className="flex-1 min-h-0 overflow-auto pb-14">
+    <div className="flex-1 min-h-0 overflow-auto pb-14 flex flex-col gap-3 p-3">
+      <section className="flex-none rounded-xl border border-(--ant-color-border-secondary) bg-(--ant-color-bg-container) overflow-hidden">
+        {/* Header: title + description + add button (expands the inline add row) */}
+        <div className="flex items-center justify-between gap-2 px-3 py-2.5 border-b border-(--ant-color-border-secondary)">
+          <div className="min-w-0">
+            <Text strong className="text-sm block">
+              {t("recording.filterRulesTitle")}
+            </Text>
+            <Text type="secondary" className="text-xs!">
+              {t("recording.filterRulesDesc")}
+            </Text>
+          </div>
+          <Button className="flex-none" onClick={() => setAdding(true)}>
+            {t("common.add")}
+          </Button>
+        </div>
+
+        {adding && (
+          <div className="flex items-center gap-2 px-3 py-2 border-b border-(--ant-color-border-secondary)">
+            <Input
+              autoFocus
+              allowClear
+              placeholder={t("recording.urlPatternPlaceholder")}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onPressEnter={() => void submit()}
+              className="flex-1 min-w-0"
+            />
+            <Button
+              type="text"
+              size="small"
+              className="flex-none w-6 h-6 p-0"
+              disabled={!draft.trim()}
+              icon={<CheckOutlined className="text-(--ant-color-success)" />}
+              onClick={() => void submit()}
+            />
+            <Button
+              type="text"
+              size="small"
+              className="flex-none w-6 h-6 p-0"
+              icon={<CloseOutlined className="text-(--ant-color-text-quaternary)" />}
+              onClick={() => {
+                setAdding(false);
+                setDraft("");
+              }}
+            />
+          </div>
+        )}
+
         {loading ? (
           <div className="p-8 text-center">
             <Spin />
           </div>
-        ) : rules.length === 0 ? (
-          <div className="h-full flex items-center justify-center">
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={false} />
-          </div>
-        ) : filteredRules.length === 0 ? (
-          <div className="h-full flex items-center justify-center">
-            <Empty
-              image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description={t("recording.noMatchRule")}
-            />
-          </div>
         ) : (
-          <div>
-            {filteredRules.map((rule) => (
-              <FilterRuleRow
-                key={rule.id}
-                rule={rule}
-                onToggle={async (v) => {
-                  try {
-                    await updateRule(rule.id, { enabled: v });
-                  } catch (err) {
-                    message.error(
-                      err instanceof Error
-                        ? err.message
-                        : t("common.updateFailed"),
-                    );
-                  }
-                }}
-                onRemove={() => removeRule(rule.id)}
-              />
-            ))}
-          </div>
+          rules.map((rule) => (
+            <FilterRuleRow
+              key={rule.id}
+              rule={rule}
+              onRemove={() => removeRule(rule.id)}
+            />
+          ))
         )}
-      </div>
-
-      <FilterRuleModal
-        open={modalOpen}
-        onCancel={() => setModalOpen(false)}
-        onSubmit={onSubmit}
-      />
+      </section>
     </div>
   );
 }
 
 function FilterRuleRow({
   rule,
-  onToggle,
   onRemove,
 }: {
   rule: RecordingFilterRule;
-  onToggle: (enabled: boolean) => void;
   onRemove: () => void;
 }) {
   const { modal } = App.useApp();
@@ -288,28 +212,20 @@ function FilterRuleRow({
 
   return (
     <UnifiedListItem
-      menu={[
-        {
-          key: "delete",
-          label: t("common.delete"),
-          danger: true,
-          onClick: confirmDelete,
-        },
-      ]}
+      actions={
+        <Button
+          type="text"
+          size="small"
+          className="w-5 h-5 p-0 text-sm"
+          icon={<DeleteOutlined />}
+          onClick={confirmDelete}
+        />
+      }
       title={
         <Text ellipsis className="text-sm block" title={rule.pattern}>
           {rule.pattern}
         </Text>
       }
-      status={
-        <Space size={6}>
-          <Tag className="me-0 text-[10px]! font-normal! rounded" color="volcano">
-            {t("recording.blacklist")}
-          </Tag>
-          <Switch size="small" checked={rule.enabled} onChange={onToggle} />
-        </Space>
-      }
-      timestamp={rule.createdAt}
     />
   );
 }

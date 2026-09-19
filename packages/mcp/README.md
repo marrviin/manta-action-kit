@@ -7,6 +7,16 @@ extension's recorded API calls to an AI agent as MCP tools, and provides a
 cookie-injecting gateway so scripts/agents can call authenticated APIs without
 ever seeing the user's credentials.
 
+## Requirements
+
+This server is only a bridge — it has no data of its own. It requires the
+**Manta Action Kit** Chrome extension, which records the API calls, stores them
+in IndexedDB, and injects the cookies. Install it first, then toggle **Settings
+→ MCP service** on:
+
+> **Manta Action Kit** (Chrome Web Store):
+> <https://chromewebstore.google.com/detail/manta-action-kit/pghddhbhbnlcehlmgnnalgaephllkeel>
+
 ## Architecture
 
 An MV3 extension can't listen on a port, so the socket direction is inverted from
@@ -140,6 +150,15 @@ telling you to connect.
 Manta Action Kit 的 MCP（Model Context Protocol）服务。它将 Chrome 扩展录制的
 API 调用作为 MCP 工具暴露给 AI Agent，并提供一个注入 Cookie 的网关，使脚本/Agent
 能够调用需要鉴权的 API，同时全程看不到用户的凭证。
+
+## 前置要求
+
+本服务只是一个桥——自身不持有任何数据。它依赖 **Manta Action Kit** Chrome 扩展：
+接口录制、IndexedDB 存储与 Cookie 注入都由扩展完成。请先安装扩展，再在
+**设置 → MCP 服务** 中开启开关：
+
+> **Manta Action Kit**（Chrome Web Store）：
+> <https://chromewebstore.google.com/detail/manta-action-kit/pghddhbhbnlcehlmgnnalgaephllkeel>
 
 ## 架构
 

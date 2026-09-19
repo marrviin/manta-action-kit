@@ -23,6 +23,9 @@ export default defineConfig({
       'cookies',
       'declarativeNetRequestWithHostAccess',
       'alarms',
+      // Recording-complete system notification (chrome.notifications). Genuinely
+      // used — see the STOP_RECORDING handler in background.ts.
+      'notifications',
     ],
     // Needed to inject the MAIN-world hook script and read page context (incl.
     // the active tab's URL, covered by the <all_urls> host permission — so no

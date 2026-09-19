@@ -191,7 +191,8 @@ export function Block({
 }) {
   return (
     <div>
-      <Text type="secondary" strong className="text-xs">
+      {/* `!` required: antd's unlayered 14px beats a layered utility otherwise. */}
+      <Text type="secondary" strong className="text-xs!">
         {title}
       </Text>
       <div
@@ -239,7 +240,7 @@ function SseEvents({ call }: { call: ApiCall }) {
   const events = call.sseEvents ?? [];
   return (
     <div>
-      <Text type="secondary" strong className="text-xs">
+      <Text type="secondary" strong className="text-xs!">
         {t("detail.streamResponse", {
           status: call.status,
           statusText: call.statusText,

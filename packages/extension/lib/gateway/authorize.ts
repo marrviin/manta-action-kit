@@ -28,7 +28,8 @@ export function parseHttpUrl(
  * user's cookies and runs inside the browser, so an attacker-controlled URL
  * pointing at localhost, a LAN host, or the cloud metadata endpoint
  * (169.254.169.254) could reach services that trust the local network. We refuse
- * those before forwarding, as defense in depth on top of the native prompt / rule.
+ * those before forwarding, as defense in depth on top of the confirmation popup /
+ * rule. Runs BEFORE the allowlist — a domain on the allowlist cannot bypass this.
  *
  * This is a literal-address + known-name check (no DNS resolution — a service
  * worker can't resolve, and blocking on DNS would race). It therefore does NOT
@@ -76,4 +77,51 @@ function isBlockedIpv4(ip: string): boolean {
   if (a === 192 && b === 168) return true; // 192.168.0.0/16 private
   if (a === 169 && b === 254) return true; // 169.254.0.0/16 link-local (incl. cloud metadata)
   return false;
+}
+
+/**
+ * Normalize a user-entered domain for the allow/deny lists: lowercase, strip a
+ * scheme / path / port / trailing dot. Returns null when nothing domain-like
+ * remains (callers treat that as invalid input).
+ */
+export function normalizeDomain(input: string): string | null {
+  let d = input.trim().toLowerCase();
+  // Drop an optional scheme so "https://api.com" is accepted, then anything
+  // after the first "/" (path) — we only ever match against URL.hostname.
+  d = d.replace(/^[a-z][a-z\d+.-]*:\/\//, '');
+  d = d.split('/')[0]!;
+  d = d.split(':')[0]!;
+  d = d.replace(/\.$/, '');
+  // Reject obvious non-domains: empty, whitespace, label-less ("com" is fine —
+  // a bare TLD is technically matchable — but empty or spaced input is not).
+  if (!d || /\s/.test(d) || !d.includes('.')) return null;
+  return d;
+}
+
+/**
+ * Whether `host` (a URL.hostname) matches a list pattern: exact match or any
+ * subdomain ("example.com" matches api.example.com but not notexample.com).
+ * Both sides are assumed pre-normalized (lowercase, no trailing dot).
+ */
+export function matchesDomain(host: string, pattern: string): boolean {
+  return host === pattern || host.endsWith(`.${pattern}`);
+}
+
+/** What the gateway should do with a call to this host. */
+export type DomainVerdict = 'allow' | 'deny' | 'confirm';
+
+/**
+ * Apply the sandbox domain policy. Deny wins over allow (a host on both lists
+ * is refused — security beats convenience), allow skips the confirmation popup,
+ * anything else falls through to the (default-on) confirmation popup. The SSRF
+ * guard is checked before this and is not bypassable by either list.
+ */
+export function classifyHost(
+  host: string,
+  allowDomains: string[],
+  denyDomains: string[],
+): DomainVerdict {
+  if (denyDomains.some((d) => matchesDomain(host, d))) return 'deny';
+  if (allowDomains.some((d) => matchesDomain(host, d))) return 'allow';
+  return 'confirm';
 }

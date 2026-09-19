@@ -8,9 +8,11 @@ import {
   Tag,
   Typography,
 } from "antd";
-import { SearchOutlined } from "@ant-design/icons";
+import { CopyOutlined, SearchOutlined } from "@ant-design/icons";
 import { useTranslation } from "react-i18next";
 import { deleteAction, listActions } from "@/lib/db";
+import { settings } from "@/lib/storage";
+import { buildInstallPrompt } from "@/lib/mcp/install-prompt";
 import { Block } from "@/components/recording/call-node";
 import { UnifiedListItem } from "@/components/common/unified-list-item";
 import type { Action, ActionStep } from "@/lib/action/types";
@@ -93,14 +95,21 @@ export function ActionFeature() {
 
   if (actions.length === 0) {
     return (
-      <div className="h-full flex items-center justify-center">
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={false} />
+      <div className="flex flex-col h-full">
+        <ActionIntroCard />
+        <div className="flex-1 min-h-0 flex items-center justify-center">
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description={t("action.empty")}
+          />
+        </div>
       </div>
     );
   }
 
   return (
     <div className="flex flex-col h-full">
+      <ActionIntroCard />
       <div className="p-2">
         <Input
           allowClear
@@ -131,6 +140,65 @@ export function ActionFeature() {
             />
           ))
         )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Intro card at the top of the list, same style as the install-prompt card on
+ * the Connector tab: what actions are, plus the same copy-install-prompt button
+ * (creating / executing actions requires an agent, so connecting is the first
+ * step even from here).
+ */
+function ActionIntroCard() {
+  const { message } = App.useApp();
+  const { t } = useTranslation();
+  const [ports, setPorts] = useState({ mcp: 8787, proxy: 8788 });
+
+  useEffect(() => {
+    settings.mcpPort.getValue().then((mcp) =>
+      setPorts((p) => ({ ...p, mcp: mcp ?? p.mcp })),
+    );
+    settings.proxyPort.getValue().then((proxy) =>
+      setPorts((p) => ({ ...p, proxy: proxy ?? p.proxy })),
+    );
+  }, []);
+
+  const copyInstallPrompt = async () => {
+    try {
+      await navigator.clipboard.writeText(
+        buildInstallPrompt(ports.mcp, ports.proxy),
+      );
+      message.success(t("mcp.installPromptCopied"));
+    } catch {
+      message.error(t("common.copyFailed"));
+    }
+  };
+
+  return (
+    <div className="px-2 py-2">
+      <div className="manta-action-kit-intro-card relative overflow-hidden rounded-xl p-3">
+        <div className="relative flex gap-2.5">
+          <img src="/icon/128.png" alt="" className="size-9 shrink-0" />
+          <div className="min-w-0">
+            <div className="text-[13px] font-semibold text-(--ant-color-text)">
+              {t("action.introTitle")}
+            </div>
+            <div className="mt-1 text-xs leading-relaxed text-(--ant-color-text-secondary)">
+              {t("action.introDesc")}
+            </div>
+          </div>
+        </div>
+        <Button
+          type="primary"
+          block
+          icon={<CopyOutlined />}
+          className="mt-3"
+          onClick={copyInstallPrompt}
+        >
+          {t("mcp.copyInstallPrompt")}
+        </Button>
       </div>
     </div>
   );

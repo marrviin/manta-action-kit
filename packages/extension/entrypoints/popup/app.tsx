@@ -1,15 +1,15 @@
-import { Badge, Button, Menu } from "antd";
+import { Button, Menu } from "antd";
+
 import {
   ApiOutlined,
-  LinkOutlined,
   MoreOutlined,
+  SafetyCertificateOutlined,
   SettingOutlined,
   ThunderboltOutlined,
 } from "@ant-design/icons";
 import { useTranslation } from "react-i18next";
-import { useRecordingState } from "@/hooks/use-recording-state";
 import { RecordControls } from "@/components/recording/record-controls";
-import { sidePanelTab, type SidePanelTab } from "@/lib/storage";
+import { sidePanelTab, type SidePanelTabRequest } from "@/lib/storage";
 
 /**
  * Toolbar popup — a compact feature menu.
@@ -20,16 +20,16 @@ import { sidePanelTab, type SidePanelTab } from "@/lib/storage";
  */
 export default function PopupApp() {
   const { t } = useTranslation();
-  const state = useRecordingState();
 
-  const openSidePanel = async (selectTab?: SidePanelTab) => {
+  const openSidePanel = async (selectTab?: SidePanelTabRequest) => {
     const [tab] = await chrome.tabs.query({
       active: true,
       currentWindow: true,
     });
     if (tab?.windowId != null) {
-      // Record which feature tab the home page should select on open, then reveal
-      // the side panel. The home page consumes and clears this on mount.
+      // Record which view the home page should select on open, then reveal the
+      // side panel. Consumed and cleared on mount, or live via watcher if the
+      // panel is already open.
       if (selectTab) await sidePanelTab.setValue(selectTab);
       await chrome.sidePanel.open({ windowId: tab.windowId });
       window.close();
@@ -44,12 +44,6 @@ export default function PopupApp() {
           <span className="text-[14px] font-medium text-(--ant-color-text)">
             Manta Action Kit
           </span>
-          {state.active && (
-            <Badge
-              status={state.paused ? "warning" : "processing"}
-              text={state.paused ? t("popup.paused") : t("popup.recording")}
-            />
-          )}
         </div>
         <Button
           type="text"
@@ -66,16 +60,11 @@ export default function PopupApp() {
           className="border-none bg-(--ant-color-bg-elevated)!"
           onClick={({ key }) => {
             if (key === "api-recording") openSidePanel("api-recording");
-            else if (key === "mcp") openSidePanel("mcp");
             else if (key === "action") openSidePanel("action");
-            else if (key === "sidepanel") openSidePanel();
+            else if (key === "gateway") openSidePanel("gateway");
+            else if (key === "settings") openSidePanel("settings");
           }}
           items={[
-            {
-              key: "mcp",
-              icon: <LinkOutlined />,
-              label: "MCP",
-            },
             {
               key: "action",
               icon: <ThunderboltOutlined />,
@@ -87,9 +76,14 @@ export default function PopupApp() {
               label: t("popup.apiRecording"),
               extra: <RecordControls variant="menu" />,
             },
+            {
+              key: "gateway",
+              icon: <SafetyCertificateOutlined />,
+              label: t("popup.gateway"),
+            },
             { type: "divider" },
             {
-              key: "sidepanel",
+              key: "settings",
               icon: <SettingOutlined />,
               label: t("popup.settings"),
             },

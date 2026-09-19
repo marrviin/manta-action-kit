@@ -23,6 +23,12 @@ export interface UnifiedListItemProps {
    * Replaces the old per-row right-click (contextMenu) menus and hover icon buttons.
    */
   menu?: MenuProps['items'];
+  /**
+   * Inline icon buttons rendered at the far right of Row 1 (hover-revealed,
+   * same spot as the menu button). Replaces the three-dot dropdown; use for
+   * direct single actions like delete.
+   */
+  actions?: ReactNode;
   /** Row-2 status tags (left). E.g. method / status / decision badges. */
   status?: ReactNode;
   /** Row-2 timestamp (right), epoch ms — rendered as MM-DD HH:mm:ss. */
@@ -50,6 +56,7 @@ export interface UnifiedListItemProps {
 export function UnifiedListItem({
   title,
   menu,
+  actions,
   status,
   timestamp,
   expandable = false,
@@ -65,7 +72,7 @@ export function UnifiedListItem({
   return (
     <div
       className={cn(
-        'manta-action-kit-list-item group block py-2 px-3 border-b border-(--ant-color-border-secondary)',
+        'manta-action-kit-list-item group block py-4 mx-2 border-b border-(--ant-color-border-secondary)',
         clickable ? 'cursor-pointer' : 'cursor-default',
         className,
       )}
@@ -115,6 +122,14 @@ export function UnifiedListItem({
               onClick={(e) => e.stopPropagation()}
             />
           </Dropdown>
+        )}
+        {!menu && actions && (
+          <div
+            className="flex-none opacity-0 group-hover:opacity-100 focus-within:opacity-100"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {actions}
+          </div>
         )}
       </div>
 
