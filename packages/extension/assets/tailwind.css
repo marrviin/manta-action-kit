@@ -20,6 +20,37 @@
   --color-brand-700: #2a52c8;
 }
 
+/* Scrollbars — thin, rounded, antd-themed. Applied globally so extension
+ * surfaces (popup, side panel) and antd inner scroll areas share one look.
+ * Colors come from antd's injected CSS vars: fill-secondary at rest, a darker
+ * fill on hover/active. The thumb shrinks visually via a transparent border +
+ * content-box clip, which also reserves breathing room against the edges.
+ * Track/corner stay transparent over whatever background is beneath. */
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: var(--ant-color-fill-secondary);
+  border: 2px solid transparent;
+  border-radius: 8px;
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: var(--ant-color-fill);
+}
+
+*::-webkit-scrollbar-thumb:active {
+  background-color: var(--ant-color-fill);
+}
+
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 html,
 body {
   margin: 0;
@@ -96,14 +127,14 @@ body {
 .manta-action-kit-home-tabs.ant-tabs .ant-tabs-tab:hover,
 .manta-action-kit-home-tabs.ant-tabs .ant-tabs-tab-active,
 .manta-action-kit-home-tabs.ant-tabs .ant-tabs-tab-active:hover {
-  background-color: var(--ant-color-bg-layout) !important;
+  background-color: #e8f0fe !important;
 }
 
 .manta-action-kit-home-tabs.ant-tabs .ant-tabs-tab-active .ant-tabs-tab-btn,
 .manta-action-kit-home-tabs.ant-tabs
   .ant-tabs-tab-active:hover
   .ant-tabs-tab-btn {
-  color: var(--ant-color-text) !important;
+  color: var(--ant-color-primary) !important;
 }
 
 /* Active tab goes bold, without shifting the bar: each label renders an
@@ -123,4 +154,48 @@ body {
 
 .manta-action-kit-home-tabs .ant-tabs-tab-active .manta-home-tab-view {
   font-weight: 700;
+}
+
+/* Bottom tab bar — liquid-glass Segmented pill (`shape="round"` gives root,
+ * items and thumb the full capsule radius; the CSS below only deals with the
+ * glass). The bar floats above scrolling content (see bottom-tab-bar.tsx), so
+ * backdrop-filter blurs whatever passes underneath: translucent container
+ * background + blur/saturate, hairline border, a specular top-edge inset
+ * highlight and a soft drop shadow for lift. The active fill (gray, see below)
+ * is relayed between the moving thumb and the selected item — both styled here.
+ * antd is injected UNLAYERED (see the home-tabs note above), so rules that
+ * compete with antd on the same property are pinned with !important. */
+.manta-action-kit-glass-tabs.ant-segmented {
+  background: color-mix(
+    in srgb,
+    var(--ant-color-bg-container) 58%,
+    transparent
+  ) !important;
+  backdrop-filter: blur(18px) saturate(1.8);
+  -webkit-backdrop-filter: blur(18px) saturate(1.8);
+  border: 1px solid
+    color-mix(in srgb, var(--ant-color-border) 60%, transparent);
+  box-shadow:
+    0 8px 24px color-mix(in srgb, var(--ant-color-text) 12%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+
+/* The active fill is relayed between two elements: during the slide motion the
+ * moving thumb paints it (rc-segmented only adds `item-selected` AFTER the
+ * motion ends, thumbShow gate), then the selected item takes over. Style both
+ * identically — they never show at the same time. Same fill as the
+ * non-selected hover state (itemHoverBg = colorFillSecondary), so hover and
+ * active read as one gray level; the token is translucent rgba so the glass
+ * base still shows through. */
+/* .manta-action-kit-glass-tabs .ant-segmented-item-selected,
+.manta-action-kit-glass-tabs .ant-segmented-thumb {
+  background: var(--ant-color-primary-bg-hover) !important;
+} */
+
+.manta-action-kit-glass-tabs .ant-segmented-thumb {
+  backdrop-filter: blur(8px) saturate(1.5);
+  -webkit-backdrop-filter: blur(8px) saturate(1.5);
+  box-shadow:
+    0 2px 8px color-mix(in srgb, var(--ant-color-text) 14%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.45) !important;
 }

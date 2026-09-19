@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   App,
   Button,
@@ -13,10 +13,11 @@ import {
   Tooltip,
   Typography,
 } from "antd";
-import { InfoCircleOutlined } from "@ant-design/icons";
+import { InfoCircleOutlined, SearchOutlined } from "@ant-design/icons";
 import { useTranslation } from "react-i18next";
 import { RecordingList } from "./recording-list";
 import { RecordControls } from "./record-controls";
+import { useRecordingState } from "@/hooks/use-recording-state";
 import { UnifiedListItem } from "@/components/common/unified-list-item";
 import { BottomTabBar } from "@/components/common/bottom-tab-bar";
 import { useRecordingFilterRules } from "@/hooks/use-recording-filter-rules";
@@ -42,7 +43,7 @@ export function ApiRecordingFeature({
   const [tab, setTab] = useState<RecordingTab>("records");
 
   return (
-    <div className="flex flex-col h-full min-h-0">
+    <div className="relative flex flex-col h-full min-h-0">
       <div className="flex-1 min-h-0 flex flex-col relative">
         {tab === "records" ? (
           <RecordsPanel onOpen={onOpen} />
@@ -63,15 +64,32 @@ export function ApiRecordingFeature({
   );
 }
 
-/** The recording list + the shared start/pause/stop recording controls. */
+/**
+ * The recording list with a top bar: search input + start button when idle;
+ * hidden while recording, replaced by status + pause/stop controls.
+ */
 function RecordsPanel({ onOpen }: { onOpen: (recordingId: string) => void }) {
+  const { t } = useTranslation();
+  const [search, setSearch] = useState("");
+  const { active } = useRecordingState();
+
   return (
     <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-      <div className="flex-1 min-h-0 overflow-auto">
-        <RecordingList onOpen={onOpen} />
-      </div>
-      <div className="shrink-0 border-t border-(--ant-color-border-secondary) bg-(--ant-color-bg-elevated) px-3 py-2.5">
+      <div className="shrink-0 flex items-center gap-2 px-3 py-2.5 border-b border-(--ant-color-border-secondary)">
+        {!active && (
+          <Input
+            allowClear
+            className="flex-1"
+            prefix={<SearchOutlined />}
+            placeholder={t("recording.searchPlaceholder")}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        )}
         <RecordControls variant="block" />
+      </div>
+      <div className="flex-1 min-h-0 flex flex-col">
+        <RecordingList onOpen={onOpen} search={search} />
       </div>
     </div>
   );
@@ -153,6 +171,25 @@ function FilterRulesPanel() {
   const { rules, loading, addRule, updateRule, removeRule } =
     useRecordingFilterRules();
   const [modalOpen, setModalOpen] = useState(false);
+  // Search box (raw input) + its debounced value used for filtering.
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+
+  // Debounce the search input (300ms) to avoid filtering on every keystroke.
+  useEffect(() => {
+    const timer = setTimeout(
+      () => setDebouncedSearch(search.trim().toLowerCase()),
+      300,
+    );
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  const filteredRules = useMemo(() => {
+    if (!debouncedSearch) return rules;
+    return rules.filter((rule) =>
+      rule.pattern.toLowerCase().includes(debouncedSearch),
+    );
+  }, [rules, debouncedSearch]);
 
   const onSubmit = async (pattern: string) => {
     if (!pattern) return;
@@ -163,7 +200,20 @@ function FilterRulesPanel() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex-1 min-h-0 overflow-auto">
+      <div className="flex-none flex items-center gap-2 px-3 py-2.5 border-b border-(--ant-color-border-secondary)">
+        <Input
+          allowClear
+          prefix={<SearchOutlined className="text-(--ant-color-text-quaternary)" />}
+          placeholder={t("recording.searchRule")}
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="flex-1 min-w-0"
+        />
+        <Button type="primary" className="flex-none" onClick={() => setModalOpen(true)}>
+          {t("recording.addFilterRule")}
+        </Button>
+      </div>
+      <div className="flex-1 min-h-0 overflow-auto pb-14">
         {loading ? (
           <div className="p-8 text-center">
             <Spin />
@@ -172,9 +222,16 @@ function FilterRulesPanel() {
           <div className="h-full flex items-center justify-center">
             <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={false} />
           </div>
+        ) : filteredRules.length === 0 ? (
+          <div className="h-full flex items-center justify-center">
+            <Empty
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              description={t("recording.noMatchRule")}
+            />
+          </div>
         ) : (
           <div>
-            {rules.map((rule) => (
+            {filteredRules.map((rule) => (
               <FilterRuleRow
                 key={rule.id}
                 rule={rule}
@@ -194,12 +251,6 @@ function FilterRulesPanel() {
             ))}
           </div>
         )}
-      </div>
-
-      <div className="flex-none px-3 py-2.5 border-t border-(--ant-color-border-secondary) bg-(--ant-color-bg-elevated) relative z-10">
-        <Button type="primary" block onClick={() => setModalOpen(true)}>
-          {t("recording.addFilterRule")}
-        </Button>
       </div>
 
       <FilterRuleModal

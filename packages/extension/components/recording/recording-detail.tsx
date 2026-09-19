@@ -88,7 +88,7 @@ export function RecordingDetail({ recordingId, onBack, initialTab }: Props) {
   }
 
   return (
-    <div className="flex flex-col h-full min-h-0">
+    <div className="relative flex flex-col h-full min-h-0">
       <div className="flex items-center gap-2 h-[48px] box-border px-3 border-b border-(--ant-color-border-secondary)">
         <Button icon={<LeftOutlined />} onClick={onBack} />
         <div className="min-w-0 flex-1">
@@ -194,7 +194,7 @@ function ResultPanel({
 
   return (
     <div className="flex-1 min-h-0 flex flex-col">
-      <div className="flex-1 min-h-0 overflow-auto py-4 px-3">
+      <div className="flex-1 min-h-0 overflow-auto pt-4 pb-14 px-3">
         {description && <DescriptionCard description={description} />}
         {calls.length === 0 ? (
           <div className="h-full flex items-center justify-center">

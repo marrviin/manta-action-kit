@@ -1,10 +1,12 @@
-import { Fragment } from 'react';
-import { cn } from '@/lib/utils';
+import { Segmented } from 'antd';
 
 /**
- * Bottom sticky tab bar shared by feature panels (gateway, api-recording) and the
- * recording detail view. Renders evenly-spaced tab labels separated by vertical
- * dividers, with the active tab tinted by the text color (vs secondary).
+ * Bottom floating tab bar shared by feature panels (gateway, api-recording) and
+ * the recording detail view. Built on antd Segmented (`block` mode fills the
+ * width); rendered absolutely so it hovers above the scrolling content. The
+ * pill itself is a liquid-glass layer: translucent background + backdrop-filter
+ * (see `.manta-action-kit-glass-tabs` in assets/tailwind.css) blurring whatever
+ * passes beneath. Requires the parent container to be `relative`.
  */
 export interface BottomTab<K extends string> {
   key: K;
@@ -21,26 +23,16 @@ export function BottomTabBar<K extends string>({
   onChange: (key: K) => void;
 }) {
   return (
-    <div className="flex-none flex border-t-[2px] border-(--ant-color-border) items-center relative z-10 bg-(--ant-color-bg-container)">
-      {tabs.map((t, i) => {
-        const activeTab = active === t.key;
-        return (
-          <Fragment key={t.key}>
-            {i > 0 && <span className="w-px h-6 bg-(--ant-color-border)" />}
-            <div
-              onClick={() => onChange(t.key)}
-              className={cn(
-                'flex-1 text-center py-2 cursor-pointer text-[14px]',
-                activeTab
-                  ? 'text-(--ant-color-text) font-semibold'
-                  : 'text-(--ant-color-text-secondary)',
-              )}
-            >
-              {t.label}
-            </div>
-          </Fragment>
-        );
-      })}
+    <div className="absolute bottom-0 inset-x-0 z-10 px-3 pb-3 pt-1 pointer-events-none">
+      <Segmented
+        block
+        // shape="round"
+        className="manta-action-kit-glass-tabs pointer-events-auto [&_.ant-segmented-item-label]:text-[14px]! [&_.ant-segmented-group]:gap-1 [&_.ant-segmented-item]:shadow-none!"
+        value={active}
+        onChange={(key) => onChange(key as K)}
+        options={tabs.map((t) => ({ label: t.label, value: t.key }))}
+        size="large"
+      />
     </div>
   );
 }

@@ -13,7 +13,7 @@ import {
   Tag,
   Typography,
 } from "antd";
-import { SearchOutlined } from "@ant-design/icons";
+import { DownloadOutlined, SearchOutlined } from "@ant-design/icons";
 import type { MenuProps } from "antd";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
@@ -53,10 +53,10 @@ type GatewayTab = "logs" | "proxy";
 
 export function GatewayFeature() {
   const { t } = useTranslation();
-  const [tab, setTab] = useState<GatewayTab>("logs");
+  const [tab, setTab] = useState<GatewayTab>("proxy");
 
   return (
-    <div className="flex flex-col h-full min-h-0">
+    <div className="relative flex flex-col h-full min-h-0">
       {/* Content area: fills remaining space, each panel scrolls internally */}
       <div className="flex-1 min-h-0 flex flex-col relative">
         {tab === "logs" ? <LogsPanel /> : <ProxyRulesPanel />}
@@ -66,8 +66,8 @@ export function GatewayFeature() {
 
       <BottomTabBar
         tabs={[
-          { key: "logs" as const, label: t("gateway.tabLogs") },
           { key: "proxy" as const, label: t("gateway.tabProxy") },
+          { key: "logs" as const, label: t("gateway.tabLogs") },
         ]}
         active={tab}
         onChange={setTab}
@@ -287,27 +287,26 @@ function LogsPanel() {
         },
       ],
     },
-    {
-      key: "export",
-      label: t("gateway.exportLogs"),
-      onClick: onExport,
-    },
   ];
 
   return (
     <div className="flex flex-col h-full">
       {logs.length > 0 && (
-        <div className="p-2">
+        <div className="p-2 flex items-center gap-2">
           <Input
             allowClear
+            className="flex-1"
             prefix={<SearchOutlined />}
             placeholder={t("gateway.searchUrl")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
+          <Button icon={<DownloadOutlined />} onClick={onExport}>
+            {t("gateway.export")}
+          </Button>
         </div>
       )}
-      <div className="flex-1 min-h-0 overflow-auto">
+      <div className="flex-1 min-h-0 overflow-auto pb-14">
         {loading ? (
           <div className="p-8 text-center">
             <Spin />
@@ -680,18 +679,20 @@ function ProxyRulesPanel() {
 
   return (
     <div className="flex flex-col h-full">
-      {rules.length > 0 && (
-        <div className="flex-none px-3 py-2.5 border-b border-(--ant-color-border-secondary)">
-          <Input
-            allowClear
-            prefix={<SearchOutlined className="text-(--ant-color-text-quaternary)" />}
-            placeholder={t("gateway.searchRule")}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </div>
-      )}
-      <div className="flex-1 min-h-0 overflow-auto">
+      <div className="flex-none flex items-center gap-2 px-3 py-2.5 border-b border-(--ant-color-border-secondary)">
+        <Input
+          allowClear
+          prefix={<SearchOutlined className="text-(--ant-color-text-quaternary)" />}
+          placeholder={t("gateway.searchRule")}
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="flex-1 min-w-0"
+        />
+        <Button type="primary" className="flex-none" onClick={openAdd}>
+          {t("gateway.addProxyRule")}
+        </Button>
+      </div>
+      <div className="flex-1 min-h-0 overflow-auto pb-14">
         {loading ? (
           <div className="p-8 text-center">
             <Spin />
@@ -768,13 +769,6 @@ function ProxyRulesPanel() {
             ))}
           </div>
         )}
-      </div>
-
-      {/* Bottom add button: pinned block, raised above the parent fade mask (zIndex:5) so it isn't washed out. */}
-      <div className="flex-none px-3 py-2.5 border-t border-(--ant-color-border-secondary) bg-(--ant-color-bg-elevated) relative z-10">
-        <Button type="primary" block onClick={openAdd}>
-          {t("gateway.addProxyRule")}
-        </Button>
       </div>
 
       <ProxyRuleModal

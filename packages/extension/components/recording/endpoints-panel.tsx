@@ -41,7 +41,7 @@ export function EndpointsPanel({
   }
 
   return (
-    <div className="flex-1 min-h-0 overflow-auto py-4 px-3">
+    <div className="flex-1 min-h-0 overflow-auto pt-4 pb-14 px-3">
       <Collapse
         accordion
         expandIconPosition="start"

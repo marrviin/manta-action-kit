@@ -15,7 +15,10 @@ const { Text } = Typography;
  *
  * Variants:
  *  - "menu": compact icon-only buttons (popup menu row).
- *  - "block": full-width labeled buttons (side panel footer).
+ *  - "block": header-row controls (side panel records top bar). Inactive: a
+ *    primary start button that sits next to the search input. Active: status
+ *    readout (pulse dot + captured-call count) on the left, icon pause/stop on
+ *    the right — the search input is hidden by the caller while recording.
  */
 export function RecordControls({ variant }: { variant: "menu" | "block" }) {
   const { message } = App.useApp();
@@ -69,7 +72,7 @@ export function RecordControls({ variant }: { variant: "menu" | "block" }) {
               size="small"
               // Keep the default gray border on hover (antd would turn it primary blue).
               className="hover:border-(--ant-color-border)!"
-              icon={<RecordIcon className="text-(--ant-color-error)" />}
+              icon={<RecordIcon className="text-(--ant-color-error)!" />}
               onClick={start}
             />
           </Tooltip>
@@ -94,15 +97,23 @@ export function RecordControls({ variant }: { variant: "menu" | "block" }) {
 
   if (!active) {
     return (
-      <Button type="primary" block onClick={start}>
+      <Button
+        type="primary"
+        onClick={start}
+        // `!` required: antd's unlayered `.ant-btn-icon > svg { color: inherit }`
+        // beats any layered (Tailwind) utility — only an important one wins.
+        icon={<RecordIcon className="text-(--ant-color-error)!" />}
+        className="gap-1!"
+      >
         {t("recording.startRecording")}
       </Button>
     );
   }
   // Active: status readout on the left (pulse dot + captured-call count),
-  // pause/stop controls on the right.
+  // icon pause/stop controls on the right. Default-size buttons (32px) keep
+  // the header row the same height as the idle search-input row.
   return (
-    <div className="flex items-center justify-between gap-2">
+    <div className="flex-1 min-w-0 flex items-center justify-between gap-2">
       <span className="flex items-center gap-2 min-w-0 text-[13px] text-(--ant-color-text)">
         <span
           className={cn(
@@ -116,13 +127,12 @@ export function RecordControls({ variant }: { variant: "menu" | "block" }) {
             : t("recording.statusRecording", { count: state.count })}
         </Text>
       </span>
-      <div className="flex items-center gap-1 shrink-0 cursor-pointer">
-        <Button icon={state.paused ? <RecordIcon /> : <PauseIcon />} onClick={togglePause}>
-          {state.paused ? t("recording.resume") : t("recording.pause")}
-        </Button>
-        <Button danger icon={<StopIcon />} onClick={stop}>
-          {t("recording.stop")}
-        </Button>
+      <div className="flex items-center gap-1 shrink-0">
+        <Button
+          icon={state.paused ? <RecordIcon /> : <PauseIcon />}
+          onClick={togglePause}
+        />
+        <Button danger icon={<StopIcon />} onClick={stop} />
       </div>
     </div>
   );

@@ -37,14 +37,14 @@ export const en = {
   home: {
     apiRecording: "API Recording",
     actions: "Actions",
-    gateway: "Sandbox Proxy",
+    gateway: "Secure Sandbox",
     mcp: "MCP",
     settings: "Settings",
   },
   recording: {
     tabRecords: "Recordings",
     tabRules: "Filter Rules",
-    startRecording: "Start recording",
+    startRecording: "Record",
     statusRecording: "Recording · {{count}}",
     statusPaused: "Paused · {{count}}",
     pause: "Pause",
@@ -62,6 +62,8 @@ export const en = {
     ruleAdded: "Filter rule added",
     deleteRuleTitle: "Delete this filter rule",
     deleteRuleConfirm: 'Delete "{{pattern}}"?',
+    searchRule: "Search filter rule",
+    noMatchRule: "No matching filter rule found",
     blacklist: "Blacklist",
     loadFailed: "Failed to load recordings",
     searchPlaceholder: "Search recording name or API URL",
@@ -133,7 +135,7 @@ export const en = {
   },
   gateway: {
     tabLogs: "Audit Logs",
-    tabProxy: "Proxy Rules",
+    tabProxy: "Sandbox Rules",
     decisionAuto: "Auto allowed",
     decisionAllowed: "Confirmed",
     decisionBlocked: "Blocked",
@@ -151,6 +153,7 @@ export const en = {
     exportFailed: "Export failed",
     copyResponse: "Copy Response",
     copyCurl: "Copy cURL",
+    export: "Export",
     exportLogs: "Export audit logs",
     summary: "Summary",
     injectedCookie: "Injected Cookie",
@@ -181,7 +184,7 @@ export const en = {
     addFailed: "Add failed",
     editRule: "Edit rule",
     // Plain-text export file labels.
-    exportHeaderTitle: "Sandbox Proxy Audit Log Export",
+    exportHeaderTitle: "Secure Sandbox Audit Log Export",
     exportHeaderTime: "Exported at",
     exportHeaderCount: "Records",
     logDecision: "Decision",
@@ -209,7 +212,7 @@ export const en = {
     introBullet1:
       "Query and inspect locally recorded API data (list / call chain detail / single request & response)",
     introBullet2:
-      'Forward authorized APIs reusing your browser login via the "Sandbox Proxy" — cookies are never exposed to the Agent',
+      'Forward authorized APIs reusing your browser login via the "Secure Sandbox" — cookies are never exposed to the Agent',
     introFooter:
       "Copy the install prompt below and send it to your Agent to auto-write the MCP config and connect.",
     copyInstallPrompt: "Copy install prompt",
@@ -217,7 +220,7 @@ export const en = {
       "Install instructions copied — paste them to your Agent",
     status: "Status",
     port: "Bridge Port",
-    proxyPort: "Sandbox Proxy Port",
+    proxyPort: "Secure Sandbox Port",
     tools: "Tools",
     toolEnabled: 'Enabled "{{label}}"',
     toolDisabled: 'Disabled "{{label}}"',

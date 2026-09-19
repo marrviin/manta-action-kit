@@ -1,14 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  App,
-  Button,
-  Empty,
-  Input,
-  Spin,
-  Tag,
-  Typography,
-} from "antd";
-import { SearchOutlined } from "@ant-design/icons";
+import { App, Button, Empty, Input, Spin, Tag, Typography } from "antd";
 import { useTranslation } from "react-i18next";
 import { useRecordings } from "@/hooks/use-recordings";
 import { getCalls } from "@/lib/db";
@@ -19,13 +10,14 @@ const { Text } = Typography;
 
 interface Props {
   onOpen: (recordingId: string) => void;
+  /** Search text owned by the parent's top bar (search input hidden while recording). */
+  search: string;
 }
 
-export function RecordingList({ onOpen }: Props) {
+export function RecordingList({ onOpen, search }: Props) {
   const { t } = useTranslation();
   const { recordings, loading, error, refresh, rename, remove } =
     useRecordings();
-  const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   // Lazily loaded map of recordingId -> concatenated lowercase call URLs.
   const [urlIndex, setUrlIndex] = useState<Record<string, string>>({});
@@ -115,16 +107,7 @@ export function RecordingList({ onOpen }: Props) {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="p-2">
-        <Input
-          allowClear
-          prefix={<SearchOutlined />}
-          placeholder={t("recording.searchPlaceholder")}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-      </div>
-      <div className="flex-1 min-h-0 overflow-auto">
+      <div className="flex-1 min-h-0 overflow-auto pb-14">
         {filteredRecordings.length === 0 ? (
           <div className="h-full flex items-center justify-center">
             <Empty

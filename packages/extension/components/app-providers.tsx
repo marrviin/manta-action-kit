@@ -73,7 +73,8 @@ const THEME: ThemeConfig = {
     colorBgLayout: "#f2f2f2",
     colorBgContainer: "#fafafa",
     controlItemBgActive: "rgba(0,0,0,0.06)",
-    colorLink: 'rgba(0,0,0,0.9)'
+    colorLink: 'rgba(0,0,0,0.9)',
+    colorPrimaryBgHover: '#e8f0fe'
   },
   components: {
     // Flat buttons — drop antd's default primary/default/danger shadows, and
@@ -111,5 +112,12 @@ const THEME: ThemeConfig = {
     InputNumber: { hoverBorderColor: "#d9d9d9" },
     // Denser table cells for the workspace lists.
     Table: { cellFontSize: 12, cellFontSizeSM: 12 },
+    Segmented: {
+      trackPadding: 4,
+      itemSelectedColor: '#0b57d0',
+      itemSelectedBg: 'var(--ant-color-primary-bg-hover)',
+      itemHoverBg: 'var(--ant-color-primary-bg-hover)',
+      itemActiveBg: 'var(--ant-color-primary-bg-hover)'
+    }
   },
 };

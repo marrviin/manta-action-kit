@@ -34,14 +34,14 @@ export const zhCN: Messages = {
   home: {
     apiRecording: "接口录制",
     actions: "动作库",
-    gateway: "沙箱代理",
+    gateway: "安全沙箱",
     mcp: "连接器",
     settings: "设置",
   },
   recording: {
     tabRecords: "录制记录",
     tabRules: "录制规则",
-    startRecording: "开始录制",
+    startRecording: "录制",
     statusRecording: "录制中 · {{count}}",
     statusPaused: "已暂停 · {{count}}",
     pause: "暂停",
@@ -59,6 +59,8 @@ export const zhCN: Messages = {
     ruleAdded: "已添加过滤规则",
     deleteRuleTitle: "删除该过滤规则",
     deleteRuleConfirm: "确定删除「{{pattern}}」？",
+    searchRule: "搜索过滤规则",
+    noMatchRule: "没有匹配的过滤规则",
     blacklist: "黑名单",
     loadFailed: "加载录制记录失败",
     searchPlaceholder: "搜索录制名称或 API URL",
@@ -125,7 +127,7 @@ export const zhCN: Messages = {
   },
   gateway: {
     tabLogs: "审计日志",
-    tabProxy: "代理规则",
+    tabProxy: "沙箱规则",
     decisionAuto: "自动放行",
     decisionAllowed: "已确认",
     decisionBlocked: "已拦截",
@@ -143,6 +145,7 @@ export const zhCN: Messages = {
     exportFailed: "导出失败",
     copyResponse: "复制 Response",
     copyCurl: "复制 cURL",
+    export: "导出",
     exportLogs: "导出审计日志",
     summary: "概要",
     injectedCookie: "注入 Cookie",
@@ -171,7 +174,7 @@ export const zhCN: Messages = {
     saveFailed: "保存失败",
     addFailed: "添加失败",
     editRule: "编辑规则",
-    exportHeaderTitle: "沙箱代理审计日志导出",
+    exportHeaderTitle: "安全沙箱审计日志导出",
     exportHeaderTime: "导出时间",
     exportHeaderCount: "记录数",
     logDecision: "决策",
@@ -198,14 +201,14 @@ export const zhCN: Messages = {
     introBullet1:
       "查询与检索本地录制的接口数据（列表 / 调用链详情 / 单次请求与响应）",
     introBullet2:
-      "经「沙箱代理」复用浏览器登录态转发受权接口，全程不向 Agent 暴露 Cookie",
+      "经「安全沙箱」复用浏览器登录态转发受权接口，全程不向 Agent 暴露 Cookie",
     introFooter:
       "复制下方安装提示词并发送给你的 Agent，即可自动写入 MCP 配置完成接入。",
     copyInstallPrompt: "复制安装提示词",
     installPromptCopied: "安装说明已复制，粘贴给你的 Agent 即可",
     status: "状态",
     port: "桥接端口",
-    proxyPort: "沙箱代理端口",
+    proxyPort: "安全沙箱端口",
     tools: "工具",
     toolEnabled: "已开启「{{label}}」",
     toolDisabled: "已关闭「{{label}}」",
@@ -239,10 +242,10 @@ export const zhCN: Messages = {
       "内部隧道：将脚本驱动的代理请求转发到匹配规则（非 Agent 工具）",
     list_proxy_rulesLabel: "查询代理规则",
     list_proxy_rulesDesc:
-      "获取沙箱代理的规则列表（前缀、目标地址、方法、启用状态）",
+      "获取安全沙箱的规则列表（前缀、目标地址、方法、启用状态）",
     add_proxy_ruleLabel: "添加代理规则",
     add_proxy_ruleDesc:
-      "新增一条沙箱代理规则（不含启用开关，启用状态由用户掌控）",
+      "新增一条安全沙箱规则（不含启用开关，启用状态由用户掌控）",
     update_proxy_ruleLabel: "修改代理规则",
     update_proxy_ruleDesc:
       "修改代理规则的前缀 / 目标地址 / 方法等内容（无法改动启用开关）",
@@ -263,7 +266,7 @@ export const zhCN: Messages = {
     delete_actionDesc: "删除本地创建的动作",
     execute_actionLabel: "执行动作",
     execute_actionDesc:
-      "通过沙箱代理携带登录凭据回放动作到真实接口，填充参数并串联步骤输出；需要用户明确确认",
+      "通过安全沙箱携带登录凭据回放动作到真实接口，填充参数并串联步骤输出；需要用户明确确认",
     set_proxy_portLabel: "设置代理端口",
     set_proxy_portDesc: "内部能力：更新插件对接的本地代理端口（非 Agent 工具）",
     healthLabel: "服务健康检查",

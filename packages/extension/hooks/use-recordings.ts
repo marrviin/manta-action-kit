@@ -12,12 +12,20 @@ export function useRecordings() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  /**
+   * Reload the list. Silent mode skips the loading spinner so background
+   * refreshes (stop-recording watch, rename, remove) update the list in place
+   * instead of flashing the whole list out and back.
+   */
+  const refresh = useCallback(async (silent = false) => {
+    if (!silent) {
+      setLoading(true);
+      setError(null);
+    }
     try {
       const list = await listRecordings();
       setRecordings(list);
+      setError(null);
     } catch (err) {
       // If IndexedDB fails to open (e.g. version upgrade blocked after a hot
       // reload) listRecordings() rejects. Without this catch the promise chain
@@ -35,7 +43,7 @@ export function useRecordings() {
     refresh();
     // When recording stops (active -> false), a new recording was likely saved.
     const unwatch = recordingState.watch((next, prev) => {
-      if (prev?.active && !next?.active) refresh();
+      if (prev?.active && !next?.active) refresh(true);
     });
     return unwatch;
   }, [refresh]);
@@ -43,7 +51,7 @@ export function useRecordings() {
   const rename = useCallback(
     async (id: string, name: string) => {
       await dbRename(id, name);
-      await refresh();
+      await refresh(true);
     },
     [refresh],
   );
@@ -51,7 +59,7 @@ export function useRecordings() {
   const remove = useCallback(
     async (id: string) => {
       await dbDelete(id);
-      await refresh();
+      await refresh(true);
     },
     [refresh],
   );
