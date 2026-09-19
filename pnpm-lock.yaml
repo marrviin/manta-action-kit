@@ -53,9 +53,6 @@ importers:
       classnames:
         specifier: ^2.5.1
         version: 2.5.1
-      diff:
-        specifier: 8.0.2
-        version: 8.0.2
       i18next:
         specifier: ^26.4.0
         version: 26.4.1(typescript@5.9.3)
@@ -1422,10 +1419,6 @@ packages:
   detect-libc@2.1.2:
     resolution: {integrity: sha512-Btj2BOOO83o3WyH59e8MgXsxEQVcarkUOpEYrubB0urwnN10yQ364rsiByU11nZlqWYZm05i/of7io4mzihBtQ==}
     engines: {node: '>=8'}
-
-  diff@8.0.2:
-    resolution: {integrity: sha512-sSuxWU5j5SR9QQji/o2qMvqRNYRDOcBTgsJ/DeCf4iSN4gW+gNMXM7wFIP+fdXZxoNiAnHUTGjCr+TSWXdRDKg==}
-    engines: {node: '>=0.3.1'}
 
   doctrine@2.1.0:
     resolution: {integrity: sha512-35mSku4ZXK0vfCuHEDAwt55dg2jNajHZ1odvF+8SSr82EsZY4QmXfuWso8oEd8zRhVObSN18aM0CjSdoBX7zIw==}
@@ -4718,8 +4711,6 @@ snapshots:
   destr@2.0.5: {}
 
   detect-libc@2.1.2: {}
-
-  diff@8.0.2: {}
 
   doctrine@2.1.0:
     dependencies:

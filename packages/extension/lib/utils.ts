@@ -54,13 +54,6 @@ export function shortPath(url: string): string {
   }
 }
 
-/** Format an epoch-ms timestamp as a compact local date-time. */
-export function formatTime(at: number): string {
-  const d = new Date(at);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
 /** Format an epoch-ms timestamp as a compact "MM-DD HH:mm:ss" for list rows. */
 export function formatDateTimeShort(at: number): string {
   const d = new Date(at);

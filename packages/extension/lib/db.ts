@@ -16,7 +16,7 @@
  * No third-party dependency — the native IndexedDB API is enough for our access
  * patterns (bulk insert on save, read-by-recording on detail, delete cascade).
  */
-import type { ApiCall, FieldDependency, Recording } from "./recording/types";
+import type { ApiCall, Recording } from "./recording/types";
 import type { GatewayLog, GatewayProxyRule } from "./gateway/types";
 import type { Action } from "./action/types";
 
@@ -230,27 +230,6 @@ export async function renameRecording(id: string, name: string): Promise<void> {
   const rec = await getRecording(id);
   if (!rec) return;
   rec.name = name;
-  await new Promise<void>((resolve, reject) => {
-    const t = tx(db, [STORE_RECORDINGS], "readwrite");
-    t.oncomplete = () => resolve();
-    t.onerror = () => reject(t.error);
-    t.objectStore(STORE_RECORDINGS).put(rec);
-  });
-}
-
-/**
- * Replace a recording's inferred/confirmed field dependencies (its flow).
- * deps rides along on the existing recordings record, so no store bump is needed
- * and old recordings simply read back with deps === undefined.
- */
-export async function updateRecordingDeps(
-  id: string,
-  deps: FieldDependency[],
-): Promise<void> {
-  const db = await openDb();
-  const rec = await getRecording(id);
-  if (!rec) return;
-  rec.deps = deps;
   await new Promise<void>((resolve, reject) => {
     const t = tx(db, [STORE_RECORDINGS], "readwrite");
     t.oncomplete = () => resolve();

@@ -21,7 +21,6 @@
     "@ant-design/icons": "^6.3.2",
     "antd": "^6.6.1",
     "classnames": "^2.5.1",
-    "diff": "8.0.2",
     "i18next": "^26.4.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
