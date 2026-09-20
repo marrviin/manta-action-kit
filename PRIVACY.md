@@ -1,6 +1,6 @@
 # Privacy Policy — Manta Action Kit
 
-_Last updated: 2026-09-04_
+_Last updated: 2026-09-20_
 
 Manta Action Kit ("the extension") is a developer tool that records API calls
 made by pages you visit and lets an AI agent, running on your own machine, read
@@ -106,12 +106,14 @@ The local MCP bridge connects only to a process on the loopback interface
 - `cookies`, `declarativeNetRequestWithHostAccess`, `host_permissions:
   <all_urls>` — read and inject session cookies to forward authenticated
   requests, and inject the capture hook on the pages you record.
-- `scripting`, `tabs` — inject the API-capture hook and coordinate recording per
-  tab.
 - `sidePanel` — host the management UI (recordings, audit log, proxy rules).
 - `storage` — persist settings and (via IndexedDB) recordings and the audit log.
 - `alarms` — internal keepalive for the background service worker so the local
   MCP bridge survives MV3 service-worker sleep.
+- `notifications` — purely informational system notifications: a "recording
+  saved" nudge when a recording finishes, and an alert that a sandbox request
+  is awaiting your confirmation (clicking it just focuses the confirmation
+  window). No data is collected or transmitted.
 
 ## Data retention and deletion
 

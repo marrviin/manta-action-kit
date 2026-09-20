@@ -283,7 +283,7 @@ export const zhCN: Messages = {
     languageChinese: "中文",
     languageEnglish: "English",
     connectorTitle: "连接器",
-    connectorDesc: "与本地 MCP 服务的连接状态和端口",
+    connectorDesc: "与本地 MCP 服务的连接状态和工具开关",
     mcpPackageDesc:
       "配合本扩展使用的本地 MCP 服务：以 stdio 协议对接 AI Agent，经本地 WebSocket 桥接读取接口录制、回放动作并经沙箱代理转发请求",
     confirmTestTitle: "调用确认测试",

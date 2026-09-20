@@ -30,6 +30,7 @@ Tools like Claude Code and Codex are great at writing code, but they can't safel
 
 How it works:
 • Record: You actively capture a real business API flow (fetch/XHR) in your browser — requests and responses included.
+• Actions: Turn a recording into a reusable, parameterized action your agent can search and replay later — e.g. "track order shipment" with the order ID as a runtime parameter.
 • Sandbox Proxy: Your agent sends only method/URL/body. The extension injects your session cookies at the trust boundary and forwards the call, so credentials are NEVER exposed to the AI.
 • Stay in control: human-in-the-loop confirmation on every agent call, a per-tool kill switch, an SSRF guard that refuses loopback/private hosts, and a full audit log (cookie names logged, values never) — you decide what the agent can reach.
 
@@ -47,8 +48,10 @@ Built as an AI Developer Toolkit, bridged to your agent over MCP.
 - **cookies + declarativeNetRequestWithHostAccess**: Read the user's existing
   session cookies and inject them as a request header at forward time, so the
   agent can call authenticated APIs without ever seeing credentials.
-- **scripting**: Inject the MAIN-world capture hook.
-- **tabs**: Resolve the active tab to start recording it and target injection.
+- **notifications**: Purely informational system notifications — a "recording
+  saved" nudge when a recording finishes, and an alert that a sandbox request
+  is awaiting your confirmation (clicking it just focuses the confirmation
+  window). Nothing is collected or transmitted.
 - **sidePanel**: Host the management UI (recordings, audit log, proxy rules).
 - **storage**: Persist settings and reactive UI state.
 - **alarms**: Keep the MCP WebSocket bridge alive across MV3 service-worker sleep.

@@ -307,7 +307,7 @@ export const en = {
     languageChinese: "中文",
     languageEnglish: "English",
     connectorTitle: "Connector",
-    connectorDesc: "Connection status and ports of the local MCP service",
+    connectorDesc: "Connection status of the local MCP service and tool switches",
     mcpPackageDesc:
       "Local MCP service paired with this extension: speaks stdio to AI agents and bridges over a local WebSocket to read recordings, run actions, and forward requests through the sandbox proxy",
     confirmTestTitle: "Confirmation test",
