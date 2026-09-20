@@ -376,6 +376,13 @@ export function resolveActionParams(
   const out: Record<string, string> = {};
   for (const p of action.params) {
     const raw = runtime?.[p.name] ?? p.default;
+    if (raw === undefined) {
+      // Not supplied at runtime and no default: skip optional params, fail
+      // required ones — a missing value must never surface as the literal
+      // string "undefined" (or a bogus type error) downstream.
+      if (p.required) throw new Error(`Missing required param "${p.name}"`);
+      continue;
+    }
     const given = typeof raw === "string" ? raw : String(raw);
     if (given === "") {
       if (p.required) throw new Error(`Missing required param "${p.name}"`);
