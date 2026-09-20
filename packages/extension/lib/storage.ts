@@ -8,6 +8,7 @@
 import { storage } from "#imports";
 import {
   IDLE_RECORDING_STATE,
+  type CapturedCall,
   type RecordingFilterRule,
   type RecordingState,
 } from "./recording/types";
@@ -123,6 +124,21 @@ export const recordingState = storage.defineItem<RecordingState>(
   {
     fallback: IDLE_RECORDING_STATE,
   },
+);
+
+/**
+ * In-flight captured calls for the active recording, persisted alongside
+ * `recordingState` in the `session` area. The background's in-memory buffer
+ * alone dies with the MV3 service worker (idle termination) — writing every
+ * pushed call here lets the session module restore the buffer on the next SW
+ * wake, so a pause in browsing (>30s without API calls) mid-recording doesn't
+ * silently drop everything captured so far. Cleared on start/stop. May exceed
+ * the session quota for very large recordings; the session module degrades to
+ * the in-memory buffer when a write fails.
+ */
+export const recordingBuffer = storage.defineItem<CapturedCall[]>(
+  "session:recordingBuffer",
+  { fallback: [] },
 );
 
 /**

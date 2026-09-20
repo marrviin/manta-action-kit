@@ -55,5 +55,9 @@ Built as an AI Developer Toolkit, bridged to your agent over MCP.
 - **sidePanel**: Host the management UI (recordings, audit log, proxy rules).
 - **storage**: Persist settings and reactive UI state.
 - **alarms**: Keep the MCP WebSocket bridge alive across MV3 service-worker sleep.
+- **clipboardWrite**: Copy the in-page element-capture result (a JSON snapshot of
+  the picked element and its subtree, with source coordinates and styles) to the
+  clipboard so you can paste it to your agent. Only written on your explicit
+  capture action; nothing is read from the clipboard.
 - **No remote code, no analytics, no external servers.** All data stays local
   (IndexedDB + chrome.storage). See PRIVACY.md.

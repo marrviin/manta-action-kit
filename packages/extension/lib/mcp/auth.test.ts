@@ -33,6 +33,15 @@ describe("bridge handshake auth", () => {
     expect(await verifyWelcomeProof("tok-1", "nonce-A", hmac("tok-1", "manta/auth/nonce-A"))).toBe(false);
   });
 
+  it("verifyWelcomeProof rejects malformed proofs (wrong length, empty)", async () => {
+    const good = hmac("tok-1", "manta/welcome/nonce-A");
+    expect(await verifyWelcomeProof("tok-1", "nonce-A", good.slice(0, 62))).toBe(false);
+    expect(await verifyWelcomeProof("tok-1", "nonce-A", "")).toBe(false);
+    // A single flipped hex char (same length) must not pass — exercises the
+    // constant-time path.
+    expect(await verifyWelcomeProof("tok-1", "nonce-A", good.slice(0, 63) + (good[63] === "0" ? "1" : "0"))).toBe(false);
+  });
+
   it("authProof matches the node:crypto ground truth the server verifies", async () => {
     await expect(authProof("tok-1", "nonce-B")).resolves.toBe(hmac("tok-1", "manta/auth/nonce-B"));
   });

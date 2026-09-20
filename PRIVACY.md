@@ -39,13 +39,13 @@ creditworthiness or lending.**
 Everything the extension stores lives **locally in your browser**. Nothing is
 transmitted to us or to any third party we control.
 
-| Data | Where it is stored | Why |
-| --- | --- | --- |
-| **Recorded API calls** — request method, URL, headers, request/response bodies, timing, and (for streaming responses) parsed SSE events | IndexedDB, in your browser profile | So you can review a recorded business flow and expose it to your agent |
-| **Settings** — enabled toggles, MCP port, sandbox-proxy toggle, UI language/theme | `chrome.storage` (sync/local/session) | To remember your preferences |
-| **Sandbox-proxy audit log** — for each agent-initiated call: method, URL, status, timing, the **names** of the cookies that were injected, and truncated request/response previews | IndexedDB | So you can audit exactly what your agent did |
+| Data                                                                                                                                                                               | Where it is stored                    | Why                                                                    |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- | ---------------------------------------------------------------------- |
+| **Recorded API calls** — request method, URL, headers, request/response bodies, timing, and (for streaming responses) parsed SSE events                                            | IndexedDB, in your browser profile    | So you can review a recorded business flow and expose it to your agent |
+| **Settings** — enabled toggles, MCP port, sandbox-proxy toggle, UI language/theme                                                                                                  | `chrome.storage` (sync/local/session) | To remember your preferences                                           |
+| **Sandbox-proxy audit log** — for each agent-initiated call: method, URL, status, timing, the **names** of the cookies that were injected, and truncated request/response previews | IndexedDB                             | So you can audit exactly what your agent did                           |
 
-**Cookie values are never stored.** The audit log records only cookie *names*
+**Cookie values are never stored.** The audit log records only cookie _names_
 (e.g. that a `session` cookie was attached), never their values.
 
 ## How cookies are handled (sandbox proxy)
@@ -104,7 +104,7 @@ The local MCP bridge connects only to a process on the loopback interface
 ## Permissions and why they are needed
 
 - `cookies`, `declarativeNetRequestWithHostAccess`, `host_permissions:
-  <all_urls>` — read and inject session cookies to forward authenticated
+<all_urls>` — read and inject session cookies to forward authenticated
   requests, and inject the capture hook on the pages you record.
 - `sidePanel` — host the management UI (recordings, audit log, proxy rules).
 - `storage` — persist settings and (via IndexedDB) recordings and the audit log.
@@ -114,6 +114,10 @@ The local MCP bridge connects only to a process on the loopback interface
   saved" nudge when a recording finishes, and an alert that a sandbox request
   is awaiting your confirmation (clicking it just focuses the confirmation
   window). No data is collected or transmitted.
+- `clipboardWrite` — copy the in-page element-capture result (a JSON snapshot of
+  the element you pick and its subtree, including source coordinates and computed
+  styles) to your clipboard so you can paste it to your agent. Written only on an
+  explicit capture; the extension never reads your clipboard.
 
 ## Data retention and deletion
 

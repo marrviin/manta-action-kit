@@ -47,6 +47,9 @@ importers:
       '@ant-design/icons':
         specifier: ^6.3.2
         version: 6.3.4(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@manta-action-kit/protocol':
+        specifier: workspace:*
+        version: link:../protocol
       antd:
         specifier: ^6.6.1
         version: 6.6.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -99,6 +102,9 @@ importers:
 
   packages/mcp:
     dependencies:
+      '@manta-action-kit/protocol':
+        specifier: workspace:*
+        version: link:../protocol
       '@modelcontextprotocol/sdk':
         specifier: ^1.30.0
         version: 1.30.0(supports-color@10.2.2)(zod@4.5.4)
@@ -115,6 +121,12 @@ importers:
       '@types/ws':
         specifier: ^8.18.0
         version: 8.18.1
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+
+  packages/protocol:
+    devDependencies:
       typescript:
         specifier: ^5.7.0
         version: 5.9.3

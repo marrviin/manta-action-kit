@@ -25,6 +25,8 @@ interface Pending {
   resolve: (value: unknown) => void;
   reject: (err: Error) => void;
   timer: NodeJS.Timeout;
+  /** The socket the request was sent on — close() rejects only this socket's calls. */
+  socket: WebSocket;
 }
 
 export interface Bridge {
@@ -225,6 +227,18 @@ export function startBridge(port: number, token: string | undefined, host = '127
       } else if (role === 'peer') {
         log('peer disconnected');
       }
+      // Fail every in-flight call SENT ON THIS SOCKET immediately: the extension
+      // can no longer answer them, and waiting out the full per-call timeout
+      // (up to 130s for proxy_fetch/proxy_sse) would leave the agent hanging on
+      // a request that is already known-dead. Pending entries are tagged with
+      // their socket at send time, so a takeover by a re-connecting extension
+      // doesn't orphan the old socket's calls.
+      for (const [id, p] of pending) {
+        if (p.socket !== ws) continue;
+        pending.delete(id);
+        clearTimeout(p.timer);
+        p.reject(new Error('extension disconnected while the RPC was in flight'));
+      }
     });
     ws.on('error', (err) => log('socket error', err));
   });
@@ -239,14 +253,17 @@ export function startBridge(port: number, token: string | undefined, host = '127
       return Promise.reject(new Error(hint));
     }
     const id = nextId();
-    const frame: RpcRequestFrame = { type: 'rpc', id, method, params };
+    // params is untyped here (the server relays whatever the tool layer built);
+    // the extension validates it against RpcMap on receipt.
+    const frame: RpcRequestFrame<RpcMethod> = { type: 'rpc', id, method, params } as RpcRequestFrame<RpcMethod>;
+    const socket = active;
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         pending.delete(id);
         reject(new Error(`RPC "${method}" timed out after ${timeoutMs}ms`));
       }, timeoutMs);
-      pending.set(id, { resolve, reject, timer });
-      active!.send(JSON.stringify(frame), (err) => {
+      pending.set(id, { resolve, reject, timer, socket });
+      socket!.send(JSON.stringify(frame), (err) => {
         if (err) {
           pending.delete(id);
           clearTimeout(timer);

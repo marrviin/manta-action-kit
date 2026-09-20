@@ -1,0 +1,29 @@
+{
+  "name": "@manta-action-kit/protocol",
+  "description": "Shared wire-protocol and domain types for the Manta Action Kit WS bridge — single source of truth for the Chrome extension (client) and the MCP server (server)",
+  "version": "0.2.0",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "compile": "tsc -p tsconfig.json",
+    "prepublishOnly": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}

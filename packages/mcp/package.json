@@ -43,6 +43,7 @@
     "prepublishOnly": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@manta-action-kit/protocol": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "ws": "^8.21.3",
     "zod": "^4.4.3"

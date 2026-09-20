@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@ant-design/icons": "^6.3.2",
+    "@manta-action-kit/protocol": "workspace:*",
     "antd": "^6.6.1",
     "classnames": "^2.5.1",
     "i18next": "^26.4.0",

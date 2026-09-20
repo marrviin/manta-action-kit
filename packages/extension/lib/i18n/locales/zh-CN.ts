@@ -25,8 +25,10 @@ export const zhCN: Messages = {
     actions: "动作库",
     gateway: "安全沙箱",
     settings: "设置",
+    elementCapture: "元素捕获",
     noActiveTab: "无法获取当前标签页",
     unsupportedPage: "当前页面不支持录制，请在普通网页中使用",
+    captureUnsupportedPage: "当前页面不支持元素捕获，请在普通网页中使用",
   },
   home: {
     apiRecording: "接口录制",
@@ -178,7 +180,8 @@ export const zhCN: Messages = {
     authDenylist: "拒绝域名",
     authPrompt: "用户确认",
     confirmRequiredTitle: "调用确认",
-    confirmRequiredDesc: "开启后，沙箱转发的每个请求均需确认放行；关闭后自动放行",
+    confirmRequiredDesc:
+      "开启后，沙箱转发的每个请求均需确认放行；关闭后自动放行",
     allowDomainsTitle: "允许域名",
     allowDomainsDesc: "匹配这些域名的请求跳过确认，直接放行",
     denyDomainsTitle: "拒绝域名",
@@ -190,8 +193,7 @@ export const zhCN: Messages = {
     proxyRulesTitle: "代理规则",
     proxyRulesDesc: "将沙箱前缀映射至目标地址，供脚本携带登录态调用",
     confirmTitle: "安全沙箱请求确认",
-    confirmDesc:
-      "以下请求正通过安全沙箱以你的登录态发起，请确认是否放行",
+    confirmDesc: "以下请求正通过安全沙箱以你的登录态发起，请确认是否放行",
     confirmUrl: "请求地址",
     confirmBodyPreview: "请求体预览",
     confirmAllow: "允许",

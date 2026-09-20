@@ -41,6 +41,23 @@ async function hmacHex(token: string, message: string): Promise<string> {
 }
 
 /**
+ * Constant-time string comparison for HMAC proofs. `===` short-circuits on the
+ * first differing byte, and the threat model includes a web page dialing
+ * ws://127.0.0.1 whose JS can time responses — so proof checks must not leak
+ * how many leading hex chars an attacker guessed. Length mismatch is still
+ * distinguishable (unavoidable without leaking length via padding); the fixed
+ * 64-char HMAC-SHA256 output makes that harmless in practice.
+ */
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
+/**
  * Verify the server's `welcome` proof for OUR hello nonce. Until this passes,
  * the socket is untrusted and nothing else may be sent or accepted on it.
  */
@@ -50,7 +67,7 @@ export async function verifyWelcomeProof(
   proof: string,
 ): Promise<boolean> {
   const expected = await hmacHex(token, `manta/welcome/${helloNonce}`);
-  return expected === proof;
+  return timingSafeEqual(expected, proof);
 }
 
 /** The `auth` proof answering the server's challenge nonce. */

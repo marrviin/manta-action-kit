@@ -1,6 +1,7 @@
-import { Button, Menu } from "antd";
+import { App, Button, Menu } from "antd";
 
 import {
+  AimOutlined,
   ApiOutlined,
   MoreOutlined,
   SafetyCertificateOutlined,
@@ -9,6 +10,7 @@ import {
 } from "@ant-design/icons";
 import { useTranslation } from "react-i18next";
 import { RecordControls } from "@/components/recording/record-controls";
+import { toggleInspectorCaptureOnTab } from "@/lib/inspector/capture";
 import { sidePanelTab, type SidePanelTabRequest } from "@/lib/storage";
 
 /**
@@ -20,6 +22,36 @@ import { sidePanelTab, type SidePanelTabRequest } from "@/lib/storage";
  */
 export default function PopupApp() {
   const { t } = useTranslation();
+  const { message } = App.useApp();
+
+  /**
+   * "Element capture" entry: toggles in-page inspector mode on the active tab
+   * (box-select / click-pick elements; the content script copies the JSON
+   * description to the clipboard). Unlike other rows it never opens the side
+   * panel — the interaction belongs to the page itself, so the popup closes
+   * right after handing over.
+   */
+  const startInspectorCapture = async () => {
+    const [tab] = await chrome.tabs.query({
+      active: true,
+      currentWindow: true,
+    });
+    if (!tab?.id || !tab.url) {
+      message.warning(t("popup.noActiveTab"));
+      return;
+    }
+    if (!/^https?:/i.test(tab.url)) {
+      message.warning(t("popup.captureUnsupportedPage"));
+      return;
+    }
+    try {
+      await toggleInspectorCaptureOnTab(tab.id);
+      window.close();
+    } catch {
+      // No receiver: content script not injectable/injected on this page.
+      message.warning(t("popup.captureUnsupportedPage"));
+    }
+  };
 
   const openSidePanel = async (selectTab?: SidePanelTabRequest) => {
     const [tab] = await chrome.tabs.query({
@@ -60,6 +92,7 @@ export default function PopupApp() {
           className="border-none bg-(--ant-color-bg-elevated)!"
           onClick={({ key }) => {
             if (key === "api-recording") openSidePanel("api-recording");
+            else if (key === "inspector-capture") startInspectorCapture();
             else if (key === "action") openSidePanel("action");
             else if (key === "gateway") openSidePanel("gateway");
             else if (key === "settings") openSidePanel("settings");
@@ -80,6 +113,12 @@ export default function PopupApp() {
               key: "gateway",
               icon: <SafetyCertificateOutlined />,
               label: t("popup.gateway"),
+            },
+            { type: "divider" },
+            {
+              key: "inspector-capture",
+              icon: <AimOutlined />,
+              label: t("popup.elementCapture"),
             },
             { type: "divider" },
             {

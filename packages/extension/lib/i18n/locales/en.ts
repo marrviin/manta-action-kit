@@ -27,9 +27,12 @@ export const en = {
     actions: "Actions",
     gateway: "Secure Sandbox",
     settings: "Settings",
+    elementCapture: "Element Capture",
     noActiveTab: "Unable to get the current tab",
     unsupportedPage:
       "This page does not support recording; use a regular web page",
+    captureUnsupportedPage:
+      "This page cannot be inspected; use a regular web page",
   },
   home: {
     apiRecording: "API Recording",
@@ -307,11 +310,13 @@ export const en = {
     languageChinese: "中文",
     languageEnglish: "English",
     connectorTitle: "Connector",
-    connectorDesc: "Connection status of the local MCP service and tool switches",
+    connectorDesc:
+      "Connection status of the local MCP service and tool switches",
     mcpPackageDesc:
       "Local MCP service paired with this extension: speaks stdio to AI agents and bridges over a local WebSocket to read recordings, run actions, and forward requests through the sandbox proxy",
     confirmTestTitle: "Confirmation test",
-    confirmTestDesc: "Trigger the sandbox confirm dialog with a mock request to verify its UI; nothing is forwarded",
+    confirmTestDesc:
+      "Trigger the sandbox confirm dialog with a mock request to verify its UI; nothing is forwarded",
     confirmTestButton: "Test",
     confirmTestAllowed: "Test request allowed",
     confirmTestDenied: "Test request denied",
