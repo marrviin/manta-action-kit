@@ -47,12 +47,15 @@ importers:
       '@ant-design/icons':
         specifier: ^6.3.2
         version: 6.3.4(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@manta-action-kit/protocol':
+        specifier: workspace:*
+        version: link:../protocol
       antd:
         specifier: ^6.6.1
         version: 6.6.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      diff:
-        specifier: 8.0.2
-        version: 8.0.2
+      classnames:
+        specifier: ^2.5.1
+        version: 2.5.1
       i18next:
         specifier: ^26.4.0
         version: 26.4.1(typescript@5.9.3)
@@ -99,6 +102,9 @@ importers:
 
   packages/mcp:
     dependencies:
+      '@manta-action-kit/protocol':
+        specifier: workspace:*
+        version: link:../protocol
       '@modelcontextprotocol/sdk':
         specifier: ^1.30.0
         version: 1.30.0(supports-color@10.2.2)(zod@4.5.4)
@@ -118,6 +124,14 @@ importers:
       typescript:
         specifier: ^5.7.0
         version: 5.9.3
+
+  packages/protocol:
+    devDependencies:
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+
+  packages/skills: {}
 
 packages:
 
@@ -1257,6 +1271,9 @@ packages:
   citty@0.2.2:
     resolution: {integrity: sha512-+6vJA3L98yv+IdfKGZHBNiGW5KHn22e/JwID0Strsz8h4S/csAu/OuICwxrg44k5MRiZHWIo8XXuJgQTriRP4w==}
 
+  classnames@2.5.1:
+    resolution: {integrity: sha512-saHYOzhIQs6wy2sVxTM6bUDsQO4F50V9RQ22qBpEdCW+I+/Wmke2HOl6lS6dTpdxVhb88/I6+Hs+438c3lfUow==}
+
   cliui@8.0.1:
     resolution: {integrity: sha512-BSeNnyus75C4//NQ9gQt1/csTXyo/8Sb+afLAkzAptFuMsod9HFokGNudZpi/oQV73hnVK+sR+5PVRMd+Dr7YQ==}
     engines: {node: '>=12'}
@@ -1414,10 +1431,6 @@ packages:
   detect-libc@2.1.2:
     resolution: {integrity: sha512-Btj2BOOO83o3WyH59e8MgXsxEQVcarkUOpEYrubB0urwnN10yQ364rsiByU11nZlqWYZm05i/of7io4mzihBtQ==}
     engines: {node: '>=8'}
-
-  diff@8.0.2:
-    resolution: {integrity: sha512-sSuxWU5j5SR9QQji/o2qMvqRNYRDOcBTgsJ/DeCf4iSN4gW+gNMXM7wFIP+fdXZxoNiAnHUTGjCr+TSWXdRDKg==}
-    engines: {node: '>=0.3.1'}
 
   doctrine@2.1.0:
     resolution: {integrity: sha512-35mSku4ZXK0vfCuHEDAwt55dg2jNajHZ1odvF+8SSr82EsZY4QmXfuWso8oEd8zRhVObSN18aM0CjSdoBX7zIw==}
@@ -4576,6 +4589,8 @@ snapshots:
 
   citty@0.2.2: {}
 
+  classnames@2.5.1: {}
+
   cliui@8.0.1:
     dependencies:
       string-width: 4.2.3
@@ -4708,8 +4723,6 @@ snapshots:
   destr@2.0.5: {}
 
   detect-libc@2.1.2: {}
-
-  diff@8.0.2: {}
 
   doctrine@2.1.0:
     dependencies:

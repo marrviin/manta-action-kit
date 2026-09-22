@@ -10,7 +10,7 @@ import { RecordingDetail } from '@/components/recording/recording-detail';
  *
  * MemoryRouter (not Hash/Browser) keeps the route stack in memory only: reopening
  * the side panel starts back at home, which matches the "no persistence" choice.
- * The recording detail (录制结果) page's back button always returns to home.
+ * The recording detail (Result) page's back button always returns to home.
  * Detail is its own route (not nested under home), so entering it replaces the
  * whole view — the tab bar only exists on the home route. Per-feature settings now
  * live inside each feature tab (e.g. MCP config in the MCP tab), so there is no
@@ -19,7 +19,7 @@ import { RecordingDetail } from '@/components/recording/recording-detail';
 export default function App() {
   return (
     <MemoryRouter>
-      <div className="h-screen">
+      <div className="h-screen rounded-(--ant-border-radius-lg) border-[2px] border-solid border-(--ant-color-border) box-border overflow-hidden">
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/detail/:id" element={<DetailRoute />} />
@@ -32,7 +32,7 @@ export default function App() {
 /**
  * Bridges the :id route param and back-navigation into RecordingDetail. An
  * optional `{ tab }` in the route state reopens the detail on that bottom tab
- * instead of the default 录制结果.
+ * instead of the default Result.
  */
 function DetailRoute() {
   const { id } = useParams<{ id: string }>();

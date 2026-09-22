@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-19
+
+> ⚠️ **Protocol change — the extension and the MCP server must be updated together.**
+> After updating the extension, re-copy the install prompt (Action tab → Copy install
+> prompt) and update your MCP config env so `MANTA_TOKEN` matches.
+
+### Added
+
+#### Actions toolset
+
+- `list_actions` / `get_action` / `search_actions` / `create_action` /
+  `update_action` / `delete_action` / `execute_action` — reusable, parameterized
+  API flows distilled from a recording and replayed through the sandbox gateway.
+
+#### WS bridge handshake authentication
+
+- Mutual challenge-response between the extension and the local MCP server
+  (`hello{nonce}` → `welcome{proof}` → `auth{proof}`; HMAC-SHA256 over
+  domain-separated nonces). The shared token never crosses the wire.
+- The token is generated once by the extension (`settings.mcpAuthToken`) and
+  injected into the install prompt as the `MANTA_TOKEN` env.
+- Web-origin guard: connections with an http/https `Origin` header are rejected
+  outright (defends against web pages dialing `ws://127.0.0.1`).
+- New connection status `unauthorized` (token mismatch → "Auth failed" in the
+  extension's MCP tab) with a fix path: re-copy the install prompt.
+
+### Security
+
+- **Fail closed**: the server rejects every client when `MANTA_TOKEN` is unset;
+  unauthenticated sockets cannot send or receive any business frame on either
+  side. This closes port-spoofing in both directions (a local process or web
+  page impersonating the extension, and a port squatter impersonating the
+  server).
+
+### Changed
+
+- `check-env.mjs` performs a full authenticated probe and requires `MANTA_TOKEN`;
+  stale troubleshooting copy (references to the removed "MCP service" toggle)
+  updated across `SKILL.md`, `CLAUDE.md`, and both READMEs.
+
 ## [0.1.0] - 2026-09-03
 
 Initial release of the Manta Action Kit monorepo (`packages/extension` +

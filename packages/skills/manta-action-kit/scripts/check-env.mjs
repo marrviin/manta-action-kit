@@ -1,26 +1,31 @@
 #!/usr/bin/env node
 /**
- * manta-action-kit 套件健康检查。
+ * manta-action-kit suite health check.
  *
- * 用法：node check-env.mjs
- * 退出码：0 = 全部通过；1 = 有问题（每项前缀 ✅/❌/⚠️ 并给出修复建议）。
+ * Usage: node check-env.mjs
+ * Exit code: 0 = all passed; 1 = issues found (each line prefixed ✅/❌/⚠️ with a fix suggestion).
  *
- * 检查项：
- *   1. packages/mcp/dist/index.js 已构建
- *   2. Claude Code 已注册 manta-action-kit MCP server
- *   3. WS 桥端口（默认 8787）有 MCP server 进程在听
- *   4. 端到端探活：以 peer 身份连入桥，转发 list_recordings 到扩展
- *      —— 能区分「桥在但扩展没连」与「全链路通」
+ * Checks:
+ *   1. packages/mcp/dist/index.js is built
+ *   2. Claude Code has the manta-action-kit MCP server registered
+ *   3. WS bridge port (default 8787) has an MCP server process listening
+ *   4. End-to-end probe: connects to the bridge as a peer and forwards
+ *      list_recordings to the extension — distinguishes "bridge up but
+ *      extension not connected" from "full chain working"
  *
- * 需要 Node >= 22（使用原生 WebSocket）。端口可用 MANTA_WS_PORT / MANTA_PROXY_PORT 覆盖。
+ * Requires Node >= 22 (native WebSocket). Ports can be overridden via
+ * MANTA_WS_PORT / MANTA_PROXY_PORT.
  */
 import { spawnSync } from 'node:child_process';
+import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
 const MCP_PORT = Number(process.env.MANTA_WS_PORT) || 8787;
+/** Handshake secret shared with the extension (from its install prompt env). */
+const MANTA_TOKEN = process.env.MANTA_TOKEN;
 
 const results = [];
 const report = (ok, label, detail = '') => {
@@ -29,45 +34,49 @@ const report = (ok, label, detail = '') => {
   console.log(`${mark} ${label}${detail ? ` — ${detail}` : ''}`);
 };
 
-// ── 1. dist 已构建 ────────────────────────────────────────────────────────────
+// ── 1. dist built ────────────────────────────────────────────────────────────
 const distEntry = path.join(ROOT, 'packages/mcp/dist/index.js');
 if (existsSync(distEntry)) {
-  report(true, 'MCP 产物已构建 (packages/mcp/dist/index.js)');
+  report(true, 'MCP build output present (packages/mcp/dist/index.js)');
 } else {
-  report(false, 'MCP 产物缺失', '运行 pnpm build:mcp');
+  report(false, 'MCP build output missing', 'run pnpm build:mcp');
 }
 
-// ── 2. Claude Code 注册状态 ───────────────────────────────────────────────────
+// ── 2. Claude Code registration ─────────────────────────────────────────────
 const claude = spawnSync('claude', ['mcp', 'list'], { encoding: 'utf8', timeout: 30_000 });
 if (claude.error) {
-  report('skip', 'claude CLI 不可用，跳过注册检查');
+  report('skip', 'claude CLI unavailable, skipping registration check');
 } else {
   const line = (claude.stdout + claude.stderr)
     .split('\n')
     .find((l) => l.includes('manta-action-kit'));
   if (line && line.includes('✔')) {
-    report(true, 'Claude Code 已注册 manta-action-kit MCP');
+    report(true, 'Claude Code has manta-action-kit MCP registered');
   } else if (line) {
-    report(false, `已注册但未连上: ${line.trim()}`, '先跑 pnpm build:mcp，再 /mcp reconnect');
+    report(false, `Registered but not connected: ${line.trim()}`, 'run pnpm build:mcp first, then /mcp reconnect');
   } else {
     report(
       false,
-      'Claude Code 未注册 manta-action-kit MCP',
-      `运行 claude mcp add manta-action-kit --scope local -- node ${distEntry}`,
+      'manta-action-kit MCP not registered in Claude Code',
+      `run claude mcp add manta-action-kit --scope local -- node ${distEntry}`,
     );
   }
 }
 
-// ── 3+4. WS 桥 + 端到端探活 ──────────────────────────────────────────────────
+// ── 3+4. WS bridge + end-to-end probe ───────────────────────────────────────
 if (typeof WebSocket === 'undefined') {
-  report('skip', `Node ${process.version} 无原生 WebSocket，跳过连接检查（需 Node >= 22）`);
+  report('skip', `Node ${process.version} has no native WebSocket, skipping connection check (requires Node >= 22)`);
 } else {
   const exitCode = await probeBridge();
   process.exitCode = exitCode;
 }
 
-/** 连 ws://127.0.0.1:<MCP_PORT>，以 peer 身份探活扩展。返回退出码。 */
+/** Connect to ws://127.0.0.1:<MCP_PORT> and probe the extension as a peer. Returns exit code. */
 async function probeBridge() {
+  if (!MANTA_TOKEN) {
+    report(false, 'MANTA_TOKEN not set', 're-copy the install prompt from the extension (Action tab → Copy install prompt) and update the MCP config env, then run this script with MANTA_TOKEN=<token>');
+    return 1;
+  }
   let ws;
   try {
     ws = await new Promise((resolve, reject) => {
@@ -94,24 +103,26 @@ async function probeBridge() {
       socket.addEventListener('error', onError);
     });
   } catch {
-    report(false, `WS 桥端口 ${MCP_PORT} 无进程监听`, 'MCP server 未运行（MCP 客户端会话未启动？），或端口被改');
+    report(false, `WS bridge port ${MCP_PORT} has no listener`, 'MCP server not running (no MCP client session started?), or the port was changed');
     return 1;
   }
-  report(true, `WS 桥端口 ${MCP_PORT} 有 MCP server 在听`);
+  report(true, `WS bridge port ${MCP_PORT} has an MCP server listening`);
 
   try {
     const result = await rpc(ws, 'list_recordings', {}, 10_000);
-    const count = Array.isArray(result) ? result.length : (result?.recordings?.length ?? '未知');
-    report(true, '端到端探活通过（MCP → 桥 → 扩展）', `当前录制数: ${count}`);
+    const count = Array.isArray(result) ? result.length : (result?.recordings?.length ?? 'unknown');
+    report(true, 'End-to-end probe passed (MCP → bridge → extension)', `current recording count: ${count}`);
     return 0;
   } catch (err) {
     const msg = String(err?.message ?? err);
-    if (msg.includes('No Chrome extension connected')) {
-      report(false, '桥在但扩展未连入', '确认 Chrome 已开且加载扩展；侧边栏设置里「MCP 服务」开关已打开；端口与 server 一致');
+    if (msg.includes('token mismatch') || msg.includes('MANTA_TOKEN')) {
+      report(false, 'Handshake failed: token mismatch', 'the MCP config env MANTA_TOKEN does not match the extension — re-copy the install prompt and update the config');
+    } else if (msg.includes('No authenticated Chrome extension') || msg.includes('No Chrome extension connected')) {
+      report(false, 'Bridge up but extension not connected', 'confirm Chrome is running with the extension installed (the MCP tab in its side panel shows the connection status)');
     } else if (msg.includes('timed out')) {
-      report(false, '扩展连着但无响应', '扩展刚刷新或 service worker 休眠，唤醒扩展侧边栏后重试');
+      report(false, 'Extension connected but unresponsive', 'the extension was just reloaded or its service worker slept; wake the side panel and retry');
     } else {
-      report(false, '端到端探活失败', msg);
+      report(false, 'End-to-end probe failed', msg);
     }
     return 1;
   } finally {
@@ -119,12 +130,50 @@ async function probeBridge() {
   }
 }
 
-/** 发 hello(peer) + peer-rpc，等待对应 id 的 peer-rpc-result。 */
-function rpc(ws, method, params, timeoutMs) {
+const hmac = (token, message) => createHmac('sha256', token).update(message).digest('hex');
+
+/**
+ * Full client handshake (mirror of packages/mcp/src/peer-client.ts):
+ * hello{nonce} → verify welcome proof → auth proof → then the peer-rpc.
+ * Rejects with a descriptive error on any handshake failure.
+ */
+function handshake(ws) {
+  return new Promise((resolve, reject) => {
+    const nonce = randomUUID();
+    const timer = setTimeout(() => reject(new Error('handshake timed out after 10s')), 10_000);
+    const onMessage = (ev) => {
+      let frame;
+      try {
+        frame = JSON.parse(String(ev.data));
+      } catch {
+        return;
+      }
+      if (frame.type !== 'welcome') return;
+      clearTimeout(timer);
+      ws.removeEventListener('message', onMessage);
+      const expected = hmac(MANTA_TOKEN, `manta/welcome/${nonce}`);
+      const actual = Buffer.from(String(frame.proof ?? ''), 'hex');
+      const expectedBuf = Buffer.from(expected, 'hex');
+      const ok = actual.length === expectedBuf.length && timingSafeEqual(actual, expectedBuf);
+      if (!ok) {
+        reject(new Error('Handshake failed: token mismatch (MANTA_TOKEN does not match the extension)'));
+        return;
+      }
+      ws.send(JSON.stringify({ type: 'auth', proof: hmac(MANTA_TOKEN, `manta/auth/${frame.nonce}`) }));
+      resolve();
+    };
+    ws.addEventListener('message', onMessage);
+    ws.send(JSON.stringify({ type: 'hello', role: 'peer', version: '0.0.0', nonce }));
+  });
+}
+
+/** Handshake, then send peer-rpc and await the peer-rpc-result with the matching id. */
+async function rpc(ws, method, params, timeoutMs) {
+  await handshake(ws);
   return new Promise((resolve, reject) => {
     const id = `check-${Date.now()}`;
     const timer = setTimeout(() => reject(new Error(`peer RPC "${method}" timed out after ${timeoutMs}ms`)), timeoutMs);
-    ws.addEventListener('message', (ev) => {
+    const onMessage = (ev) => {
       let frame;
       try {
         frame = JSON.parse(String(ev.data));
@@ -133,14 +182,15 @@ function rpc(ws, method, params, timeoutMs) {
       }
       if (frame.type === 'peer-rpc-result' && frame.id === id) {
         clearTimeout(timer);
+        ws.removeEventListener('message', onMessage);
         if (frame.ok) {
           resolve(frame.result);
         } else {
           reject(new Error(frame.error));
         }
       }
-    });
-    ws.send(JSON.stringify({ type: 'hello', role: 'peer', version: '0.0.0' }));
+    };
+    ws.addEventListener('message', onMessage);
     ws.send(JSON.stringify({ type: 'peer-rpc', id, method, params }));
   });
 }

@@ -38,3 +38,4 @@ CLAUDE.md
 # Misc
 coverage/
 .cache/
+*.zip

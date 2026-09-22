@@ -1,11 +1,11 @@
-import { useState, type ReactNode } from 'react';
-import { App, Dropdown, Tag, Tooltip, Typography } from 'antd';
-import { useTranslation } from 'react-i18next';
-import type { TFunction } from 'i18next';
-import { MethodBadge, StatusBadge } from './method-badge';
-import { UnifiedListItem } from '@/components/common/unified-list-item';
-import { prettyJson } from '@/lib/utils';
-import type { ApiCall, FieldDependency } from '@/lib/recording/types';
+import { useState, type ReactNode } from "react";
+import { App, Tag, Tooltip, Typography } from "antd";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
+import { MethodBadge, StatusBadge } from "./method-badge";
+import { UnifiedListItem } from "@/components/common/unified-list-item";
+import { cn, prettyJson } from "@/lib/utils";
+import type { ApiCall, FieldDependency } from "@/lib/recording/types";
 
 const { Text } = Typography;
 
@@ -22,16 +22,19 @@ interface Props {
 }
 
 /** Short human label for where a consumed value lands in the request. */
-function locationLabel(loc: FieldDependency['toLocation'], t: TFunction): string {
+function locationLabel(
+  loc: FieldDependency["toLocation"],
+  t: TFunction,
+): string {
   switch (loc) {
-    case 'body':
-      return t('flow.locBody');
-    case 'query':
-      return t('flow.locQuery');
-    case 'header':
-      return t('flow.locHeader');
-    case 'url':
-      return t('flow.locUrl');
+    case "body":
+      return t("flow.locBody");
+    case "query":
+      return t("flow.locQuery");
+    case "header":
+      return t("flow.locHeader");
+    case "url":
+      return t("flow.locUrl");
   }
 }
 
@@ -39,7 +42,13 @@ function locationLabel(loc: FieldDependency['toLocation'], t: TFunction): string
  * Inline "flow" annotations for one call: which earlier steps feed this call's
  * request (consumes), and which later steps reuse this call's response (produces).
  */
-function FlowAnnotations({ call, deps }: { call: ApiCall; deps: FieldDependency[] }) {
+function FlowAnnotations({
+  call,
+  deps,
+}: {
+  call: ApiCall;
+  deps: FieldDependency[];
+}) {
   const { t } = useTranslation();
   const consumes = deps.filter((d) => d.toSeq === call.seq);
   const produces = deps.filter((d) => d.fromSeq === call.seq);
@@ -47,21 +56,21 @@ function FlowAnnotations({ call, deps }: { call: ApiCall; deps: FieldDependency[
   return (
     <div className="flex flex-col gap-1">
       {consumes.map((d) => (
-        <Tooltip key={d.id} title={t('flow.valueTooltip', { value: d.value })}>
-          <Tag color="gold" className="w-fit m-0! text-[11px]!">
-            {t('flow.consumes', {
-              target: `${locationLabel(d.toLocation, t)}${d.toPath ? ` · ${d.toPath}` : ''}`,
+        <Tooltip key={d.id} title={t("flow.valueTooltip", { value: d.value })}>
+          <Tag color="gold" className="w-fit m-0! text-[10px]! font-normal!">
+            {t("flow.consumes", {
+              target: `${locationLabel(d.toLocation, t)}${d.toPath ? ` · ${d.toPath}` : ""}`,
               fromSeq: d.fromSeq,
-              fromField: d.fromPath || t('flow.response'),
+              fromField: d.fromPath || t("flow.response"),
             })}
           </Tag>
         </Tooltip>
       ))}
       {produces.map((d) => (
-        <Tooltip key={d.id} title={t('flow.valueTooltip', { value: d.value })}>
-          <Tag color="blue" className="w-fit m-0! text-[11px]!">
-            {t('flow.produces', {
-              fromPath: d.fromPath || '',
+        <Tooltip key={d.id} title={t("flow.valueTooltip", { value: d.value })}>
+          <Tag color="blue" className="w-fit m-0! text-[10px]! font-normal!">
+            {t("flow.produces", {
+              fromPath: d.fromPath || "",
               toSeq: d.toSeq,
               target: locationLabel(d.toLocation, t),
             })}
@@ -86,25 +95,41 @@ export function CallNode({ call, deps = [], onDelete }: Props) {
 
   const confirmDelete = () => {
     modal.confirm({
-      title: t('detail.deleteCallTitle'),
+      title: t("detail.deleteCallTitle"),
       content: (
         <Text ellipsis title={call.url}>
-          {t('detail.deleteCallConfirm', { url: call.url })}
+          {t("detail.deleteCallConfirm", { url: call.url })}
         </Text>
       ),
-      okText: t('common.delete'),
+      okText: t("common.delete"),
       okButtonProps: { danger: true },
-      cancelText: t('common.cancel'),
+      cancelText: t("common.cancel"),
       onOk: () => onDelete?.(call),
+      centered: true,
     });
   };
 
-  const node = (
+  return (
     <UnifiedListItem
-      className="manta-action-kit-call-node px-0! border-0!"
+      // pt-0! drops the shared list-item top padding so the title row sits
+      // flush with the Timeline dot (the rail/dot stay unmoved); px-0! /
+      // border-0! remove the shared list separators inside the chain.
+      className="pt-0! px-0! border-0!"
       expandable
       expanded={expanded}
       onToggleExpand={() => setExpanded((v) => !v)}
+      menu={
+        onDelete
+          ? [
+              {
+                key: "delete",
+                label: t("common.delete"),
+                danger: true,
+                onClick: confirmDelete,
+              },
+            ]
+          : undefined
+      }
       title={
         <Text ellipsis className="text-sm" title={call.url}>
           {call.url}
@@ -117,49 +142,40 @@ export function CallNode({ call, deps = [], onDelete }: Props) {
         </>
       }
       detail={
-        <div className="flex flex-col gap-2 bg-[rgba(0,0,0,0.03)] border border-[rgba(5,5,5,0.06)] rounded-md px-2.5 py-2">
+        <div className="flex flex-col gap-2 bg-(--ant-color-fill-quaternary) border border-(--ant-color-border-secondary) rounded-md px-2.5 py-2">
           <FlowAnnotations call={call} deps={deps} />
           <Field label="URL" value={call.url} />
           {Object.keys(call.reqHeaders).length > 0 && (
-            <Section title={t('detail.reqHeaders')} body={headerText(call.reqHeaders)} />
+            <Section
+              title={t("detail.reqHeaders")}
+              body={headerText(call.reqHeaders)}
+            />
           )}
-          {call.reqBody && <Section title={t('detail.reqBody')} body={prettyJson(call.reqBody)} />}
+          {call.reqBody && (
+            <Section
+              title={t("detail.reqBody")}
+              body={prettyJson(call.reqBody)}
+            />
+          )}
           {call.streaming ? (
             <SseEvents call={call} />
           ) : (
             <Section
-              title={t('detail.response', { status: call.status, statusText: call.statusText })}
+              title={t("detail.response", {
+                status: call.status,
+                statusText: call.statusText,
+              })}
               body={prettyJson(call.resBody)}
             />
           )}
           {call.errored && (
-            <Block title={t('detail.error')}>
+            <Block title={t("detail.error")}>
               <Text type="danger">{call.errorText}</Text>
             </Block>
           )}
         </div>
       }
     />
-  );
-
-  if (!onDelete) return node;
-
-  return (
-    <Dropdown
-      trigger={['contextMenu']}
-      menu={{
-        items: [
-          {
-            key: 'delete',
-            label: t('common.delete'),
-            danger: true,
-            onClick: confirmDelete,
-          },
-        ],
-      }}
-    >
-      <div>{node}</div>
-    </Dropdown>
   );
 }
 
@@ -178,13 +194,17 @@ export function Block({
 }) {
   return (
     <div>
-      <Text type="secondary" strong className="text-xs">
+      {/* `!` required: antd's unlayered 14px beats a layered utility otherwise. */}
+      <Text type="secondary" strong className="text-xs!">
         {title}
       </Text>
       <div
-        className={`max-h-48 overflow-auto break-all mt-1 p-2 rounded-md text-[12px] leading-normal ${
-          highlight ? 'bg-[rgba(250,173,20,0.1)]' : 'bg-[rgba(255,255,255,0.6)]'
-        }`}
+        className={cn(
+          "max-h-48 overflow-auto break-all mt-1 p-2 rounded-md text-[12px] leading-normal",
+          highlight
+            ? "bg-(--ant-color-warning-bg)"
+            : "bg-(--ant-color-bg-elevated)",
+        )}
       >
         {children}
       </div>
@@ -205,7 +225,7 @@ export function Section({
   return (
     <Block title={title} highlight={highlight}>
       <pre className="whitespace-pre-wrap break-all m-0 leading-normal">
-        {body || t('common.empty')}
+        {body || t("common.empty")}
       </pre>
     </Block>
   );
@@ -214,7 +234,7 @@ export function Section({
 export function headerText(h: Record<string, string>): string {
   return Object.entries(h)
     .map(([k, v]) => `${k}: ${v}`)
-    .join('\n');
+    .join("\n");
 }
 
 /** Render a streaming (SSE) response as its ordered event sequence. */
@@ -223,8 +243,8 @@ function SseEvents({ call }: { call: ApiCall }) {
   const events = call.sseEvents ?? [];
   return (
     <div>
-      <Text type="secondary" strong className="text-xs">
-        {t('detail.streamResponse', {
+      <Text type="secondary" strong className="text-xs!">
+        {t("detail.streamResponse", {
           status: call.status,
           statusText: call.statusText,
           count: events.length,
@@ -232,19 +252,19 @@ function SseEvents({ call }: { call: ApiCall }) {
       </Text>
       <div className="max-h-64 overflow-auto mt-1 flex flex-col gap-1">
         {events.length === 0 ? (
-          <pre className="whitespace-pre-wrap break-all m-0 p-2 rounded-md text-[12px] bg-[rgba(255,255,255,0.6)]">
-            {t('detail.noEvents')}
+          <pre className="whitespace-pre-wrap break-all m-0 p-2 rounded-md text-[12px] bg-(--ant-color-bg-elevated)">
+            {t("detail.noEvents")}
           </pre>
         ) : (
           events.map((ev, i) => (
             <div key={i} className="flex flex-col">
               <Text type="secondary" className="text-[10px]">
                 #{i}
-                {ev.event ? ` · ${ev.event}` : ''}
-                {ev.id ? ` · id=${ev.id}` : ''}
+                {ev.event ? ` · ${ev.event}` : ""}
+                {ev.id ? ` · id=${ev.id}` : ""}
               </Text>
-              <pre className="whitespace-pre-wrap break-all m-0 p-2 rounded-md text-[12px] leading-normal bg-[rgba(255,255,255,0.6)]">
-                {prettyJson(ev.data) || t('common.empty')}
+              <pre className="whitespace-pre-wrap break-all m-0 p-2 rounded-md text-[12px] leading-normal bg-(--ant-color-bg-elevated)">
+                {prettyJson(ev.data) || t("common.empty")}
               </pre>
             </div>
           ))

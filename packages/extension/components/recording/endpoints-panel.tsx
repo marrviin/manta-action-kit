@@ -1,7 +1,9 @@
 import { useMemo } from 'react';
 import { Collapse, Empty, Tag, Typography } from 'antd';
+import { CaretRightFilled } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { aggregateEndpoints, attachDependencies } from '@/lib/recording/aggregate';
+import { cn } from '@/lib/utils';
 import type {
   ApiCall,
   EndpointSummary,
@@ -39,9 +41,13 @@ export function EndpointsPanel({
   }
 
   return (
-    <div className="flex-1 min-h-0 overflow-auto py-4 px-3">
+    <div className="flex-1 min-h-0 overflow-auto pt-4 pb-14 px-3">
       <Collapse
         accordion
+        expandIconPosition="start"
+        expandIcon={({ isActive }) => (
+          <CaretRightFilled rotate={isActive ? 90 : 0} className="text-[10px]! text-(--ant-color-text-quaternary)" />
+        )}
         items={endpoints.map((ep) => ({
           key: ep.key,
           label: <EndpointHeader ep={ep} />,
@@ -73,11 +79,11 @@ function methodColor(method: string): string {
 function EndpointHeader({ ep }: { ep: EndpointSummary }) {
   return (
     <div className="flex items-center gap-2 min-w-0">
-      <Tag color={methodColor(ep.method)} className="m-0! shrink-0">
+      <Tag color={methodColor(ep.method)} className="m-0! shrink-0 text-[10px]! font-normal!">
         {ep.method}
       </Tag>
       <Text className="min-w-0 flex-1 truncate font-mono text-[13px]!">{ep.pathKey}</Text>
-      <Tag className="m-0! shrink-0">×{ep.callCount}</Tag>
+      <Tag className="m-0! shrink-0 text-[10px]! font-normal!">×{ep.callCount}</Tag>
     </div>
   );
 }
@@ -93,7 +99,7 @@ function EndpointBody({ ep }: { ep: EndpointSummary }) {
         </Text>
         {ep.statuses.length > 0 ? (
           ep.statuses.map((s) => (
-            <Tag key={s} color={s >= 400 ? 'red' : 'default'} className="m-0!">
+            <Tag key={s} color={s >= 400 ? 'red' : 'default'} className="m-0! text-[10px]! font-normal!">
               {s}
             </Tag>
           ))
@@ -108,7 +114,7 @@ function EndpointBody({ ep }: { ep: EndpointSummary }) {
             {t('endpoints.query')}
           </Text>
           {ep.queryKeys.map((k) => (
-            <Tag key={k} className="m-0! font-mono">
+            <Tag key={k} className="m-0! font-mono text-[10px]! font-normal!">
               {k}
             </Tag>
           ))}
@@ -184,14 +190,16 @@ function SchemaTree({
   if (node.nullable) flags.push(t('endpoints.nullable'));
 
   return (
-    <div style={{ paddingLeft: depth > 0 ? 14 : 0 }}>
+    <div className={cn(depth > 0 && 'pl-3.5')}>
       <div className="flex flex-wrap items-baseline gap-1">
-        {name != null && <span className="text-[#1677ff]">{name}</span>}
-        <Tag className="m-0! text-[11px]!" color="geekblue">
+        {name != null && (
+          <span className="text-(--ant-color-primary)">{name}</span>
+        )}
+        <Tag className="m-0! text-[10px]! font-normal!" color="geekblue">
           {node.kind}
         </Tag>
         {flags.map((f) => (
-          <Tag key={f} className="m-0! text-[11px]!">
+          <Tag key={f} className="m-0! text-[10px]! font-normal!">
             {f}
           </Tag>
         ))}

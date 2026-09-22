@@ -26,16 +26,10 @@ export interface ProtocolMap {
     response: { recordingId: string | null; state: RecordingState };
   };
 
-  /** Toolbar -> background: pause/resume capture without ending the session. */
+  /** UI -> background: pause/resume capture without ending the session. */
   SET_PAUSED: {
     request: { paused: boolean };
     response: RecordingState;
-  };
-
-  /** Content script -> background: resolve the caller's own tab id (from sender). */
-  GET_TAB_ID: {
-    request: void;
-    response: { tabId: number | null };
   };
 
   /** Any context -> background: read current recording state. */
@@ -90,6 +84,44 @@ export interface ProtocolMap {
   /** Side panel -> background: delete a proxy rule. */
   DELETE_GATEWAY_PROXY_RULE: {
     request: { id: string };
+    response: { ok: boolean };
+  };
+
+  /**
+   * Confirm window -> background: the user's allow/deny decision for a pending
+   * sandbox-call confirmation. `ok:false` means the id was unknown (expired).
+   */
+  GATEWAY_CONFIRM_DECISION: {
+    request: { id: string; approved: boolean };
+    response: { ok: boolean };
+  };
+
+  /**
+   * Confirm window -> background: keepalive heartbeat while the user decides.
+   * Each message resets the MV3 service-worker idle timer so the pending
+   * confirmation promise isn't dropped. `ok:false` = request no longer pending.
+   */
+  GATEWAY_CONFIRM_PING: {
+    request: { id: string };
+    response: { ok: boolean };
+  };
+
+  /**
+   * Side panel -> background: pop the confirmation window with a fake request
+   * for debugging the confirm UI. Forwards nothing; resolves with the decision.
+   */
+  GATEWAY_CONFIRM_TEST: {
+    request: void;
+    response: { approved: boolean };
+  };
+
+  /**
+   * Confirm window -> background: resize the popup so it hugs its content
+   * (fired by a ResizeObserver when the page's layout changes, e.g. the info
+   * card expands). `height` is the desired OUTER window height.
+   */
+  GATEWAY_CONFIRM_RESIZE: {
+    request: { id: string; height: number };
     response: { ok: boolean };
   };
 }

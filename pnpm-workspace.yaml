@@ -1,18 +1,6 @@
 packages:
   - 'packages/*'
 
-allowBuilds:
-  '@parcel/watcher': set this to true or false
-  bufferutil: set this to true or false
-  canvas: set this to true or false
-  core-js: set this to true or false
-  edgedriver: set this to true or false
-  esbuild: set this to true or false
-  geckodriver: set this to true or false
-  kerberos: set this to true or false
-  msw: set this to true or false
-  utf-8-validate: set this to true or false
-
 onlyBuiltDependencies:
   - esbuild
   - '@parcel/watcher'

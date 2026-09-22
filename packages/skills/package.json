@@ -1,7 +1,7 @@
 {
   "name": "@manta-action-kit/skills",
   "description": "Agent skills for Manta Action Kit — teaches Claude Code / other agents how to set up, health-check and use the suite (Chrome extension + MCP server)",
-  "version": "0.1.3",
+  "version": "0.2.0",
   "license": "MIT",
   "type": "module",
   "files": [

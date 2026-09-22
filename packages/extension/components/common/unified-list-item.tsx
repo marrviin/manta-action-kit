@@ -1,7 +1,8 @@
 import { type ReactNode } from 'react';
-import { Button, Space, Typography } from 'antd';
-import { DownOutlined, RightOutlined } from '@ant-design/icons';
-import { formatDateTimeShort } from '@/lib/utils';
+import { Button, Dropdown, Space, Typography } from 'antd';
+import type { MenuProps } from 'antd';
+import { CaretRightFilled, EllipsisOutlined } from '@ant-design/icons';
+import { cn, formatDateTimeShort } from '@/lib/utils';
 
 const { Text } = Typography;
 
@@ -9,7 +10,7 @@ const { Text } = Typography;
  * Unified list-item layout shared by all feature lists (recordings, gateway
  * logs/domains/endpoints). Enforces a consistent two-row structure:
  *
- *   Row 1: [expand icon?] title .................... [action buttons]
+ *   Row 1: [expand icon?] title ......................... [··· menu]
  *   Row 2: [status tags]  ......................... [date MM-DD HH:mm:ss]
  *
  * Optional expandable detail renders below when `expanded` is true.
@@ -17,7 +18,16 @@ const { Text } = Typography;
 export interface UnifiedListItemProps {
   /** Row-1 title (left). Usually a name, URL, or endpoint. */
   title: ReactNode;
-  /** Row-1 action icon buttons (right). */
+  /**
+   * Row operations shown in a three-dot dropdown at the far right of Row 1.
+   * Replaces the old per-row right-click (contextMenu) menus and hover icon buttons.
+   */
+  menu?: MenuProps['items'];
+  /**
+   * Inline icon buttons rendered at the far right of Row 1 (hover-revealed,
+   * same spot as the menu button). Replaces the three-dot dropdown; use for
+   * direct single actions like delete.
+   */
   actions?: ReactNode;
   /** Row-2 status tags (left). E.g. method / status / decision badges. */
   status?: ReactNode;
@@ -35,16 +45,16 @@ export interface UnifiedListItemProps {
   onClick?: () => void;
   clickable?: boolean;
   /**
-   * Extra class(es) appended to the outer row container. Each feature list
-   * should pass its own scoped class (e.g. `manta-action-kit-recording-item`,
-   * `manta-action-kit-gateway-item`, `manta-action-kit-call-node`) so per-list style
-   * tweaks stay isolated and never leak across lists.
+   * Extra classes appended to the outer row container. Each feature list
+   * should pass its own Tailwind overrides (e.g. `pt-0!`, `border-0!`) so
+   * per-list style tweaks stay isolated and never leak across lists.
    */
   className?: string;
 }
 
 export function UnifiedListItem({
   title,
+  menu,
   actions,
   status,
   timestamp,
@@ -60,15 +70,36 @@ export function UnifiedListItem({
 
   return (
     <div
-      className={`manta-action-kit-list-item group block py-2 px-3 border-b border-[rgba(5,5,5,0.06)] ${
-        clickable ? 'cursor-pointer' : 'cursor-default'
-      } ${className}`}
+      className={cn(
+        'group block py-4 mx-2 border-b border-(--ant-color-border-secondary)',
+        clickable ? 'cursor-pointer' : 'cursor-default',
+        className,
+      )}
       onClick={clickable ? onClick : undefined}
     >
       {/* Row 1: title ...... actions [expand] */}
       <div className="flex items-center gap-1.5 w-full">
+        {expandable && (
+          <Button
+            type="text"
+            size="small"
+            className="flex-none w-5 h-5 p-0 text-sm"
+            icon={
+              <CaretRightFilled
+                className={cn(
+                  'transition-transform text-[10px]! text-(--ant-color-text-quaternary)',
+                  expanded && 'rotate-90',
+                )}
+              />
+            }
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleExpand?.();
+            }}
+          />
+        )}
         <div
-          className={`flex-1 min-w-0 ${expandable ? 'cursor-pointer' : ''}`}
+          className={cn('flex-1 min-w-0', expandable && 'cursor-pointer')}
           onClick={
             expandable
               ? (e) => {
@@ -80,26 +111,24 @@ export function UnifiedListItem({
         >
           {title}
         </div>
-        {actions && (
-          <Space
-            size={4}
-            className="flex-none opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 text-sm"
+        {menu && (
+          <Dropdown trigger={['click']} placement="bottomRight" menu={{ items: menu }}>
+            <Button
+              type="text"
+              size="small"
+              className="flex-none w-5 h-5 p-0 text-sm opacity-0 group-hover:opacity-100 focus-within:opacity-100"
+              icon={<EllipsisOutlined />}
+              onClick={(e) => e.stopPropagation()}
+            />
+          </Dropdown>
+        )}
+        {!menu && actions && (
+          <div
+            className="flex-none opacity-0 group-hover:opacity-100 focus-within:opacity-100"
             onClick={(e) => e.stopPropagation()}
           >
             {actions}
-          </Space>
-        )}
-        {expandable && (
-          <Button
-            type="text"
-            size="small"
-            className="flex-none w-5 h-5 p-0 text-sm"
-            icon={expanded ? <DownOutlined /> : <RightOutlined />}
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleExpand?.();
-            }}
-          />
+          </div>
         )}
       </div>
 
@@ -110,7 +139,7 @@ export function UnifiedListItem({
             {status}
           </Space>
           {timestamp != null && (
-            <Text type="secondary" className="flex-none text-xs">
+            <Text type="secondary" className="flex-none text-[10px]!">
               {formatDateTimeShort(timestamp)}
             </Text>
           )}

@@ -9,6 +9,13 @@ import {
   upsertGatewayProxyRule,
 } from '@/lib/db';
 import { addProxyRule, updateProxyRuleContent } from '@/lib/gateway/manage-rules';
+import {
+  initGatewayConfirm,
+  isPendingConfirmation,
+  requestGatewayConfirmation,
+  resizeGatewayConfirmation,
+  resolveGatewayConfirmation,
+} from '@/lib/gateway/confirm';
 
 /**
  * Background service worker (Manifest V3).
@@ -21,12 +28,6 @@ import { addProxyRule, updateProxyRuleContent } from '@/lib/gateway/manage-rules
  * lives in storage.session / IndexedDB, not in module scope.
  */
 export default defineBackground(() => {
-  // Allow content scripts (untrusted contexts) to read session storage, so the
-  // in-page toolbar can watch recordingState / toolbarState. Defaults to trusted-only.
-  chrome.storage.session
-    .setAccessLevel({ accessLevel: 'TRUSTED_AND_UNTRUSTED_CONTEXTS' })
-    .catch((err) => console.error('[background] session setAccessLevel failed', err));
-
   // Open the side panel when the toolbar icon is clicked (Chromium only).
   if (chrome.sidePanel?.setPanelBehavior) {
     chrome.sidePanel
@@ -36,6 +37,9 @@ export default defineBackground(() => {
 
   // MCP bridge: dial the local MCP WebSocket server when enabled in settings.
   initMcpBridge().catch((err) => console.error('[background] initMcpBridge failed', err));
+
+  // Sandbox confirmation popup: register the window-closed → deny listener.
+  initGatewayConfirm();
 
   browser.runtime.onMessage.addListener((raw, sender, sendResponse) => {
     const msg = raw as Message;
@@ -51,16 +55,32 @@ export default defineBackground(() => {
             sendResponse(await session.start(msg.data));
             break;
 
-          case 'STOP_RECORDING':
-            sendResponse(await session.stop());
+          case 'STOP_RECORDING': {
+            const result = await session.stop();
+            // System-level completion nudge (macOS Notification Center via
+            // chrome.notifications) — non-blocking, purely informational.
+            if (result.recordingId) {
+              chrome.notifications
+                .create({
+                  type: 'basic',
+                  iconUrl: chrome.runtime.getURL('/icon/128.png'),
+                  title: browser.i18n.getMessage('notifyRecordDoneTitle') || 'Recording saved',
+                  message:
+                    browser.i18n.getMessage(
+                      'notifyRecordDoneMessage',
+                      String(result.state.count),
+                    ) || `Captured API calls · ${result.state.count}`,
+                })
+                .catch((err) =>
+                  console.error('[background] notification failed', err),
+                );
+            }
+            sendResponse(result);
             break;
+          }
 
           case 'SET_PAUSED':
             sendResponse(await session.setPaused(msg.data.paused));
-            break;
-
-          case 'GET_TAB_ID':
-            sendResponse({ tabId: sender.tab?.id ?? null });
             break;
 
           case 'API_CALL_CAPTURED': {
@@ -121,6 +141,38 @@ export default defineBackground(() => {
           case 'DELETE_GATEWAY_PROXY_RULE': {
             await deleteGatewayProxyRule(msg.data.id);
             sendResponse({ ok: true });
+            break;
+          }
+
+          case 'GATEWAY_CONFIRM_DECISION': {
+            const { id, approved } = msg.data;
+            sendResponse({ ok: resolveGatewayConfirmation(id, approved) });
+            break;
+          }
+
+          case 'GATEWAY_CONFIRM_PING': {
+            // Keepalive only — also tells the page when its request is gone.
+            sendResponse({ ok: isPendingConfirmation(msg.data.id) });
+            break;
+          }
+
+          case 'GATEWAY_CONFIRM_TEST': {
+            // Debug-only: exercise the confirmation gate with a fake request.
+            // Nothing is forwarded and no audit log is written.
+            const approved = await requestGatewayConfirmation({
+              method: 'GET',
+              url: 'https://example.com/api/test-confirmation',
+              bodyPreview: JSON.stringify({ debug: true, source: 'settings-test' }, null, 2),
+              via: 'agent',
+            });
+            sendResponse({ approved });
+            break;
+          }
+
+          case 'GATEWAY_CONFIRM_RESIZE': {
+            sendResponse({
+              ok: resizeGatewayConfirmation(msg.data.id, msg.data.height),
+            });
             break;
           }
         }

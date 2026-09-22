@@ -100,17 +100,26 @@ export const SSE_MAX_MS = 115_000;
 export const SSE_IDLE_MS = 8_000;
 
 /**
- * How a call was authorized (or null when it was blocked before forwarding).
- *  - 'agent': the proxy_fetch/proxy_sse MCP tool (gated by the native prompt).
- *  - 'rule': the script-driven proxy, authorized by an enabled proxy rule.
+ * How a call was authorized — or why it was refused before forwarding:
+ *  - 'prompt': the user approved the extension-side confirmation popup.
+ *  - 'allowlist': the host is on the sandbox allowlist (auto-allowed).
+ *  - 'agent': auto-allowed — the confirmation switch is off, MCP tool path.
+ *  - 'rule': auto-allowed — the confirmation switch is off, script proxy path.
+ *  - 'denylist': the host is on the sandbox denylist (blocked).
  */
-export type GatewayAuthSource = 'agent' | 'rule' | null;
+export type GatewayAuthSource =
+  | 'prompt'
+  | 'allowlist'
+  | 'agent'
+  | 'rule'
+  | 'denylist'
+  | null;
 
 /** Outcome of a gateway call, recorded in the audit log. */
 export type GatewayDecision =
-  | 'auto' // script-driven proxy: authorized by an enabled proxy rule
-  | 'allowed' // agent path: the native permission prompt was approved
-  | 'blocked'; // invalid URL — never forwarded
+  | 'auto' // auto-allowed: allowlisted host, or the confirmation switch is off
+  | 'allowed' // the user approved the confirmation popup
+  | 'blocked'; // denylisted host / SSRF guard / bad URL / user denied — never forwarded
 
 /**
  * One audit-log row per gateway call. Sensitive material is redacted: cookie
@@ -129,6 +138,12 @@ export interface GatewayLog {
   host: string;
   decision: GatewayDecision;
   authSource: GatewayAuthSource;
+  /**
+   * Which entrypoint initiated the call: the MCP agent tool ('agent') or a
+   * script proxy rule ('rule'). Optional so pre-existing log rows (before this
+   * field existed) still render.
+   */
+  via?: 'agent' | 'rule';
   /** Names of the cookies injected (values never stored). */
   injectedCookieNames: string[];
   /** Domain the injected cookies belonged to. */
