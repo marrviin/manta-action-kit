@@ -1,7 +1,7 @@
 {
   "name": "@manta-action-kit/protocol",
   "description": "Shared wire-protocol and domain types for the Manta Action Kit WS bridge — single source of truth for the Chrome extension (client) and the MCP server (server)",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
