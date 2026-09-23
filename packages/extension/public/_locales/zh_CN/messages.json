@@ -37,5 +37,13 @@
       "method": { "content": "$1" },
       "host": { "content": "$2" }
     }
+  },
+  "notifyGifFailedTitle": {
+    "message": "GIF 录制失败",
+    "description": "System notification title when a GIF recording could not be encoded or saved."
+  },
+  "notifyGifFailedMessage": {
+    "message": "录制内容无法生成为 GIF",
+    "description": "System notification body for a failed GIF recording."
   }
 }

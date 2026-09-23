@@ -16,8 +16,9 @@ const TAP_GAP_MS = 1500;
 /** Number of consecutive taps on the version tag that unlocks developer mode. */
 const TAPS_TO_UNLOCK = 5;
 
-/** Static extension identity for the about card (name/description already
- * resolved from _locales by the browser). */
+/** Static extension identity for the about card (name/description come from
+ * i18n so they follow the in-app locale; only the version lives in the
+ * manifest). */
 const MANIFEST = browser.runtime.getManifest();
 
 /** The companion MCP service package, linked in the about card. */
@@ -121,7 +122,7 @@ export function SettingsFeature() {
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5">
               <Text strong className="text-sm truncate">
-                {MANIFEST.name}
+                {t('settings.extName')}
               </Text>
               <Tag
                 // Version taps unlock dev mode; swallow the click so the row's
@@ -139,7 +140,7 @@ export function SettingsFeature() {
               </Tag>
             </div>
             <Text type="secondary" className="text-xs! line-clamp-2">
-              {MANIFEST.description}
+              {t('settings.extDescription')}
             </Text>
           </div>
         </div>

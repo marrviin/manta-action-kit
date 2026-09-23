@@ -21,6 +21,7 @@ export const en = {
     none: "None",
     copyUrl: "Copy URL",
     rename: "Rename",
+    download: "Download",
   },
   popup: {
     apiRecording: "API Recording",
@@ -33,6 +34,39 @@ export const en = {
       "This page does not support recording; use a regular web page",
     captureUnsupportedPage:
       "This page cannot be inspected; use a regular web page",
+    screenshot: "Screenshot",
+    screenshotViewport: "Window",
+    screenshotFullPage: "Full page",
+    screenshotUnsupportedPage:
+      "This page cannot be captured; use a regular web page",
+    screenshotDebuggerConflict:
+      "Capture failed: close DevTools for this tab and retry",
+    screenshotFailed: "Screenshot failed",
+    fileAccessHint:
+      "For local files, enable “Allow access to file URLs” for this extension in chrome://extensions",
+    recordGif: "Record GIF",
+    gifStopRecording: "Stop recording",
+    gifStatusRecording: "Recording GIF…",
+    gifStatusPaused: "GIF recording paused",
+    gifPauseRecording: "Pause recording",
+    gifResumeRecording: "Resume recording",
+    gifUnsupportedPage: "This page cannot be recorded; use a regular web page",
+    gifStartFailed: "Failed to start GIF recording",
+    gifNotRecording: "No GIF recording in progress",
+    gifFailed: "GIF encoding failed",
+  },
+  preview: {
+    notFound: "Screenshot data not found or expired. Take a new screenshot.",
+    downloadFailed: "Download failed",
+    downloadVideo: "Download MP4",
+    convertingVideo: "Converting video… {{percent}}%",
+    videoSaved: "Video downloaded",
+    videoConvertFailed: "MP4 conversion failed — saved as WebM instead",
+    downloadGif: "Download GIF",
+    generatingGif: "Encoding GIF… {{percent}}%",
+    gifSaved: "GIF downloaded",
+    gifEncodeFailed: "GIF encoding failed",
+    gifDraftNotFound: "Recording data not found or expired. Record a new GIF.",
   },
   home: {
     apiRecording: "API Recording",
@@ -306,6 +340,9 @@ export const en = {
   },
   settings: {
     title: "Settings",
+    extName: "Manta Action Kit - AI Developer Toolkit & Agent Browser Bridge",
+    extDescription:
+      "Secure access to your authenticated APIs for Claude Code & Codex. Record business flows via a sandbox proxy — cookies stay private.",
     language: "Language",
     languageChinese: "中文",
     languageEnglish: "English",

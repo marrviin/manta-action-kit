@@ -15,6 +15,8 @@ import {
 import type { RpcMethod } from "./mcp/protocol";
 import type { Locale } from "./i18n";
 import { detectLocale } from "./i18n/detect";
+import type { ScreenshotMode, ScreenshotPreview } from "./screenshot/types";
+import type { GifRecordingState } from "./gif-recording/types";
 
 export const settings = {
   /**
@@ -205,6 +207,47 @@ export const sidePanelTab = storage.defineItem<SidePanelTabRequest | null>(
  */
 export const lastSidePanelTab = storage.defineItem<SidePanelTab | null>(
   "local:lastSidePanelTab",
+  {
+    fallback: null,
+  },
+);
+
+/**
+ * Screenshot mode last picked in the popup ("visible" area vs "fullPage"). The
+ * row click captures with this mode, so it persists (local storage, survives
+ * browser restart) instead of resetting every time the popup closes.
+ */
+export const screenshotMode = storage.defineItem<ScreenshotMode>(
+  "local:screenshotMode",
+  {
+    fallback: "visible",
+  },
+);
+
+/**
+ * Latest captured screenshot, written by the background (CAPTURE_SCREENSHOT)
+ * for the preview tab to read on mount. Session area: the data URL of a
+ * full-page capture can be several MB — too large for a URL query param, and
+ * there is no reason to persist it across browser restarts. Overwritten on
+ * every capture; the preview page reads it once into state, so a newer capture
+ * doesn't disturb an already-open preview.
+ */
+export const screenshotPreview = storage.defineItem<ScreenshotPreview | null>(
+  "session:screenshotPreview",
+  {
+    fallback: null,
+  },
+);
+
+/**
+ * Coarse GIF-recording state for the popup menu (idle → recording → encoding →
+ * gone). The actual stream and recorder live in the offscreen document, which
+ * survives MV3 service-worker sleeps — this item is UI truth only, written by
+ * the background on start/stop and cleared when the offscreen document reports
+ * completion. Session area: a crashed browser means the recording is gone too.
+ */
+export const gifRecordingState = storage.defineItem<GifRecordingState | null>(
+  "session:gifRecordingState",
   {
     fallback: null,
   },

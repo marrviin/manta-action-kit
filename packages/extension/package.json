@@ -2,7 +2,7 @@
   "name": "@manta-action-kit/extension",
   "description": "Chrome extension for recording API calls and bridging them to AI agents, built with WXT + React + TypeScript + Tailwind CSS",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "license": "MIT",
   "type": "module",
   "scripts": {
@@ -22,7 +22,9 @@
     "@manta-action-kit/protocol": "workspace:*",
     "antd": "^6.6.1",
     "classnames": "^2.5.1",
+    "gifenc": "^1.0.3",
     "i18next": "^26.4.0",
+    "mediabunny": "^1.59.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-i18next": "^17.0.11",

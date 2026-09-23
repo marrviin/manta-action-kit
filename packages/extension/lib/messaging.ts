@@ -7,7 +7,7 @@
  */
 import type { CapturedCall, RecordingState } from './recording/types';
 import type { GatewayLog, GatewayProxyRule } from './gateway/types';
-
+import type { ScreenshotMode } from './screenshot/types';
 export interface ProtocolMap {
   PING: {
     request: void;
@@ -122,6 +122,86 @@ export interface ProtocolMap {
    */
   GATEWAY_CONFIRM_RESIZE: {
     request: { id: string; height: number };
+    response: { ok: boolean };
+  };
+
+  /**
+   * Popup -> background: capture the active tab as a PNG (visible viewport or
+   * full page) and open a preview tab — copy/download happen there, with the
+   * image in front of the user; nothing is saved automatically.
+   */
+  CAPTURE_SCREENSHOT: {
+    request: { mode: ScreenshotMode };
+    response: { ok: boolean };
+  };
+
+  /**
+   * Popup -> background: start recording the active tab as a GIF. The popup
+   * obtains the tabCapture stream ID here (it needs the user gesture), the
+   * background hands it to the offscreen document which owns the recorder.
+   */
+  START_GIF_RECORDING: {
+    request: { streamId: string };
+    response: { ok: boolean };
+  };
+
+  /**
+   * Popup -> background: stop the in-flight GIF recording. Resolves once the
+   * offscreen recorder has stopped (ack) — the recording is then saved for the
+   * preview tab, which reports via GIF_OFFSCREEN_DONE.
+   */
+  STOP_GIF_RECORDING: {
+    request: void;
+    response: { ok: boolean };
+  };
+
+  /** Background -> offscreen document: begin capturing the tab with this stream ID. */
+  GIF_OFFSCREEN_START: {
+    request: { streamId: string; url: string };
+    response: { ok: boolean };
+  };
+
+  /** Background -> offscreen document: stop the recorder; transcode async afterwards. */
+  GIF_OFFSCREEN_STOP: {
+    request: void;
+    response: { ok: boolean };
+  };
+
+  /**
+   * Popup -> background: pause the in-flight GIF recording. Frames stop being
+   * written; the final WebM's timeline excludes the paused span.
+   */
+  PAUSE_GIF_RECORDING: {
+    request: void;
+    response: { ok: boolean };
+  };
+
+  /** Popup -> background: resume a paused GIF recording. */
+  RESUME_GIF_RECORDING: {
+    request: void;
+    response: { ok: boolean };
+  };
+
+  /** Background -> offscreen document: pause the recorder (recorder.pause()). */
+  GIF_OFFSCREEN_PAUSE: {
+    request: void;
+    response: { ok: boolean };
+  };
+
+  /** Background -> offscreen document: resume the recorder (recorder.resume()). */
+  GIF_OFFSCREEN_RESUME: {
+    request: void;
+    response: { ok: boolean };
+  };
+
+  /**
+   * Offscreen document -> background: the recorder finished and the WebM draft
+   * is saved for the preview tab (`ok:true`), or the pipeline failed
+   * (`ok:false`). Background cleans up: opens the preview tab (success), fires
+   * the failure notification (error), closes the offscreen document.
+   */
+  GIF_OFFSCREEN_DONE: {
+    request: { ok: boolean; savedForPreview?: boolean };
     response: { ok: boolean };
   };
 }

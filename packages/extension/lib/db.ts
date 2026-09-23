@@ -8,6 +8,8 @@
  *  - `gatewayProxyRules`: proxy rules for the script-driven gateway entry (keyed by id).
  *  - `actions`: agent-authored replayable action sequences (v10, keyed by id,
  *     indexed by recordingId so deleting a recording cascades to its actions).
+ *  - `gifDrafts`: recorded WebM blobs awaiting GIF conversion in the preview
+ *     tab (v11, keyed by fixed id "latest" — each recording replaces the last).
  *
  * The `cookieRules` / `cachedCookies` stores (v2) were removed in v4; the
  * `gatewayDomains` store (v3) was removed in v7 when the domain-whitelist model
@@ -19,11 +21,13 @@
 import type { ApiCall, Recording } from "./recording/types";
 import type { GatewayLog, GatewayProxyRule } from "./gateway/types";
 import type { Action } from "./action/types";
+import type { GifDraft } from "./gif-recording/types";
 
 const DB_NAME = "manta-action-kit";
 // v9: replay feature removed; drop the replayRuns store (added in v8).
 // v10: action feature; new `actions` store (agent-authored replayable sequences).
-const DB_VERSION = 10;
+// v11: GIF recording; new `gifDrafts` store (recorded WebM awaiting conversion).
+const DB_VERSION = 11;
 const STORE_RECORDINGS = "recordings";
 const STORE_CALLS = "calls";
 const STORE_COOKIE_RULES = "cookieRules";
@@ -34,6 +38,8 @@ const STORE_GATEWAY_LOGS = "gatewayLogs";
 const STORE_GATEWAY_PROXY_RULES = "gatewayProxyRules";
 // v10: agent-authored replayable action sequences, indexed by source recording.
 const STORE_ACTIONS = "actions";
+// v11: recorded WebM blobs awaiting GIF conversion in the preview tab.
+const STORE_GIF_DRAFTS = "gifDrafts";
 // Retired in v9 (replay feature removed). Kept only to delete the store on upgrade.
 const STORE_REPLAY_RUNS = "replayRuns";
 
@@ -89,6 +95,10 @@ function openDb(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(STORE_ACTIONS)) {
         const actions = db.createObjectStore(STORE_ACTIONS, { keyPath: "id" });
         actions.createIndex("byRecording", "recordingId", { unique: false });
+      }
+      // v11: GIF recording. New store starts empty; no data migration.
+      if (!db.objectStoreNames.contains(STORE_GIF_DRAFTS)) {
+        db.createObjectStore(STORE_GIF_DRAFTS, { keyPath: "id" });
       }
       // v4: cookie-cache feature removed. Drop its stores so any previously
       // cached cookie values (incl. HttpOnly) are erased from disk.
@@ -467,5 +477,46 @@ export async function deleteAction(id: string): Promise<void> {
     t.oncomplete = () => resolve();
     t.onerror = () => reject(t.error);
     t.objectStore(STORE_ACTIONS).delete(id);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// GIF drafts — recorded WebM awaiting conversion in the preview tab (v11)
+// ---------------------------------------------------------------------------
+
+/**
+ * Store a recorded WebM draft (overwrites the previous one — only the latest
+ * recording is kept). Blobs are first-class IndexedDB values, so the WebM rides
+ * across contexts (offscreen → preview tab) with zero copying and no size
+ * ceiling beyond regular IDB quota.
+ */
+export async function saveGifDraft(draft: GifDraft): Promise<void> {
+  const db = await openDb();
+  await new Promise<void>((resolve, reject) => {
+    const t = tx(db, [STORE_GIF_DRAFTS], "readwrite");
+    t.oncomplete = () => resolve();
+    t.onerror = () => reject(t.error);
+    t.objectStore(STORE_GIF_DRAFTS).put(draft);
+  });
+}
+
+/** Get a stored GIF draft by id. */
+export async function getGifDraft(id: string): Promise<GifDraft | undefined> {
+  const db = await openDb();
+  return reqToPromise(
+    tx(db, [STORE_GIF_DRAFTS], "readonly")
+      .objectStore(STORE_GIF_DRAFTS)
+      .get(id) as IDBRequest<GifDraft | undefined>,
+  );
+}
+
+/** Delete a GIF draft (after download, or when the user discards it). */
+export async function deleteGifDraft(id: string): Promise<void> {
+  const db = await openDb();
+  await new Promise<void>((resolve, reject) => {
+    const t = tx(db, [STORE_GIF_DRAFTS], "readwrite");
+    t.oncomplete = () => resolve();
+    t.onerror = () => reject(t.error);
+    t.objectStore(STORE_GIF_DRAFTS).delete(id);
   });
 }

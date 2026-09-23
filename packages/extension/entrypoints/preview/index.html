@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Screenshot Preview</title>
+    <style>
+      /* Black backdrop before React/antd mounts — screenshots read best on
+         black, and it avoids a white flash on open. The app root sizes itself
+         with 100vh (antd's <App> wrapper sits between #root and the app, so a
+         %-height chain would break); body overflow is clipped as a guard. */
+      html,
+      body {
+        margin: 0;
+      }
+      body {
+        background: #000;
+        overflow: hidden;
+      }
+      /* This repo disables Tailwind preflight (antd compat), which also drops
+         its global border-box rule — restore it here or padding adds OUTSIDE
+         100vh and pushes the capsule off-screen (content-box default). */
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+      /* Hide the image container's scrollbar: Chromium paints it square ON TOP
+         of border-radius, breaking the rounded corners. Scrolling still works
+         via wheel / trackpad. */
+      .no-scrollbar {
+        scrollbar-width: none;
+      }
+      .no-scrollbar::-webkit-scrollbar {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./main.tsx"></script>
+  </body>
+</html>

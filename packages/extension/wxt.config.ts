@@ -29,6 +29,18 @@ export default defineConfig({
       // In-page element capture writes its JSON result to the clipboard from
       // the content script (lib/inspector/capture.ts).
       "clipboardWrite",
+      // Full-page screenshot: one-shot chrome.debugger attach + CDP
+      // Page.captureScreenshot (captureBeyondViewport) — see
+      // lib/screenshot/capture.ts. captureVisibleTab needs no extra permission
+      // (covered by the <all_urls> host permission below).
+      "debugger",
+      // GIF recording: capture the active tab (streamId minted in the popup's
+      // user gesture, consumed in the offscreen document) — see
+      // lib/gif-recording/ and entrypoints/offscreen/.
+      "tabCapture",
+      // GIF recording pipeline needs a DOM (video/canvas/MediaRecorder) that
+      // the MV3 service worker lacks — hosted in an offscreen document.
+      "offscreen",
     ],
     // Needed to inject the MAIN-world hook script and read page context (incl.
     // the active tab's URL, covered by the <all_urls> host permission — so no

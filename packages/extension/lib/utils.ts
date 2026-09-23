@@ -35,6 +35,26 @@ export function originOf(url: string, base?: string): string {
   }
 }
 
+/**
+ * Whether a tab URL is capturable (screenshot / GIF recording): normal web
+ * pages, the extension's OWN pages (preview.html etc.) and file:// pages.
+ * chrome:// and other extensions' pages stay excluded.
+ *
+ * file:// caveat: captureVisibleTab / content scripts only work there after
+ * the user enables "Allow access to file URLs" in chrome://extensions —
+ * callers should hint at that when a capture fails on a file:// tab.
+ */
+export function isCapturableUrl(url: string | undefined): boolean {
+  if (!url) return false;
+  if (/^(https?|file):/i.test(url)) return true;
+  try {
+    return url.startsWith(chrome.runtime.getURL(''));
+  } catch {
+    // Non-extension context (defensive) — chrome.runtime unavailable.
+    return false;
+  }
+}
+
 /** Extract the scheme prefix from a URL, e.g. "https://". Empty when it doesn't parse. */
 export function schemeOf(url: string): string {
   try {

@@ -7,11 +7,17 @@ import type { WxtStorageItem } from 'wxt/utils/storage';
  *
  * Usage:
  *   const [enabled, setEnabled] = useStorage(settings.enabled);
+ *
+ * Pass `initialValue` (pre-read before mount, e.g. awaited in the entrypoint) to
+ * skip the fallback→stored-value flash on first paint.
  */
 export function useStorage<T>(
   item: WxtStorageItem<T, Record<string, unknown>>,
+  initialValue?: T,
 ): [T, (value: T) => Promise<void>] {
-  const [value, setValue] = useState<T>(item.fallback as T);
+  const [value, setValue] = useState<T>(
+    () => initialValue ?? (item.fallback as T),
+  );
 
   useEffect(() => {
     let active = true;

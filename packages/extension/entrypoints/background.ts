@@ -9,6 +9,16 @@ import {
   upsertGatewayProxyRule,
 } from '@/lib/db';
 import { addProxyRule, updateProxyRuleContent } from '@/lib/gateway/manage-rules';
+import { captureScreenshot } from '@/lib/screenshot/capture';
+import { ScreenshotError } from '@/lib/screenshot/types';
+import { screenshotPreview } from '@/lib/storage';
+import {
+  handleGifOffscreenDone,
+  pauseGifRecording,
+  resumeGifRecording,
+  startGifRecording,
+  stopGifRecording,
+} from '@/lib/gif-recording/session';
 import {
   initGatewayConfirm,
   isPendingConfirmation,
@@ -88,6 +98,55 @@ export default defineBackground(() => {
             sendResponse({ ok: true, count });
             break;
           }
+
+          case 'CAPTURE_SCREENSHOT': {
+            // Re-query the active tab here so the handler is self-contained;
+            // ScreenshotError messages ("screenshot:<code>") flow through the
+            // shared catch-all below and are mapped to i18n by the popup.
+            const [tab] = await chrome.tabs.query({
+              active: true,
+              currentWindow: true,
+            });
+            if (!tab?.id) {
+              throw new ScreenshotError('unsupported-page', 'no active tab');
+            }
+            const shot = await captureScreenshot(tab, msg.data.mode);
+            // Hand the capture to the preview tab via session storage (a
+            // full-page data URL is far too large for a query param), then
+            // open it. Copy/download happen there — nothing is saved yet.
+            await screenshotPreview.setValue(shot);
+            await chrome.tabs.create({
+              url: browser.runtime.getURL('/preview.html'),
+            });
+            sendResponse({ ok: true });
+            break;
+          }
+
+          case 'START_GIF_RECORDING':
+            sendResponse(await startGifRecording(msg.data.streamId));
+            break;
+
+          case 'STOP_GIF_RECORDING':
+            sendResponse(await stopGifRecording());
+            break;
+
+          case 'PAUSE_GIF_RECORDING':
+            sendResponse(await pauseGifRecording());
+            break;
+
+          case 'RESUME_GIF_RECORDING':
+            sendResponse(await resumeGifRecording());
+            break;
+
+          case 'GIF_OFFSCREEN_DONE':
+            // Completion report from the offscreen recorder. Cleanup must run
+            // even if the notification path misbehaves — catch here, and the
+            // reply is just an ack.
+            await handleGifOffscreenDone(msg.data).catch((err) =>
+              console.error('[background] gif cleanup failed', err),
+            );
+            sendResponse({ ok: true });
+            break;
 
           case 'PING':
             sendResponse({ type: 'PONG', at: Date.now() });

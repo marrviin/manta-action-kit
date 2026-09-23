@@ -20,7 +20,14 @@ const { Text } = Typography;
  *    readout (pulse dot + captured-call count) on the left, icon pause/stop on
  *    the right — the search input is hidden by the caller while recording.
  */
-export function RecordControls({ variant }: { variant: "menu" | "block" }) {
+export function RecordControls({
+  variant,
+  onStopped,
+}: {
+  variant: "menu" | "block";
+  /** Fired after STOP_RECORDING resolves (recording already persisted). */
+  onStopped?: () => void;
+}) {
   const { message } = App.useApp();
   const { t } = useTranslation();
   const state = useRecordingState();
@@ -59,7 +66,8 @@ export function RecordControls({ variant }: { variant: "menu" | "block" }) {
 
   const stop = useCallback(async () => {
     await sendMessage("STOP_RECORDING", undefined);
-  }, []);
+    onStopped?.();
+  }, [onStopped]);
 
   if (variant === "menu") {
     // Inside an antd Menu item (`extra`): swallow clicks so pressing the
@@ -80,9 +88,10 @@ export function RecordControls({ variant }: { variant: "menu" | "block" }) {
           <>
             <Tooltip title={state.paused ? t("recording.resumeRecording") : t("recording.pauseRecording")}>
               <Button
-                type="text"
                 size="small"
-                icon={state.paused ? <RecordIcon /> : <PauseIcon />}
+                // Same red record dot + gray border as the GIF row's resume button.
+                className="hover:border-(--ant-color-border)!"
+                icon={state.paused ? <RecordIcon className="text-(--ant-color-error)!" /> : <PauseIcon />}
                 onClick={togglePause}
               />
             </Tooltip>
@@ -137,7 +146,9 @@ export function RecordControls({ variant }: { variant: "menu" | "block" }) {
       </span>
       <div className="flex items-center gap-1 shrink-0">
         <Button
-          icon={state.paused ? <RecordIcon /> : <PauseIcon />}
+          // Same red record dot + gray border as the menu variant's resume button.
+          className="hover:border-(--ant-color-border)!"
+          icon={state.paused ? <RecordIcon className="text-(--ant-color-error)!" /> : <PauseIcon />}
           onClick={togglePause}
         />
         {/* Keep the light-red fill constant (antd would only show it on hover). */}
@@ -152,17 +163,20 @@ export function RecordControls({ variant }: { variant: "menu" | "block" }) {
   );
 }
 
-/** Minimal SVG icons (antd has no record/stop glyphs that read well at 14px). */
+/**
+ * Minimal SVG icons (antd has no record/stop glyphs that read well at 14px).
+ * Exported for reuse — the GIF recording row mirrors the same controls.
+ */
 const ICON = { width: 14, height: 14, fill: "currentColor" } as const;
 
-function RecordIcon({ className }: { className?: string }) {
+export function RecordIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 16 16" {...ICON} className={className}>
       <circle cx="8" cy="8" r="5" />
     </svg>
   );
 }
-function PauseIcon() {
+export function PauseIcon() {
   return (
     <svg viewBox="0 0 16 16" {...ICON} >
       <rect x="4" y="3" width="3" height="10" rx="1" />
@@ -170,7 +184,7 @@ function PauseIcon() {
     </svg>
   );
 }
-function StopIcon() {
+export function StopIcon() {
   return (
     <svg viewBox="0 0 16 16" {...ICON} >
       <rect x="3.5" y="3.5" width="9" height="9" rx="1.5" />
