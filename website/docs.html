@@ -1,0 +1,691 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Documentation — Manta Action Kit | 文档</title>
+  <meta name="description" content="Manta Action Kit documentation: recording, Actions, sandbox gateway, element capture, screenshots, GIF recording, MCP tools reference and configuration. 文档：录制、Action、沙箱网关、元素捕获、截图、GIF 录屏、MCP 工具参考与配置。" />
+  <link rel="icon" type="image/png" href="assets/icon-128.png" />
+  <link rel="stylesheet" href="assets/site.css" />
+</head>
+<body data-page="docs">
+  <nav>
+    <div class="container nav-inner">
+      <a class="brand" href="index.html">
+        <img src="assets/icon-128.png" alt="Manta Action Kit logo" />
+        <span>Manta Action Kit</span>
+      </a>
+      <div class="nav-links">
+        <a class="nav-link" href="index.html" data-page="home" data-i18n="nav.home">Home</a>
+        <a class="nav-link" href="docs.html" data-page="docs" data-i18n="nav.docs">Docs</a>
+        <a class="nav-link" href="changelog.html" data-page="changelog" data-i18n="nav.changelog">Changelog</a>
+        <div class="lang-switch" id="langSwitch" role="group" aria-label="Language">
+          <button class="lang-opt" data-lang="en" type="button">EN</button>
+          <button class="lang-opt" data-lang="zh" type="button">中文</button>
+        </div>
+        <a class="nav-link nav-github" href="https://github.com/marrviin/manta-action-kit" target="_blank" rel="noopener" aria-label="GitHub">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+          <span data-i18n="nav.github">GitHub</span>
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <header class="page-header container">
+    <h1 data-i18n="docs.title">Documentation</h1>
+    <p class="page-sub" data-i18n="docs.sub">
+      Everything about recording APIs, distilling Actions, capturing pages, and calling
+      authenticated APIs from your AI agent — safely.
+    </p>
+  </header>
+
+  <div class="container docs-layout">
+    <aside class="docs-toc">
+      <div class="toc-title" data-i18n="docs.tocTitle">On this page</div>
+      <a href="#intro" data-i18n="docs.tocIntro">Introduction</a>
+      <a href="#quickstart" data-i18n="docs.tocQuickstart">Quick start</a>
+      <a href="#architecture" data-i18n="docs.tocArchitecture">Architecture</a>
+      <a class="lv2" href="#arch-handshake" data-i18n="docs.tocHandshake">Handshake authentication</a>
+      <a class="lv2" href="#arch-election" data-i18n="docs.tocElection">Single-instance election</a>
+      <a href="#ui" data-i18n="docs.tocUi">Extension UI</a>
+      <a class="lv2" href="#ui-popup" data-i18n="docs.tocUiPopup">Toolbar popup</a>
+      <a class="lv2" href="#ui-panel" data-i18n="docs.tocUiPanel">Side panel</a>
+      <a class="lv2" href="#ui-settings" data-i18n="docs.tocUiSettings">Settings</a>
+      <a href="#recording" data-i18n="docs.tocRecording">Recording</a>
+      <a class="lv2" href="#rec-deps" data-i18n="docs.tocRecDeps">Flow annotations</a>
+      <a class="lv2" href="#rec-redact" data-i18n="docs.tocRecRedact">Redacted contracts</a>
+      <a href="#actions" data-i18n="docs.tocActions">Actions</a>
+      <a href="#gateway" data-i18n="docs.tocGateway">Sandbox gateway</a>
+      <a class="lv2" href="#gw-script" data-i18n="docs.tocGwScript">Script-driven gateway</a>
+      <a class="lv2" href="#gw-confirm" data-i18n="docs.tocGwConfirm">Confirmation dialog</a>
+      <a class="lv2" href="#gw-audit" data-i18n="docs.tocGwAudit">Audit log</a>
+      <a href="#element-capture" data-i18n="docs.tocElementCapture">Element capture</a>
+      <a class="lv2" href="#ec-interaction" data-i18n="docs.tocEcInteraction">Trigger &amp; interaction</a>
+      <a class="lv2" href="#ec-payload" data-i18n="docs.tocEcPayload">Captured payload</a>
+      <a href="#screenshots" data-i18n="docs.tocScreenshot">Screenshots</a>
+      <a class="lv2" href="#shot-modes" data-i18n="docs.tocShotModes">Two modes</a>
+      <a class="lv2" href="#shot-preview" data-i18n="docs.tocShotPreview">Preview &amp; export</a>
+      <a href="#gif-recording" data-i18n="docs.tocGif">GIF recording</a>
+      <a class="lv2" href="#gif-record" data-i18n="docs.tocGifRecord">Recording</a>
+      <a class="lv2" href="#gif-export" data-i18n="docs.tocGifExport">Export</a>
+      <a href="#skills" data-i18n="docs.tocSkills">Agent skill</a>
+      <a href="#tools" data-i18n="docs.tocTools">MCP tools reference</a>
+      <a class="lv2" href="#tools-rec" data-i18n="docs.tocToolsRec">Recordings</a>
+      <a class="lv2" href="#tools-actions" data-i18n="docs.tocToolsAct">Actions</a>
+      <a class="lv2" href="#tools-rules" data-i18n="docs.tocToolsRules">Proxy rules</a>
+      <a class="lv2" href="#tools-gateway" data-i18n="docs.tocToolsGw">Gateway calls</a>
+      <a class="lv2" href="#tools-ops" data-i18n="docs.tocToolsOps">Runtime health</a>
+      <a href="#config" data-i18n="docs.tocConfig">Configuration</a>
+      <a href="#development" data-i18n="docs.tocDevelopment">Development</a>
+    </aside>
+
+    <main>
+      <section class="doc-section" id="intro">
+        <h2 data-i18n="docs.intro.h">Introduction</h2>
+        <p data-i18n="docs.intro.p1">
+          Manta Action Kit lets AI agents (Claude Code, Codex, Cursor, any MCP client)
+          call your real, logged-in APIs — the ones behind your browser session —
+          without ever seeing your credentials.
+        </p>
+        <p data-i18n="docs.intro.p2">
+          The suite has two parts: the <strong>Chrome extension</strong>, which records
+          API calls, captures pages, stores everything locally, and injects your cookies
+          at the network layer; and the <strong>MCP server</strong>
+          (<code>@manta-action-kit/mcp</code>), which bridges your agent to the extension
+          over a local WebSocket and exposes the tools your agent calls.
+        </p>
+        <p class="dim" data-i18n="docs.intro.p3">
+          The MCP server is only a bridge — it holds no data of its own. Install the
+          extension first; it dials in automatically once the server is running.
+        </p>
+      </section>
+
+      <section class="doc-section" id="quickstart">
+        <h2 data-i18n="docs.qs.h">Quick start</h2>
+        <ol>
+          <li data-i18n="docs.qs.s1"><strong>Install the extension</strong> from the <a href="https://chromewebstore.google.com/detail/manta-action-kit/pghddhbhbnlcehlmgnnalgaephllkeel">Chrome Web Store</a>.</li>
+          <li data-i18n="docs.qs.s2"><strong>Copy the install prompt</strong> — extension side panel → Action tab → Copy install prompt. It embeds your personal bridge token (<code>MANTA_TOKEN</code>).</li>
+          <li data-i18n="docs.qs.s3"><strong>Add the MCP server</strong> to your agent — paste the prompt, or use the config below.</li>
+          <li data-i18n="docs.qs.s4"><strong>Record a flow</strong> on your site, then ask your agent to turn it into an action and run it.</li>
+        </ol>
+        <pre>{
+  "mcpServers": {
+    "manta-action-kit": {
+      "command": "npx",
+      "args": ["-y", "@manta-action-kit/mcp"],
+      "env": {
+        "MANTA_WS_PORT": "8787",
+        "MANTA_PROXY_PORT": "8788",
+        "MANTA_TOKEN": "&lt;token from the extension&gt;"
+      }
+    }
+  }
+}</pre>
+      </section>
+
+      <section class="doc-section" id="architecture">
+        <h2 data-i18n="docs.arch.h">Architecture</h2>
+        <p data-i18n="docs.arch.p1">
+          An MV3 extension can't listen on a port, so the socket direction is inverted:
+          the MCP server hosts the WebSocket bridge bound to loopback, and the extension
+          dials in as an always-on client.
+        </p>
+        <pre>agent ──stdio (MCP)──▶ @manta-action-kit/mcp ──WS ws://127.0.0.1:8787──▶ extension (WS client)
+                              ◀──── rpc-result {id} ────────────  reads IndexedDB</pre>
+        <ul>
+          <li data-i18n="docs.arch.li1"><strong>WS bridge</strong> (<code>127.0.0.1:8787</code>) — the trust boundary. Each agent tool call is forwarded as an <code>rpc</code> frame and correlated to its <code>rpc-result</code> by id.</li>
+          <li data-i18n="docs.arch.li2"><strong>HTTP proxy</strong> (<code>127.0.0.1:8788</code>) — the script-driven gateway. Point a script's baseURL at a sandbox prefix and the extension rewrites + forwards the request with your cookies injected.</li>
+        </ul>
+
+        <h3 id="arch-handshake" data-i18n="docs.arch.handshakeH">Handshake authentication</h3>
+        <p data-i18n="docs.arch.handshakeP">
+          The loopback port is public knowledge, so every socket is authenticated in
+          <strong>both</strong> directions before any business frame flows. The shared
+          token never crosses the wire:
+        </p>
+        <pre>client → hello   { nonce }                                        (fresh per connection)
+server → welcome { proof = HMAC(token, "manta/welcome/" + nonce), nonce }
+client → auth    { proof = HMAC(token, "manta/auth/" + nonce) }</pre>
+        <p data-i18n="docs.arch.handshakeP2">
+          Failed or stalled handshakes are dropped; connections carrying a web
+          <code>Origin</code> header are rejected outright; without
+          <code>MANTA_TOKEN</code> the server fails closed.
+        </p>
+
+        <h3 id="arch-election" data-i18n="docs.arch.electionH">Single-instance election</h3>
+        <p data-i18n="docs.arch.electionP">
+          Every MCP process races for the bridge port. The winner (<strong>owner</strong>)
+          hosts the bridge + proxy; losers (<strong>peer</strong>) forward tool calls to
+          it. When the owner exits, peers re-elect automatically — no manual restart.
+        </p>
+      </section>
+
+      <section class="doc-section" id="ui">
+        <h2 data-i18n="docs.ui.h">Extension UI</h2>
+
+        <h3 id="ui-popup" data-i18n="docs.ui.popupH">Toolbar popup</h3>
+        <p data-i18n="docs.ui.popupP">
+          Clicking the toolbar icon opens a compact menu of every feature:
+        </p>
+        <ul>
+          <li data-i18n="docs.ui.popupLi1"><strong>Actions / API Recording / Secure Sandbox</strong> — open the side panel on the matching tab. The recording row carries inline start / pause / stop controls; stopping jumps you to the fresh recording in the side panel.</li>
+          <li data-i18n="docs.ui.popupLi2"><strong>Element Capture</strong> — starts the in-page inspector (see <a href="#element-capture">Element capture</a>).</li>
+          <li data-i18n="docs.ui.popupLi3"><strong>Screenshot</strong> — with a persistent <em>Window</em> / <em>Full page</em> toggle.</li>
+          <li data-i18n="docs.ui.popupLi4"><strong>Record GIF</strong> — records the current tab, with pause / resume / stop inline.</li>
+          <li data-i18n="docs.ui.popupLi5"><strong>Settings</strong> — opens the side panel settings view.</li>
+        </ul>
+        <p data-i18n="docs.ui.popupNote">
+          Unsupported pages (<code>chrome://</code>, the Chrome Web Store) are refused;
+          on <code>file://</code> pages you'll be asked to enable "Allow access to file
+          URLs" first.
+        </p>
+
+        <h3 id="ui-panel" data-i18n="docs.ui.panelH">Side panel</h3>
+        <p data-i18n="docs.ui.panelP">
+          Tabs for <strong>API Recording</strong>, <strong>Actions</strong>, and
+          <strong>Secure Sandbox</strong>, plus a gear button that reveals the settings
+          view below.
+        </p>
+
+        <h3 id="ui-settings" data-i18n="docs.ui.settingsH">Settings</h3>
+        <ul>
+          <li data-i18n="docs.ui.settingsLi1"><strong>Language</strong> — English / 中文, synced live across popup and side panel; defaults to your browser's UI language.</li>
+          <li data-i18n="docs.ui.settingsLi2"><strong>Connector</strong> — live bridge status (Connected / Connecting / Disconnected / <em>Auth failed</em> — the fix for the last is re-copying the install prompt). The <em>Tools</em> button expands the <strong>per-tool kill-switch list</strong>: every business MCP tool can be turned off individually.</li>
+          <li data-i18n="docs.ui.settingsLi3"><strong>About</strong> — extension version + Chrome Web Store link, and the companion npm package with its live registry version.</li>
+        </ul>
+      </section>
+
+      <section class="doc-section" id="recording">
+        <h2 data-i18n="docs.rec.h">Recording</h2>
+        <p data-i18n="docs.rec.p1">
+          Click <em>Start</em> in the popup, use the site normally, click <em>Stop</em>.
+          A MAIN-world script hooks the page's <code>fetch</code>/<code>XHR</code> (no
+          debugger banner) and captures every call — requests <strong>and</strong>
+          responses — into a local, inspectable call chain stored in IndexedDB. A system
+          notification reports the captured count when the recording is saved.
+        </p>
+        <ul>
+          <li data-i18n="docs.rec.li1"><strong>SSE streams</strong> (<code>text/event-stream</code>) are captured incrementally via <code>body.tee()</code> — the page keeps its own stream untouched.</li>
+          <li data-i18n="docs.rec.li2"><strong>Manage</strong>: rename, delete, and search recordings; while recording, a live pulse + captured-call count follows you across popup and side panel. Individual calls can be deleted from a chain without affecting the rest.</li>
+          <li data-i18n="docs.rec.li3"><strong>Agent description</strong>: your agent can write a business-level summary for a recording (<code>set_recording_description</code>); the side panel shows it read-only.</li>
+          <li data-i18n="docs.rec.li4"><strong>Filters</strong>: recording filter rules keep the noise out.</li>
+          <li data-i18n="docs.rec.li5"><strong>Not captured</strong>: WebSocket frames, <code>sendBeacon</code>, page workers, and native <code>EventSource</code> (fetch-based SSE is covered).</li>
+        </ul>
+
+        <h3 id="rec-deps" data-i18n="docs.rec.depsH">Flow annotations</h3>
+        <p data-i18n="docs.rec.depsP">
+          The call chain is annotated with inferred data dependencies — gold
+          <strong>consumes</strong> tags mark request fields that reuse a value from an
+          earlier response, blue <strong>produces</strong> tags mark the response paths
+          that fed them. Inference is deterministic (no LLM): a value of ≥6 characters
+          that appears in an earlier response and is reused in a later request.
+        </p>
+
+        <h3 id="rec-redact" data-i18n="docs.rec.redactH">Redacted endpoint contracts</h3>
+        <p data-i18n="docs.rec.redactP">
+          The contract view collapses calls by method + normalized path (numeric ids,
+          UUIDs and long hashes become <code>:id</code>) and redacts schema examples to
+          <code>«redacted»</code> whenever a field name looks secret (password, token,
+          authorization, cookie, apikey, csrf, …) or a value looks like a JWT, long hex,
+          base64 blob, or email — so recordings can be shared with your agent safely.
+        </p>
+      </section>
+
+      <section class="doc-section" id="actions">
+        <h2 data-i18n="docs.act.h">Actions</h2>
+        <p data-i18n="docs.act.p1">
+          Recordings are the raw material; <strong>Actions are the product</strong>.
+          <code>create_action</code> distills a recording into a saved, parameterized,
+          replayable flow:
+        </p>
+        <ul>
+          <li data-i18n="docs.act.li1"><strong>params</strong> — named inputs your agent fills at run time (e.g. <code>orderId</code>).</li>
+          <li data-i18n="docs.act.li2"><strong>steps</strong> — the ordered API calls, each re-read from the recording and overridden with templated values.</li>
+          <li data-i18n="docs.act.li3"><strong>templates</strong> — <code>{{param}}</code> for inputs and <code>{{steps[N].outputs[X]}}</code> to feed one step's extracted output into the next request.</li>
+        </ul>
+        <p data-i18n="docs.act.p2">
+          <code>execute_action</code> runs the flow end to end through the sandbox
+          gateway — cookies injected, per-host confirmation, full audit.
+        </p>
+        <p data-i18n="docs.act.p3">
+          The side panel <strong>Action tab</strong> is the browse/manage surface:
+          search actions, inspect declared params and steps (kind, override count, wait
+          ms), delete with confirmation, and the <strong>Copy install prompt</strong>
+          button. Creation and execution always go through the MCP tools — with user
+          confirmation.
+        </p>
+      </section>
+
+      <section class="doc-section" id="gateway">
+        <h2 data-i18n="docs.gw.h">Sandbox gateway</h2>
+        <p data-i18n="docs.gw.p1">
+          <code>proxy_fetch</code> / <code>proxy_sse</code> take only
+          <code>method/url/headers/body</code> — no credentials. The extension injects
+          your browser cookies at forward time via <code>chrome.cookies</code> + a
+          short-lived <code>declarativeNetRequest</code> rule, so cookie values never
+          reach the AI.
+        </p>
+        <p data-i18n="docs.gw.p2">Every forwarded call passes through these gates, in order:</p>
+        <ol>
+          <li data-i18n="docs.gw.li1"><strong>SSRF guard</strong> — loopback, private-network, link-local and cloud-metadata addresses (<code>169.254.169.254</code> included) are refused before any other policy, on every path.</li>
+          <li data-i18n="docs.gw.li2"><strong>Domain policy</strong> — your deny-list blocks outright; your allow-list flows silently. The agent has no tools to read or change either list.</li>
+          <li data-i18n="docs.gw.li3"><strong>Human-in-the-loop confirmation</strong> — every new target host pops an extension-side window showing method/URL/body. Approve once per host per run; deny or ignore and the call never goes out. Covers the agent path and the script path alike.</li>
+          <li data-i18n="docs.gw.li4"><strong>Inject + forward</strong>, then an <strong>audit log</strong> entry (cookie names logged, values never).</li>
+        </ol>
+        <p data-i18n="docs.gw.p3">
+          A <strong>per-tool kill switch</strong> in the extension settings can turn off
+          any MCP tool; proxy-rule <code>enabled</code> is user-controlled too — tools
+          can read it but never change it.
+        </p>
+
+        <h3 id="gw-script" data-i18n="docs.gw.scriptH">Script-driven gateway</h3>
+        <p data-i18n="docs.gw.scriptP">
+          The proxy port isn't only for MCP tools — any HTTP script can use it. Create a
+          rule mapping a local sandbox prefix to a real target, then point your script's
+          baseURL at it:
+        </p>
+        <pre># rule: /gh-api  →  https://api.github.com
+baseURL = http://127.0.0.1:8788/gh-api
+
+GET http://127.0.0.1:8788/gh-api/repos/marrviin/manta-action-kit
+  → forwarded to https://api.github.com/repos/... with your cookies injected</pre>
+        <p data-i18n="docs.gw.scriptP2">
+          Rewrites are longest-prefix and origin-locked (a crafted path escaping the
+          target origin gets <code>502</code>; no matching enabled rule gets
+          <code>404</code>). Responses are sanitized — <code>Set-Cookie</code> is
+          stripped and bodies are capped — and every call passes the same confirmation
+          gate, shown as <em>Script proxy</em>.
+        </p>
+
+        <h3 id="gw-confirm" data-i18n="docs.gw.confirmH">The confirmation dialog</h3>
+        <ul>
+          <li data-i18n="docs.gw.confirmLi1">Shows method (color-tagged), URL and pretty-printed body, plus a source tag distinguishing <strong>MCP call</strong> vs <strong>Script proxy</strong>.</li>
+          <li data-i18n="docs.gw.confirmLi2">Auto-denies after a <strong>120-second countdown</strong> — deny, close the window, or let it expire and the call never goes out (fail closed).</li>
+          <li data-i18n="docs.gw.confirmLi3">Optional checkbox: <em>add this host to the allowed domains, future requests skip confirmation</em>.</li>
+          <li data-i18n="docs.gw.confirmLi4">While a request awaits confirmation, a system notification appears; clicking it focuses the dialog.</li>
+        </ul>
+
+        <h3 id="gw-audit" data-i18n="docs.gw.auditH">Audit log</h3>
+        <p data-i18n="docs.gw.auditP">
+          Every forwarded call is logged locally with a decision tag (confirmed /
+          auto-allowed / blocked) and status. The sandbox tab offers URL search,
+          <strong>export to a log file</strong>, and per-row copy actions — URL,
+          response, or a rebuilt <strong>cURL</strong> (injected cookies appear only as
+          a comment listing their names, never values).
+        </p>
+      </section>
+
+      <section class="doc-section" id="element-capture">
+        <h2 data-i18n="docs.ec.h">Element capture</h2>
+
+        <h3 id="ec-interaction" data-i18n="docs.ec.interactionH">Trigger &amp; interaction</h3>
+        <p data-i18n="docs.ec.p1">
+          Trigger it from the popup's <em>Element Capture</em> row or the
+          <span class="kbd">Alt</span>+<span class="kbd">Shift</span>+<span class="kbd">I</span>
+          hotkey (<span class="kbd">Esc</span> exits). A DevTools-style overlay follows
+          your cursor: margin / border / padding / content rings, flex &amp; grid gap
+          overlays, and a size badge.
+        </p>
+        <p data-i18n="docs.ec.p2">
+          <strong>Click</strong> an element to capture it with its entire visible
+          subtree; <strong>drag</strong> to box-select multiple intersecting elements
+          (up to 50, nested by DOM hierarchy).
+        </p>
+
+        <h3 id="ec-payload" data-i18n="docs.ec.payloadH">Captured payload</h3>
+        <p data-i18n="docs.ec.p3">
+          The capture lands on your <strong>clipboard as JSON</strong>: tag / id /
+          classes, own text, source location (file / line / column from build-time
+          instrumentation), viewport rect, ~40 computed styles (initial-value and
+          duplicate entries dropped), and the CSS custom properties actually in play.
+          Paste it straight to your agent.
+        </p>
+      </section>
+
+      <section class="doc-section" id="screenshots">
+        <h2 data-i18n="docs.shot.h">Screenshots</h2>
+
+        <h3 id="shot-modes" data-i18n="docs.shot.modesH">Two modes</h3>
+        <ul>
+          <li data-i18n="docs.shot.li1"><strong>Window</strong> (visible area) via <code>captureVisibleTab</code>; <strong>Full page</strong> via a one-shot <code>chrome.debugger</code> + CDP <code>captureBeyondViewport</code> — identical to DevTools' "Capture full size screenshot", single render, no scrolling, DOM untouched. The "being debugged" infobar appears only during capture.</li>
+          <li data-i18n="docs.shot.li2">Pages taller than Chromium's 16384-px capture surface are downscaled to fit (retina sharpness traded for completeness). If DevTools is open on the tab, full-page capture fails with a <code>debugger-conflict</code> hint — close DevTools and retry.</li>
+        </ul>
+
+        <h3 id="shot-preview" data-i18n="docs.shot.previewH">Preview &amp; export</h3>
+        <p data-i18n="docs.shot.p3">
+          <strong>Nothing is auto-saved</strong>: the shot opens in a preview tab with
+          click-to-zoom, <em>Copy image</em> and <em>Download</em> — you decide what to
+          keep.
+        </p>
+      </section>
+
+      <section class="doc-section" id="gif-recording">
+        <h2 data-i18n="docs.gif.h">GIF recording</h2>
+
+        <h3 id="gif-record" data-i18n="docs.gif.recordH">Recording</h3>
+        <p data-i18n="docs.gif.p1">
+          <strong>Record GIF</strong> in the popup captures the current tab (offscreen
+          recorder, immune to MV3 service-worker sleep) with pause / resume / stop.
+        </p>
+
+        <h3 id="gif-export" data-i18n="docs.gif.exportH">Export</h3>
+        <p data-i18n="docs.gif.p2">
+          Stopping opens the preview tab with a looping player and two exports:
+          <strong>Download GIF</strong> (canvas frame sampling, with progress) and
+          <strong>Download MP4</strong> (WebCodecs transcode; falls back to the original
+          WebM if conversion fails).
+        </p>
+      </section>
+
+      <section class="doc-section" id="skills">
+        <h2 data-i18n="docs.skills.h">Agent skill</h2>
+        <p data-i18n="docs.skills.p1">
+          The repo ships a Claude Code skill
+          (<code>@manta-action-kit/skills</code>) that teaches your agent the whole
+          suite — troubleshooting, environment checks, and the recording / action
+          workflows. Install it into any project:
+        </p>
+        <pre>npx degit marrviin/manta-action-kit/packages/skills/manta-action-kit \
+  ~/.claude/skills/manta-action-kit</pre>
+        <p data-i18n="docs.skills.p2">
+          It includes <code>check-env.mjs</code>, a one-shot authenticated health check
+          for the bridge:
+        </p>
+        <pre>MANTA_TOKEN=&lt;from the extension&gt; node check-env.mjs</pre>
+      </section>
+
+      <section class="doc-section" id="tools">
+        <h2 data-i18n="docs.tools.h">MCP tools reference</h2>
+
+        <h3 id="tools-rec" data-i18n="docs.tools.recH">Recordings (read + one write)</h3>
+        <div data-i18n="docs.tools.recTable">
+          <table class="tools-table">
+            <tbody>
+              <tr><td><code>list_recordings</code></td><td>All recordings' metadata (id, name, origin, createdAt, callCount).</td></tr>
+              <tr><td><code>get_recording</code></td><td>One recording + its full API call chain (request/response/status/timing).</td></tr>
+              <tr><td><code>get_flow</code></td><td>Calls as ordered lightweight steps + inferred field dependencies linking them.</td></tr>
+              <tr><td><code>get_endpoints</code></td><td>Distinct endpoints collapsed by method + normalized path, with REDACTED request/response schemas (+ <code>inputsFrom</code>).</td></tr>
+              <tr><td><code>get_call</code></td><td>A single API call by id, with full request/response bodies &amp; headers.</td></tr>
+              <tr><td><code>set_recording_description</code></td><td>Write a recording's business-level flow summary (the only write path).</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 id="tools-actions" data-i18n="docs.tools.actH">Actions</h3>
+        <div data-i18n="docs.tools.actTable">
+          <table class="tools-table">
+            <tbody>
+              <tr><td><code>list_actions</code></td><td>All saved actions (summaries: params, stepCount).</td></tr>
+              <tr><td><code>get_action</code></td><td>One action's full definition (steps, overrides, output extraction paths).</td></tr>
+              <tr><td><code>search_actions</code></td><td>Find actions by keyword in name/description.</td></tr>
+              <tr><td><code>create_action</code></td><td>Distill a recording into a saved, parameterized action (requires user confirmation).</td></tr>
+              <tr><td><code>update_action</code></td><td>Patch an action's content by id (requires user confirmation).</td></tr>
+              <tr><td><code>delete_action</code></td><td>Delete an action by id (requires user confirmation).</td></tr>
+              <tr><td><code>execute_action</code></td><td>Run an action end to end through the gateway (cookies injected, per-host confirmation).</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 id="tools-rules" data-i18n="docs.tools.ruleH">Proxy rules (script gateway)</h3>
+        <div data-i18n="docs.tools.ruleTable">
+          <table class="tools-table">
+            <tbody>
+              <tr><td><code>list_proxy_rules</code></td><td>List sandbox proxy rules (sandboxPrefix → targetBase, enabled, …).</td></tr>
+              <tr><td><code>add_proxy_rule</code></td><td>Create a rule mapping a local sandbox prefix to a real target base URL.</td></tr>
+              <tr><td><code>update_proxy_rule</code></td><td>Patch a rule's sandboxPrefix / targetBase by id (cannot toggle <code>enabled</code>).</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 id="tools-gateway" data-i18n="docs.tools.gwH">Authenticated gateway calls</h3>
+        <div data-i18n="docs.tools.gwTable">
+          <table class="tools-table">
+            <tbody>
+              <tr><td><code>proxy_fetch</code></td><td>Forward a call through the extension with the user's cookies injected.</td></tr>
+              <tr><td><code>proxy_sse</code></td><td>Like <code>proxy_fetch</code>, but drains an SSE stream and returns all events.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="dim" data-i18n="docs.tools.gwNote">
+          Every <code>proxy_fetch</code> / <code>proxy_sse</code> / <code>execute_action</code>
+          call passes the extension's own confirmation popup — this covers the
+          script-driven gateway path too and does not depend on the MCP client honoring
+          native permission prompts.
+        </p>
+
+        <h3 id="tools-ops" data-i18n="docs.tools.opsH">Runtime health</h3>
+        <div data-i18n="docs.tools.opsTable">
+          <table class="tools-table">
+            <tbody>
+              <tr><td><code>health</code></td><td>Report wsPort, proxyPort, proxyListening, extensionConnected, role.</td></tr>
+              <tr><td><code>rebind_proxy</code></td><td>Move the HTTP proxy to a free port at runtime (recover from conflicts).</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="doc-section" id="config">
+        <h2 data-i18n="docs.cfg.h">Configuration</h2>
+        <ul>
+          <li data-i18n="docs.cfg.li1"><code>MANTA_WS_PORT</code> (default <code>8787</code>) — WS bridge; must match the extension setting.</li>
+          <li data-i18n="docs.cfg.li2"><code>MANTA_PROXY_PORT</code> (default <code>8788</code>) — local HTTP proxy for the script gateway (must differ from <code>MANTA_WS_PORT</code>).</li>
+          <li data-i18n="docs.cfg.li3"><code>MANTA_TOKEN</code> — handshake secret shared with the extension; take it from the extension's install prompt. Without it the server rejects every client.</li>
+        </ul>
+      </section>
+
+      <section class="doc-section" id="development">
+        <h2 data-i18n="docs.dev.h">Development</h2>
+        <pre>pnpm install          # deps + wxt prepare
+pnpm dev              # dev Chrome with HMR (auto-loads the extension)
+pnpm build            # production build -> packages/extension/.output/chrome-mv3/
+pnpm build:mcp        # build the MCP server -> packages/mcp/dist/
+pnpm compile          # type-check the whole workspace
+pnpm test             # vitest unit suite (security-critical pure modules)</pre>
+        <p data-i18n="docs.dev.p1">
+          For local MCP development, point your agent config at the built server
+          instead of the published package:
+        </p>
+        <pre>{
+  "mcpServers": {
+    "manta-action-kit": {
+      "command": "node",
+      "args": ["/absolute/path/to/packages/mcp/dist/index.js"],
+      "env": { "MANTA_WS_PORT": "8787", "MANTA_PROXY_PORT": "8788", "MANTA_TOKEN": "&lt;from the extension&gt;" }
+    }
+  }
+}</pre>
+        <p data-i18n="docs.dev.p2">
+          Deeper architecture notes live in the repo's
+          <a href="https://github.com/marrviin/manta-action-kit/blob/main/CLAUDE.md">CLAUDE.md</a>
+          and <a href="https://github.com/marrviin/manta-action-kit/blob/main/packages/mcp/README.md">MCP README</a>.
+        </p>
+      </section>
+    </main>
+  </div>
+
+  <footer>
+    <div class="container footer-inner">
+      <a href="docs.html" data-i18n="footer.docs">Docs</a>
+      <a href="changelog.html" data-i18n="footer.changelog">Changelog</a>
+      <a href="https://github.com/marrviin/manta-action-kit/blob/main/PRIVACY.md" data-i18n="footer.privacy">Privacy Policy</a>
+      <a href="https://github.com/marrviin/manta-action-kit" data-i18n="footer.github">GitHub</a>
+      <span class="spacer"></span>
+      <span data-i18n="footer.note">Manta Action Kit — bridge your browser session to your AI agents, safely.</span>
+    </div>
+  </footer>
+
+  <script>window.MANTA_I18N = { zh: {
+    "nav.home": "首页",
+    "nav.docs": "文档",
+    "nav.changelog": "更新日志",
+    "nav.github": "GitHub",
+    "docs.title": "文档",
+    "docs.sub": "关于 API 录制、Action 蒸馏、页面捕获、以及让 AI agent 安全调用已登录 API 的一切。",
+    "docs.tocTitle": "本页目录",
+    "docs.tocIntro": "简介",
+    "docs.tocQuickstart": "快速开始",
+    "docs.tocArchitecture": "架构",
+    "docs.tocHandshake": "握手认证",
+    "docs.tocElection": "单实例选举",
+    "docs.tocUi": "扩展界面",
+    "docs.tocUiPopup": "工具栏弹窗",
+    "docs.tocUiPanel": "侧边栏",
+    "docs.tocUiSettings": "设置",
+    "docs.tocRecording": "接口录制",
+    "docs.tocRecDeps": "调用链注解",
+    "docs.tocRecRedact": "脱敏契约",
+    "docs.tocActions": "Action",
+    "docs.tocGateway": "沙箱网关",
+    "docs.tocGwScript": "脚本网关",
+    "docs.tocGwConfirm": "确认弹窗",
+    "docs.tocGwAudit": "审计日志",
+    "docs.tocElementCapture": "元素捕获",
+    "docs.tocEcInteraction": "触发与交互",
+    "docs.tocEcPayload": "捕获内容",
+    "docs.tocScreenshot": "截图",
+    "docs.tocShotModes": "两种模式",
+    "docs.tocShotPreview": "预览与导出",
+    "docs.tocGif": "GIF 录屏",
+    "docs.tocGifRecord": "录制",
+    "docs.tocGifExport": "导出",
+    "docs.tocSkills": "Agent Skill",
+    "docs.tocTools": "MCP 工具参考",
+    "docs.tocToolsRec": "录制",
+    "docs.tocToolsAct": "Action",
+    "docs.tocToolsRules": "代理规则",
+    "docs.tocToolsGw": "网关调用",
+    "docs.tocToolsOps": "健康检查",
+    "docs.tocConfig": "配置",
+    "docs.tocDevelopment": "开发",
+
+    "docs.intro.h": "简介",
+    "docs.intro.p1": "Manta Action Kit 让 AI agent（Claude Code、Codex、Cursor、任意 MCP 客户端）调用你真实、已登录的 API——那些藏在你浏览器会话背后的接口——而 agent 全程看不到你的凭证。",
+    "docs.intro.p2": "套件由两部分组成：<strong>Chrome 扩展</strong>负责录制 API 调用、捕获页面、把所有数据存在本地、并在网络层注入你的 Cookie；<strong>MCP 服务</strong>（<code>@manta-action-kit/mcp</code>）经本地 WebSocket 把 agent 与扩展桥接起来，暴露 agent 可调用的工具。",
+    "docs.intro.p3": "MCP 服务只是一个桥——自身不持有任何数据。请先安装扩展；服务启动后扩展会自动拨入连接。",
+
+    "docs.qs.h": "快速开始",
+    "docs.qs.s1": "<strong>安装扩展</strong>：从 <a href=\"https://chromewebstore.google.com/detail/manta-action-kit/pghddhbhbnlcehlmgnnalgaephllkeel\">Chrome Web Store</a> 安装。",
+    "docs.qs.s2": "<strong>复制安装提示词</strong>：扩展侧边栏 → Action 标签页 → 复制安装提示词。其中已内嵌你的个人桥接 token（<code>MANTA_TOKEN</code>）。",
+    "docs.qs.s3": "<strong>把 MCP 服务加进 agent</strong>：直接粘贴提示词，或使用下方配置。",
+    "docs.qs.s4": "<strong>录制一个流程</strong>：在你的网站上录一次，然后让 agent 把它变成 action 并执行。",
+
+    "docs.arch.h": "架构",
+    "docs.arch.p1": "MV3 扩展无法监听端口，因此这里把 socket 方向做了反转：MCP 服务托管绑定到环回地址的 WebSocket 桥接，扩展作为常驻客户端主动拨入。",
+    "docs.arch.li1": "<strong>WS 桥接</strong>（<code>127.0.0.1:8787</code>）——信任边界。agent 的每次工具调用被转发为一个 <code>rpc</code> 帧，并通过 id 与对应的 <code>rpc-result</code> 关联。",
+    "docs.arch.li2": "<strong>HTTP 代理</strong>（<code>127.0.0.1:8788</code>）——脚本驱动的网关。把脚本的 baseURL 指向某个沙箱前缀，扩展会重写并转发请求，同时注入你的 Cookie。",
+    "docs.arch.handshakeH": "握手认证",
+    "docs.arch.handshakeP": "环回端口是公开常识，所以任何业务帧传输之前，连接双方都要先完成<strong>双向</strong>认证。共享 token 本身从不上线传输：",
+    "docs.arch.handshakeP2": "握手失败或中途停滞的连接会被直接断开；携带网页 <code>Origin</code> 头的连接一律拒绝；未配置 <code>MANTA_TOKEN</code> 时服务端 fail closed，拒绝所有客户端。",
+    "docs.arch.electionH": "单实例选举",
+    "docs.arch.electionP": "每个 MCP 进程都会竞争桥接端口。抢到的（<strong>owner</strong>）托管桥接 + 代理；没抢到的（<strong>peer</strong>）把工具调用转发给它。owner 退出时 peer 自动重新选举——无需手动重启。",
+
+    "docs.ui.h": "扩展界面",
+    "docs.ui.popupH": "工具栏弹窗",
+    "docs.ui.popupP": "点击工具栏图标，打开一个紧凑的功能菜单：",
+    "docs.ui.popupLi1": "<strong>Action / 接口录制 / 安全沙箱</strong>——打开侧边栏对应标签页。录制一行带行内的开始 / 暂停 / 停止控件；停止后自动跳到侧边栏里刚保存的录制。",
+    "docs.ui.popupLi2": "<strong>元素捕获</strong>——启动页内元素检查器（见<a href=\"#element-capture\">元素捕获</a>）。",
+    "docs.ui.popupLi3": "<strong>截图</strong>——带持久记住的「窗口 / 整页」切换。",
+    "docs.ui.popupLi4": "<strong>录制 GIF</strong>——录制当前标签页，行内暂停 / 继续 / 停止。",
+    "docs.ui.popupLi5": "<strong>设置</strong>——打开侧边栏设置页。",
+    "docs.ui.popupNote": "不支持的页面（<code>chrome://</code>、Chrome 商店）会被拒绝；<code>file://</code> 页面会提示先在 chrome://extensions 开启「允许访问文件网址」。",
+    "docs.ui.panelH": "侧边栏",
+    "docs.ui.panelP": "<strong>接口录制</strong>、<strong>Action</strong>、<strong>安全沙箱</strong>三个标签页，右上角齿轮按钮展开下方设置视图。",
+    "docs.ui.settingsH": "设置",
+    "docs.ui.settingsLi1": "<strong>语言</strong>——English / 中文，弹窗与侧边栏实时同步；默认跟随浏览器界面语言。",
+    "docs.ui.settingsLi2": "<strong>连接器</strong>——实时桥接状态（已连接 / 连接中 / 未连接 / <em>认证失败</em>——最后一种的修复方式是重新复制安装提示词）。「工具」按钮展开<strong>按工具的 kill switch 列表</strong>：每个业务 MCP 工具都可单独关闭。",
+    "docs.ui.settingsLi3": "<strong>关于</strong>——扩展版本 + Chrome 商店链接，以及配套 npm 包及其 npm registry 实时版本。",
+
+    "docs.rec.h": "接口录制",
+    "docs.rec.p1": "在弹窗点 <em>开始</em>，正常操作网站，点 <em>结束</em>。MAIN world 注入脚本挂钩页面的 <code>fetch</code>/<code>XHR</code>（无 debugger 横幅），捕获每一条调用——含请求<strong>与</strong>响应——形成可本地查看的调用链，存入 IndexedDB。录制保存后系统通知会报告捕获条数。",
+    "docs.rec.li1": "<strong>SSE 流</strong>（<code>text/event-stream</code>）经 <code>body.tee()</code> 增量捕获——页面自己的流完全不受影响。",
+    "docs.rec.li2": "<strong>管理</strong>：录制可改名、删除、搜索；录制中弹窗与侧边栏同步显示呼吸灯 + 实时捕获计数。可从调用链中删除单条调用，不影响其余调用的等待时间。",
+    "docs.rec.li3": "<strong>Agent 摘要</strong>：你的 agent 可以为录制撰写业务级摘要（<code>set_recording_description</code>），侧边栏只读展示。",
+    "docs.rec.li4": "<strong>过滤规则</strong>：录制过滤规则可把噪音挡在外面。",
+    "docs.rec.li5": "<strong>不捕获</strong>：WebSocket 帧、<code>sendBeacon</code>、页面 worker、原生 <code>EventSource</code>（基于 fetch 的 SSE 已覆盖）。",
+    "docs.rec.depsH": "调用链注解",
+    "docs.rec.depsP": "调用链上会标注推断出的数据依赖——金色 <strong>consumes</strong> 标签标记复用了更早响应值的请求字段，蓝色 <strong>produces</strong> 标签标记供值的响应路径。推断是确定性的（不经 LLM）：一个 ≥6 字符的值出现在更早的响应里、又在后续请求中被复用。",
+    "docs.rec.redactH": "脱敏接口契约",
+    "docs.rec.redactP": "契约视图按方法 + 归一化路径合并调用（数字 id、UUID、长哈希折叠为 <code>:id</code>），并在字段名疑似敏感（password、token、authorization、cookie、apikey、csrf 等）或值疑似 JWT、长十六进制、base64 大块、邮箱时，把 Schema 示例脱敏为 <code>«redacted»</code>——录制内容可以放心交给 agent。",
+
+    "docs.act.h": "Action",
+    "docs.act.p1": "录制是素材，<strong>Action 是产物</strong>。<code>create_action</code> 把一段录制蒸馏为已保存、可参数化、可重放的流程：",
+    "docs.act.li1": "<strong>params</strong>——运行时由 agent 填写的命名输入（如 <code>orderId</code>）。",
+    "docs.act.li2": "<strong>steps</strong>——有序的 API 调用，每步从录制重新读取请求、再用模板覆写。",
+    "docs.act.li3": "<strong>模板</strong>——<code>{{param}}</code> 引用输入，<code>{{steps[N].outputs[X]}}</code> 把上一步提取的输出喂给下一步请求。",
+    "docs.act.p2": "<code>execute_action</code> 经沙箱网关端到端执行整个流程——注入 Cookie、按 host 逐个确认、完整审计。",
+    "docs.act.p3": "侧边栏 <strong>Action 标签页</strong>是浏览 / 管理入口：搜索动作、查看声明的参数与步骤（类型、覆写数、等待毫秒）、确认后删除，以及<strong>复制安装提示词</strong>按钮。创建与执行始终走 MCP 工具——并经用户确认。",
+
+    "docs.gw.h": "沙箱网关",
+    "docs.gw.p1": "<code>proxy_fetch</code> / <code>proxy_sse</code> 只接收 <code>method/url/headers/body</code>——不带任何凭证。扩展在转发时经 <code>chrome.cookies</code> + 短时效 <code>declarativeNetRequest</code> 规则注入浏览器 Cookie，Cookie 值永不到达 AI。",
+    "docs.gw.p2": "每条转发调用都按顺序经过这些关卡：",
+    "docs.gw.li1": "<strong>SSRF 防护</strong>——环回、私网、链路本地及云元数据地址（含 <code>169.254.169.254</code>）在任何域名策略之前被拒，对所有路径生效。",
+    "docs.gw.li2": "<strong>域名策略</strong>——你的拒绝名单直接拦截；你的允许名单静默放行。agent 没有任何工具能读取或修改这两张名单。",
+    "docs.gw.li3": "<strong>人在环确认</strong>——每个新目标域名都会弹出扩展侧确认窗口，展示 method/URL/body。每次运行每域名确认一次；拒绝或不理会，请求就不会发出。agent 路径与脚本路径都过这道闸。",
+    "docs.gw.li4": "<strong>注入 + 转发</strong>，然后写入<strong>审计日志</strong>（只记 Cookie 名，永不记值）。",
+    "docs.gw.p3": "扩展设置里还有<strong>按工具的 kill switch</strong> 可关闭任意 MCP 工具；代理规则的 <code>enabled</code> 也由用户掌控——工具只能读取，不能修改。",
+    "docs.gw.scriptH": "脚本驱动的网关",
+    "docs.gw.scriptP": "代理端口不只服务 MCP 工具——任何 HTTP 脚本都能用。创建一条把本地沙箱前缀映射到真实目标的规则，然后把脚本的 baseURL 指过去：",
+    "docs.gw.scriptP2": "重写按最长前缀匹配且锁定目标 origin（构造逃逸目标站 origin 的路径会得到 <code>502</code>；无匹配的启用规则返回 <code>404</code>）。响应会被消毒——剥离 <code>Set-Cookie</code>、截断超大响应体——且每条调用都经过同一道确认闸，来源标记为「脚本代理」。",
+    "docs.gw.confirmH": "确认弹窗",
+    "docs.gw.confirmLi1": "展示 method（彩色标签）、URL 与格式化后的请求体，并用来源标签区分 <strong>MCP 调用</strong>与<strong>脚本代理</strong>。",
+    "docs.gw.confirmLi2": "<strong>120 秒倒计时</strong>后自动拒绝——点拒绝、关闭窗口或等超时，请求都不会发出（fail closed）。",
+    "docs.gw.confirmLi3": "可选勾选框：<em>把该域名加入允许名单，之后的请求跳过确认</em>。",
+    "docs.gw.confirmLi4": "请求等待确认期间会发系统通知，点击可聚焦到确认窗口。",
+    "docs.gw.auditH": "审计日志",
+    "docs.gw.auditP": "每条转发调用都在本地留痕，带决策标签（已确认 / 自动放行 / 已拦截）与状态码。沙箱标签页提供 URL 搜索、<strong>导出日志文件</strong>，以及每行的复制操作——URL、响应、或重建的 <strong>cURL</strong>（注入的 Cookie 只以名称注释出现，永无值）。",
+
+    "docs.ec.h": "元素捕获",
+    "docs.ec.interactionH": "触发与交互",
+    "docs.ec.p1": "从弹窗的「元素捕获」或快捷键 <span class=\"kbd\">Alt</span>+<span class=\"kbd\">Shift</span>+<span class=\"kbd\">I</span> 触发（<span class=\"kbd\">Esc</span> 退出）。DevTools 风格的覆盖层跟随光标：margin / border / padding / content 分色描边、flex 与 grid gap 高亮、尺寸角标。",
+    "docs.ec.p2": "<strong>单击</strong>元素即捕获它及其全部可见子树；<strong>拖拽</strong>框选多个相交元素（最多 50 个，按 DOM 层级嵌套）。",
+    "docs.ec.payloadH": "捕获内容",
+    "docs.ec.p3": "捕获结果以 <strong>JSON 复制到剪贴板</strong>：tag / id / class、自身文本、源码位置（构建时注入的 文件 / 行 / 列）、视口矩形、约 40 项计算样式（剔除初始值与重复项）、以及实际生效的 CSS 自定义属性。直接粘贴给 agent 即可。",
+
+    "docs.shot.h": "截图",
+    "docs.shot.modesH": "两种模式",
+    "docs.shot.li1": "<strong>窗口</strong>（可见区域）走 <code>captureVisibleTab</code>；<strong>整页</strong>走一次性 <code>chrome.debugger</code> + CDP <code>captureBeyondViewport</code>——与 DevTools「Capture full size screenshot」完全一致：单次渲染、不滚动、不改 DOM。「正在被调试」横幅只在捕获期间出现。",
+    "docs.shot.li2": "超过 Chromium 16384px 捕获表面上限的页面会降采样以保完整（牺牲视网膜清晰度）。该标签页开着 DevTools 时整页捕获会报 <code>debugger-conflict</code> 提示——关掉 DevTools 重试。",
+    "docs.shot.previewH": "预览与导出",
+    "docs.shot.p3": "<strong>不自动落盘</strong>：截图先开进预览标签页（点击缩放、复制图像、下载），所见即所得，由你决定去留。",
+
+    "docs.gif.h": "GIF 录屏",
+    "docs.gif.recordH": "录制",
+    "docs.gif.p1": "弹窗里的<strong>录制 GIF</strong> 捕获当前标签页（离屏录制器，不受 MV3 service worker 休眠影响），支持暂停 / 继续 / 停止。",
+    "docs.gif.exportH": "导出",
+    "docs.gif.p2": "停止后打开预览标签页，循环播放，并提供两种导出：<strong>下载 GIF</strong>（canvas 逐帧采样，带进度）与<strong>下载 MP4</strong>（WebCodecs 转码；转换失败时回退下载原始 WebM）。",
+
+    "docs.skills.h": "Agent Skill",
+    "docs.skills.p1": "仓库自带一个 Claude Code Skill（<code>@manta-action-kit/skills</code>），教你的 agent 使用整套工具——排障、环境检查、录制 / Action 工作流。装进任意项目：",
+    "docs.skills.p2": "其中包含 <code>check-env.mjs</code>，一条命令对桥接做带认证的健康检查：",
+
+    "docs.tools.h": "MCP 工具参考",
+    "docs.tools.recH": "录制（读取 + 一个写入）",
+    "docs.tools.recTable": "<table class=\"tools-table\"><tbody><tr><td><code>list_recordings</code></td><td>所有录制的元数据（id、名称、来源、创建时间、调用数）。</td></tr><tr><td><code>get_recording</code></td><td>单个录制 + 其完整 API 调用链（请求/响应/状态/耗时）。</td></tr><tr><td><code>get_flow</code></td><td>调用链：有序的轻量步骤 + 推断出的字段依赖关系。</td></tr><tr><td><code>get_endpoints</code></td><td>按方法 + 归一化路径去重的端点，请求/响应体为「脱敏 Schema」（含 <code>inputsFrom</code>）。</td></tr><tr><td><code>get_call</code></td><td>按 id 获取单个调用，含完整请求/响应体与请求头。</td></tr><tr><td><code>set_recording_description</code></td><td>写入录制的业务级流程摘要（唯一写入路径）。</td></tr></tbody></table>",
+    "docs.tools.actH": "Action",
+    "docs.tools.actTable": "<table class=\"tools-table\"><tbody><tr><td><code>list_actions</code></td><td>所有已保存动作的概要（参数、步骤数）。</td></tr><tr><td><code>get_action</code></td><td>单个动作的完整定义（步骤、覆写、输出提取路径）。</td></tr><tr><td><code>search_actions</code></td><td>按关键词搜索动作名称/描述。</td></tr><tr><td><code>create_action</code></td><td>将一段录制蒸馏为可参数化的已保存动作（需用户确认）。</td></tr><tr><td><code>update_action</code></td><td>按 id 修改动作内容（需用户确认）。</td></tr><tr><td><code>delete_action</code></td><td>按 id 删除动作（需用户确认）。</td></tr><tr><td><code>execute_action</code></td><td>经网关端到端执行一个动作（注入 Cookie，按 host 逐个确认）。</td></tr></tbody></table>",
+    "docs.tools.ruleH": "代理规则（脚本网关）",
+    "docs.tools.ruleTable": "<table class=\"tools-table\"><tbody><tr><td><code>list_proxy_rules</code></td><td>列出沙箱代理规则（sandboxPrefix → targetBase、enabled 等）。</td></tr><tr><td><code>add_proxy_rule</code></td><td>创建一条规则，将本地沙箱前缀映射到真实目标 base URL。</td></tr><tr><td><code>update_proxy_rule</code></td><td>按 id 修改规则的 sandboxPrefix / targetBase（不能改 <code>enabled</code>）。</td></tr></tbody></table>",
+    "docs.tools.gwH": "鉴权网关调用",
+    "docs.tools.gwTable": "<table class=\"tools-table\"><tbody><tr><td><code>proxy_fetch</code></td><td>经扩展转发调用，转发时注入用户的 Cookie。</td></tr><tr><td><code>proxy_sse</code></td><td>与 <code>proxy_fetch</code> 类似，但用于 SSE 流，抽干后一次性返回全部事件。</td></tr></tbody></table>",
+    "docs.tools.gwNote": "每次 <code>proxy_fetch</code> / <code>proxy_sse</code> / <code>execute_action</code> 调用都会经过扩展<strong>自身</strong>的确认弹窗——该闸门同时覆盖脚本驱动的网关路径，且不依赖 MCP 客户端是否支持原生权限提示。",
+    "docs.tools.opsH": "运行时健康检查",
+    "docs.tools.opsTable": "<table class=\"tools-table\"><tbody><tr><td><code>health</code></td><td>返回 wsPort、proxyPort、proxyListening、extensionConnected、role。</td></tr><tr><td><code>rebind_proxy</code></td><td>运行时把 HTTP 代理迁移到空闲端口（用于从端口冲突中恢复）。</td></tr></tbody></table>",
+
+    "docs.cfg.h": "配置",
+    "docs.cfg.li1": "<code>MANTA_WS_PORT</code>（默认 <code>8787</code>）—— WS 桥接端口；必须与扩展设置保持一致。",
+    "docs.cfg.li2": "<code>MANTA_PROXY_PORT</code>（默认 <code>8788</code>）—— 脚本网关使用的本地 HTTP 代理端口（必须与 <code>MANTA_WS_PORT</code> 不同）。",
+    "docs.cfg.li3": "<code>MANTA_TOKEN</code> —— 与扩展共享的握手密钥；取自扩展的安装提示词。未配置时服务端会拒绝所有客户端。",
+
+    "docs.dev.h": "开发",
+    "docs.dev.p1": "本地开发 MCP 时，把 agent 配置指向本地构建的服务而不是已发布的包：",
+    "docs.dev.p2": "更深入的架构说明见仓库的 <a href=\"https://github.com/marrviin/manta-action-kit/blob/main/CLAUDE.md\">CLAUDE.md</a> 与 <a href=\"https://github.com/marrviin/manta-action-kit/blob/main/packages/mcp/README.md\">MCP README</a>。",
+
+    "footer.docs": "文档",
+    "footer.changelog": "更新日志",
+    "footer.privacy": "隐私政策",
+    "footer.github": "GitHub",
+    "footer.note": "Manta Action Kit——把浏览器会话安全地桥接给你的 AI agent。"
+  } };</script>
+  <script src="assets/site.js"></script>
+</body>
+</html>

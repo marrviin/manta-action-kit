@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Manta Action Kit — Secure API access for AI agents | AI Agent 安全 API 访问工具箱</title>
+  <meta name="description" content="Give your AI agents secure access to your real, logged-in APIs — without ever handing over your credentials. 让 AI agent 安全调用你已登录的真实 API，凭证永不离开浏览器。" />
+  <link rel="icon" type="image/png" href="assets/icon-128.png" />
+  <link rel="stylesheet" href="assets/site.css" />
+</head>
+<body data-page="home">
+  <nav>
+    <div class="container nav-inner">
+      <a class="brand" href="index.html">
+        <img src="assets/icon-128.png" alt="Manta Action Kit logo" />
+        <span>Manta Action Kit</span>
+      </a>
+      <div class="nav-links">
+        <a class="nav-link" href="index.html" data-page="home" data-i18n="nav.home">Home</a>
+        <a class="nav-link" href="docs.html" data-page="docs" data-i18n="nav.docs">Docs</a>
+        <a class="nav-link" href="changelog.html" data-page="changelog" data-i18n="nav.changelog">Changelog</a>
+        <div class="lang-switch" id="langSwitch" role="group" aria-label="Language">
+          <button class="lang-opt" data-lang="en" type="button">EN</button>
+          <button class="lang-opt" data-lang="zh" type="button">中文</button>
+        </div>
+        <a class="nav-link nav-github" href="https://github.com/marrviin/manta-action-kit" target="_blank" rel="noopener" aria-label="GitHub">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+          <span data-i18n="nav.github">GitHub</span>
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <header class="hero" id="top">
+    <div class="container">
+      <h1 data-i18n="hero.title">Your AI agent,<br /><span class="accent">your</span> logged-in APIs.</h1>
+      <p class="tagline" data-i18n="hero.tagline">
+        Give your AI agents secure access to your real, logged-in APIs — without ever
+        handing over your credentials. Cookies stay locked inside your browser; the agent
+        never sees a single credential.
+      </p>
+      <div class="hero-badges">
+        <span class="badge">Model Context Protocol compatible</span>
+        <span class="badge" data-i18n="hero.badgeLocal">Data stays local</span>
+        <span class="badge" data-i18n="hero.badgeMit">MIT License</span>
+      </div>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="https://chromewebstore.google.com/detail/manta-action-kit/pghddhbhbnlcehlmgnnalgaephllkeel" data-i18n="hero.install">Install the Chrome Extension</a>
+        <a class="btn btn-ghost" href="docs.html" data-i18n="hero.docs">Read the Docs</a>
+      </div>
+      <p class="hero-note" data-i18n="hero.note">
+        Works with Claude Code · Codex · Cursor · any MCP client — bridge runs 100% on 127.0.0.1
+      </p>
+    </div>
+  </header>
+
+  <section class="alt">
+    <div class="container">
+      <h2 class="section-title" data-i18n="how.title">How it works</h2>
+      <p class="section-sub" data-i18n="how.sub">
+        Record a real API flow once in your browser, then let your agent replay it or call
+        those endpoints freely — credentials never leave the browser.
+      </p>
+      <div class="grid grid-3">
+        <div class="card">
+          <div class="icon">⏺</div>
+          <div class="step" data-i18n="how.step1Label">Step 1 · Record</div>
+          <h3 data-i18n="how.step1Title">Capture the flow</h3>
+          <p data-i18n="how.step1Body">
+            Click Start in the popup, use the site normally, click Stop. The extension
+            captures every fetch/XHR — requests and responses, including SSE streams —
+            into a local, inspectable call chain.
+          </p>
+        </div>
+        <div class="card">
+          <div class="icon">⚗️</div>
+          <div class="step" data-i18n="how.step2Label">Step 2 · Distill</div>
+          <h3 data-i18n="how.step2Title">Turn it into an Action</h3>
+          <p data-i18n="how.step2Body">
+            Your agent reads the recording through MCP and distills it into a reusable,
+            parameterized Action — {{param}} templates with step-to-step output passing.
+          </p>
+        </div>
+        <div class="card">
+          <div class="icon">▶</div>
+          <div class="step" data-i18n="how.step3Label">Step 3 · Replay</div>
+          <h3 data-i18n="how.step3Title">Run it on demand</h3>
+          <p data-i18n="how.step3Body">
+            execute_action or proxy_fetch re-fires the flow through a sandbox gateway.
+            The extension injects your session cookies at forward time; the AI only ever
+            sent method/url/headers/body.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="container">
+      <h2 class="section-title" data-i18n="safe.title">Why it's safe</h2>
+      <p class="section-sub" data-i18n="safe.sub">
+        Credentials live in your browser and never travel to the AI — enforced at
+        several layers, not by promises.
+      </p>
+      <div class="grid grid-4">
+        <div class="card">
+          <h3 data-i18n="safe.cookieTitle">🔒 Cookie stays in the browser</h3>
+          <p data-i18n="safe.cookieBody">
+            Cookies are read via chrome.cookies and injected as a network-layer header.
+            Values never appear in any tool result, transcript, or log.
+          </p>
+        </div>
+        <div class="card">
+          <h3 data-i18n="safe.hitlTitle">✋ Human-in-the-loop gate</h3>
+          <p data-i18n="safe.hitlBody">
+            Every new target host pops a confirmation window showing method/URL/body.
+            You approve once per host per run; deny or ignore and the call never goes out.
+          </p>
+        </div>
+        <div class="card">
+          <h3 data-i18n="safe.ssrfTitle">🛡 SSRF guard</h3>
+          <p data-i18n="safe.ssrfBody">
+            Loopback, private-network, link-local and cloud-metadata addresses
+            (169.254.169.254 included) are refused before any other policy, on every path.
+          </p>
+        </div>
+        <div class="card">
+          <h3 data-i18n="safe.domainTitle">🌐 Domain policy you own</h3>
+          <p data-i18n="safe.domainBody">
+            Deny-list blocks outright, allow-list flows silently. The agent has no tools
+            to read or change these.
+          </p>
+        </div>
+        <div class="card">
+          <h3 data-i18n="safe.killTitle">🔌 Per-tool kill switch</h3>
+          <p data-i18n="safe.killBody">
+            Toggle any MCP tool off from the extension UI at any time.
+          </p>
+        </div>
+        <div class="card">
+          <h3 data-i18n="safe.auditTitle">📜 Local audit log</h3>
+          <p data-i18n="safe.auditBody">
+            Every forwarded call is logged locally. Cookie names are logged; values never.
+          </p>
+        </div>
+        <div class="card">
+          <h3 data-i18n="safe.bridgeTitle">🤝 Mutually-authenticated bridge</h3>
+          <p data-i18n="safe.bridgeBody">
+            The loopback WebSocket does two-way challenge-response — the token itself
+            never crosses the wire. Unauthenticated peers get dropped.
+          </p>
+        </div>
+        <div class="card">
+          <h3 data-i18n="safe.localTitle">💾 All data stays local</h3>
+          <p data-i18n="safe.localBody">
+            IndexedDB + chrome.storage. No analytics, no external servers, no remote code.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="alt">
+    <div class="container">
+      <h2 class="section-title" data-i18n="tools.title">What your agent gets</h2>
+      <p class="section-sub" data-i18n="tools.sub">
+        Recordings are the raw material; Actions are the product. Your agent lists and
+        runs them like any other tool.
+      </p>
+      <table class="tools-table">
+        <thead>
+          <tr>
+            <th data-i18n="tools.thArea">Area</th>
+            <th data-i18n="tools.thTools">Tools</th>
+            <th data-i18n="tools.thDesc">What it does</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td data-i18n="tools.row1Area">Read recordings</td>
+            <td><code>list_recordings</code> <code>get_flow</code> <code>get_endpoints</code></td>
+            <td data-i18n="tools.row1Desc">Inspect recorded call chains and redacted endpoint contracts</td>
+          </tr>
+          <tr>
+            <td data-i18n="tools.row2Area">Actions</td>
+            <td><code>create_action</code> <code>list_actions</code> <code>search_actions</code> <code>execute_action</code></td>
+            <td data-i18n="tools.row2Desc">Distill recordings into parameterized, replayable flows and run them</td>
+          </tr>
+          <tr>
+            <td data-i18n="tools.row3Area">Sandbox proxy</td>
+            <td><code>proxy_fetch</code> <code>proxy_sse</code></td>
+            <td data-i18n="tools.row3Desc">Call any allowed API with your login state — credentials injected by the extension</td>
+          </tr>
+          <tr>
+            <td data-i18n="tools.row4Area">Ops</td>
+            <td><code>health</code> <code>rebind_proxy</code></td>
+            <td data-i18n="tools.row4Desc">Check bridge connectivity and manage the sandbox proxy</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="container">
+      <h2 class="section-title" data-i18n="qs.title">Quick start</h2>
+      <div class="steps">
+        <div class="step-item">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <h3 data-i18n="qs.s1Title">Install the extension</h3>
+            <p data-i18n="qs.s1Body">
+              Get it from the <a href="https://chromewebstore.google.com/detail/manta-action-kit/pghddhbhbnlcehlmgnnalgaephllkeel">Chrome Web Store</a>.
+            </p>
+          </div>
+        </div>
+        <div class="step-item">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <h3 data-i18n="qs.s2Title">Copy the install prompt</h3>
+            <p data-i18n="qs.s2Body">
+              Open the extension's side panel → Action tab → Copy install prompt. It embeds
+              your personal bridge token (MANTA_TOKEN).
+            </p>
+          </div>
+        </div>
+        <div class="step-item">
+          <div class="step-num">3</div>
+          <div class="step-body">
+            <h3 data-i18n="qs.s3Title">Add the MCP server to your agent</h3>
+            <p data-i18n="qs.s3Body">
+              Paste the prompt into Claude Code / Codex / any MCP client — or add this to your MCP config:
+            </p>
+            <pre>{
+  "mcpServers": {
+    "manta-action-kit": {
+      "command": "npx",
+      "args": ["-y", "@manta-action-kit/mcp"],
+      "env": {
+        "MANTA_WS_PORT": "8787",
+        "MANTA_PROXY_PORT": "8788",
+        "MANTA_TOKEN": "&lt;token from the extension&gt;"
+      }
+    }
+  }
+}</pre>
+          </div>
+        </div>
+        <div class="step-item">
+          <div class="step-num">4</div>
+          <div class="step-body">
+            <h3 data-i18n="qs.s4Title">Use it</h3>
+            <p data-i18n="qs.s4Body">
+              Record a flow on your site, then ask your agent: “I just recorded the
+              order-tracking flow. Turn it into an action and tell me where order A1002 is.”
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="container footer-inner">
+      <a href="docs.html" data-i18n="footer.docs">Docs</a>
+      <a href="changelog.html" data-i18n="footer.changelog">Changelog</a>
+      <a href="https://github.com/marrviin/manta-action-kit/blob/main/PRIVACY.md" data-i18n="footer.privacy">Privacy Policy</a>
+      <a href="https://github.com/marrviin/manta-action-kit" data-i18n="footer.github">GitHub</a>
+      <span class="spacer"></span>
+      <span data-i18n="footer.note">Manta Action Kit — bridge your browser session to your AI agents, safely.</span>
+    </div>
+  </footer>
+
+  <script>window.MANTA_I18N = { zh: {
+    "nav.home": "首页",
+    "nav.docs": "文档",
+    "nav.changelog": "更新日志",
+    "nav.github": "GitHub",
+    "hero.title": "让 AI agent，<br /><span class=\"accent\">安全调用</span>你已登录的 API。",
+    "hero.tagline": "给 AI agent 安全访问你真实、已登录 API 的能力——无需交出任何凭证。Cookie 锁在你的浏览器里，agent 一个凭证都看不到。",
+    "hero.badgeLocal": "数据全部本地",
+    "hero.badgeMit": "MIT 开源协议",
+    "hero.install": "安装 Chrome 扩展",
+    "hero.docs": "阅读文档",
+    "hero.note": "支持 Claude Code · Codex · Cursor · 任意 MCP 客户端——桥接 100% 运行在 127.0.0.1",
+    "how.title": "工作原理",
+    "how.sub": "在浏览器里录制一次真实 API 流程，然后让 agent 自由重放或调用这些接口——凭证永不离开浏览器。",
+    "how.step1Label": "第 1 步 · 录制",
+    "how.step1Title": "捕获调用链",
+    "how.step1Body": "在弹窗点「开始」，正常操作网站，点「结束」。扩展捕获每一条 fetch/XHR——含请求与响应、包括 SSE 流——形成可本地查看的调用链。",
+    "how.step2Label": "第 2 步 · 蒸馏",
+    "how.step2Title": "变成可复用的 Action",
+    "how.step2Body": "你的 agent 通过 MCP 读取录制，将其蒸馏为可参数化、可复用的 Action——{{param}} 模板 + 步骤间 outputs 传递。",
+    "how.step3Label": "第 3 步 · 回放",
+    "how.step3Title": "按需执行",
+    "how.step3Body": "execute_action 或 proxy_fetch 经沙箱网关按序重放。扩展在转发时注入你的会话 Cookie；AI 只发送过 method/url/headers/body。",
+    "safe.title": "为什么安全",
+    "safe.sub": "凭证只存在于你的浏览器、永不流向 AI——这是由多层机制强制保证的，不是口头承诺。",
+    "safe.cookieTitle": "🔒 Cookie 不出浏览器",
+    "safe.cookieBody": "Cookie 经 chrome.cookies 读取、在网络层注入请求头。值不会出现在任何工具结果、对话记录或日志里。",
+    "safe.hitlTitle": "✋ 人在环确认闸门",
+    "safe.hitlBody": "每个新目标域名都会弹出确认窗口，展示 method/URL/body。每次运行每域名确认一次；拒绝或不理会，请求就不会发出。",
+    "safe.ssrfTitle": "🛡 SSRF 防护",
+    "safe.ssrfBody": "环回、私网、链路本地及云元数据地址（含 169.254.169.254）在任何域名策略之前被拒，对所有路径生效。",
+    "safe.domainTitle": "🌐 域名策略由你掌控",
+    "safe.domainBody": "拒绝名单直接拦截，允许名单静默放行。agent 没有任何工具能读取或修改这两张名单。",
+    "safe.killTitle": "🔌 按工具一键关闭",
+    "safe.killBody": "随时可在扩展设置里关闭任意 MCP 工具。",
+    "safe.auditTitle": "📜 本地审计日志",
+    "safe.auditBody": "每条转发调用都记录在本地。只记 Cookie 名，永不记值。",
+    "safe.bridgeTitle": "🤝 双向认证本地桥接",
+    "safe.bridgeBody": "环回 WebSocket 做双向 challenge-response——token 本身从不上线。未认证的对端直接断开。",
+    "safe.localTitle": "💾 数据全部本地",
+    "safe.localBody": "IndexedDB + chrome.storage。无埋点、无外部服务器、无远程代码。",
+    "tools.title": "Agent 能拿到什么",
+    "tools.sub": "录制是素材，Action 是产物。agent 像使用普通工具一样列出并执行它们。",
+    "tools.thArea": "领域",
+    "tools.thTools": "工具",
+    "tools.thDesc": "用途",
+    "tools.row1Area": "读取录制",
+    "tools.row1Desc": "查看录制的调用链与脱敏后的接口契约",
+    "tools.row2Area": "Action",
+    "tools.row2Desc": "把录制蒸馏为可参数化、可重放的流程并执行",
+    "tools.row3Area": "沙箱代理",
+    "tools.row3Desc": "用你的登录态调用任意已允许的 API——凭证由扩展注入",
+    "tools.row4Area": "运维",
+    "tools.row4Desc": "检查桥接连通性、管理沙箱代理",
+    "qs.title": "快速开始",
+    "qs.s1Title": "安装扩展",
+    "qs.s1Body": "从 <a href=\"https://chromewebstore.google.com/detail/manta-action-kit/pghddhbhbnlcehlmgnnalgaephllkeel\">Chrome Web Store</a> 安装。",
+    "qs.s2Title": "复制安装提示词",
+    "qs.s2Body": "打开扩展侧边栏 → Action 标签页 → 复制安装提示词。其中已内嵌你的个人桥接 token（MANTA_TOKEN）。",
+    "qs.s3Title": "把 MCP 服务加进你的 agent",
+    "qs.s3Body": "把提示词粘贴进 Claude Code / Codex / 任意 MCP 客户端——或把下面配置加进 MCP 配置：",
+    "qs.s4Title": "开始使用",
+    "qs.s4Body": "在你的网站上录一个流程，然后对 agent 说：“我刚录了查订单的流程，把它变成 action，然后告诉我订单 A1002 到哪了。”",
+    "footer.docs": "文档",
+    "footer.changelog": "更新日志",
+    "footer.privacy": "隐私政策",
+    "footer.github": "GitHub",
+    "footer.note": "Manta Action Kit——把浏览器会话安全地桥接给你的 AI agent。"
+  } };</script>
+  <script src="assets/site.js"></script>
+</body>
+</html>
