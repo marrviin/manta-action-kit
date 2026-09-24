@@ -32,6 +32,35 @@ const MOSAIC_CELL = 192;
 const MOSAIC_SAMPLE_STRIDE_S = 0.5;
 /** Palette grid from prequantize — Bayer amplitude is matched to it. */
 const PALETTE_ROUND_RGB = 8;
+/** Bounded wait for a seek: a damaged or revoked source blob can leave
+ * `seeked` never firing, which would hang the transcode silently (GIF button
+ * spins forever with no error). 10s is generous — normal seeks are <300ms. */
+const SEEK_TIMEOUT_MS = 10_000;
+
+/**
+ * Seek and wait for the frame to settle. Rejects on video decode errors and
+ * when the seek never completes within SEEK_TIMEOUT_MS — callers surface the
+ * error instead of hanging.
+ */
+function seekOnce(video: HTMLVideoElement, time: number): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const fail = (what: string) => {
+      clearTimeout(timer);
+      video.onseeked = null;
+      video.onerror = null;
+      reject(new Error(`gif:encode-failed (${what})`));
+    };
+    const timer = setTimeout(() => fail('seek timed out'), SEEK_TIMEOUT_MS);
+    video.onseeked = () => {
+      clearTimeout(timer);
+      video.onseeked = null;
+      video.onerror = null;
+      resolve();
+    };
+    video.onerror = () => fail('video decode error');
+    video.currentTime = time;
+  });
+}
 
 /** 8×8 Bayer threshold matrix (0–63). */
 const BAYER_8 = [
@@ -82,14 +111,7 @@ export async function encodeGif(
     // MediaRecorder blobs report duration: Infinity — force Chrome to resolve
     // the real duration by seeking far past the end, then rewind to 0.
     if (!Number.isFinite(video.duration) || video.duration <= 0) {
-      await new Promise<void>((resolve) => {
-        const onSeeked = () => {
-          video.removeEventListener('seeked', onSeeked);
-          resolve();
-        };
-        video.addEventListener('seeked', onSeeked);
-        video.currentTime = 1e101;
-      });
+      await seekOnce(video, 1e101);
       video.currentTime = 0;
     }
     const total = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : 0;
@@ -116,14 +138,7 @@ export async function encodeGif(
      * thread); seek-based sampling is deterministic — slower than realtime,
      * but every frame is exact.
      */
-    const seekTo = (time: number) =>
-      new Promise<void>((resolve) => {
-        video.onseeked = () => {
-          video.onseeked = null;
-          resolve();
-        };
-        video.currentTime = time;
-      });
+    const seekTo = (time: number) => seekOnce(video, time);
 
     // Pass 1 — global palette: mosaic of frames sampled densely across the
     // whole clip (~1 per 0.5s, capped by the 8×8 canvas), quantized once.

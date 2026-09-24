@@ -10,10 +10,11 @@ import {
 } from '@/lib/db';
 import { addProxyRule, updateProxyRuleContent } from '@/lib/gateway/manage-rules';
 import { captureScreenshot } from '@/lib/screenshot/capture';
-import { ScreenshotError } from '@/lib/screenshot/types';
+import { ScreenshotError, SCREENSHOT_PREVIEW_MAX_BYTES } from '@/lib/screenshot/types';
 import { screenshotPreview } from '@/lib/storage';
 import {
   handleGifOffscreenDone,
+  initGifStateWatch,
   pauseGifRecording,
   resumeGifRecording,
   startGifRecording,
@@ -50,6 +51,10 @@ export default defineBackground(() => {
 
   // Sandbox confirmation popup: register the window-closed → deny listener.
   initGatewayConfirm();
+
+  // GIF orphan-state watch: drops a stuck "recording" state if Chrome kills
+  // the offscreen document mid-recording (see lib/gif-recording/session.ts).
+  initGifStateWatch();
 
   browser.runtime.onMessage.addListener((raw, sender, sendResponse) => {
     const msg = raw as Message;
@@ -114,7 +119,19 @@ export default defineBackground(() => {
             // Hand the capture to the preview tab via session storage (a
             // full-page data URL is far too large for a query param), then
             // open it. Copy/download happen there — nothing is saved yet.
-            await screenshotPreview.setValue(shot);
+            // Reject oversized payloads with a dedicated code instead of
+            // letting the quota error surface as a generic capture failure.
+            if (shot.dataUrl.length > SCREENSHOT_PREVIEW_MAX_BYTES) {
+              throw new ScreenshotError(
+                'preview-too-large',
+                `${shot.dataUrl.length} bytes`,
+              );
+            }
+            try {
+              await screenshotPreview.setValue(shot);
+            } catch (err) {
+              throw new ScreenshotError('preview-too-large', String(err));
+            }
             await chrome.tabs.create({
               url: browser.runtime.getURL('/preview.html'),
             });
@@ -139,13 +156,15 @@ export default defineBackground(() => {
             break;
 
           case 'GIF_OFFSCREEN_DONE':
-            // Completion report from the offscreen recorder. Cleanup must run
-            // even if the notification path misbehaves — catch here, and the
-            // reply is just an ack.
+            // Completion report from the offscreen recorder. Ack FIRST, then
+            // clean up: the offscreen sender's sendMessage() promise resolves
+            // only when this reply arrives, and the cleanup below destroys the
+            // document — replying afterwards would make that promise reject
+            // ("message port closed") and re-report a (false) failure.
+            sendResponse({ ok: true });
             await handleGifOffscreenDone(msg.data).catch((err) =>
               console.error('[background] gif cleanup failed', err),
             );
-            sendResponse({ ok: true });
             break;
 
           case 'PING':

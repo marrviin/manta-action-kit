@@ -43,6 +43,10 @@ function ScreenshotPreviewView() {
     screenshotPreview.getValue().then(async (v) => {
       if (!v) return;
       setShot(v);
+      // The state above now owns the data — drop the session-storage copy
+      // (a full-page capture can be tens of MB of base64) so it doesn't sit
+      // in session storage for the rest of the browser session.
+      screenshotPreview.removeValue().catch(() => {});
       // The tab title mirrors the future file name.
       document.title = v.filename;
       try {

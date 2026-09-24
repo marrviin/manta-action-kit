@@ -199,9 +199,11 @@ export interface ProtocolMap {
    * is saved for the preview tab (`ok:true`), or the pipeline failed
    * (`ok:false`). Background cleans up: opens the preview tab (success), fires
    * the failure notification (error), closes the offscreen document.
+   * `hitTimeLimit` marks an auto-stop at the max recording duration so the
+   * background can tell the user why the recording ended on its own.
    */
   GIF_OFFSCREEN_DONE: {
-    request: { ok: boolean; savedForPreview?: boolean };
+    request: { ok: boolean; savedForPreview?: boolean; hitTimeLimit?: boolean };
     response: { ok: boolean };
   };
 }

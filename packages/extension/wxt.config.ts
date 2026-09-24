@@ -46,6 +46,10 @@ export default defineConfig({
     // the active tab's URL, covered by the <all_urls> host permission — so no
     // separate `tabs` permission is required).
     host_permissions: ["<all_urls>"],
+    // GIF recording uses chrome.runtime.getContexts and
+    // chrome.tabCapture.getMediaStreamId — both Chrome 116+. Without this the
+    // Store won't filter older browsers and those calls fail at runtime.
+    minimum_chrome_version: "116",
     // MAIN-world scripts injected via injectScript() must be web accessible.
     web_accessible_resources: [
       {

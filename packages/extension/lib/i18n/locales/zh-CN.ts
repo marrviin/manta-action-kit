@@ -35,6 +35,7 @@ export const zhCN: Messages = {
     screenshotFullPage: "整页",
     screenshotUnsupportedPage: "当前页面不支持截图，请在普通网页中使用",
     screenshotDebuggerConflict: "截图失败：请先关闭该标签页的 DevTools 再重试",
+    screenshotTooLarge: "页面过长，整页截图超出预览上限——请改用「窗口」模式或缩短页面后重试",
     screenshotFailed: "截图失败",
     fileAccessHint:
       "本地文件需先在 chrome://extensions 中为本扩展开启「允许访问文件网址」",
@@ -323,6 +324,8 @@ export const zhCN: Messages = {
     connectorDesc: "与本地 MCP 服务的连接状态和工具开关",
     mcpPackageDesc:
       "配合本扩展使用的本地 MCP 服务：以 stdio 协议对接 AI Agent，经本地 WebSocket 桥接读取接口录制、回放动作并经沙箱代理转发请求",
+    docsTitle: "使用文档",
+    docsDesc: "官方使用指南与 MCP 工具参考，涵盖接口录制、Action 与沙箱网关",
     confirmTestTitle: "调用确认测试",
     confirmTestDesc: "以模拟请求唤起沙箱确认窗口，验证确认界面；不发起真实转发",
     confirmTestButton: "测试",

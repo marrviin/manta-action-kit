@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-24
+
+### Added
+
+#### Screenshots (visible area / full page)
+
+- Capture from the popup: visible viewport via `captureVisibleTab`, or the full
+  scrollable page via a one-shot `chrome.debugger` attach + CDP
+  `Page.captureScreenshot` (`captureBeyondViewport`) — single render, no
+  scrolling, no DOM changes, matching DevTools' "Capture full size screenshot".
+  Oversized pages (content × DPR beyond Chromium's 16384px surface cap) fall
+  back to `clip + scale: 1` instead of failing.
+- Captures are handed to a preview tab (`preview.html`) for copy / download —
+  nothing is saved automatically; the payload travels over `chrome.storage.session`
+  (size-guarded, released as soon as the preview reads it).
+- Errors surface as stable machine codes mapped to localized copy:
+  unsupported page, DevTools debugger conflict, preview-too-large, capture failed.
+
+#### GIF recording
+
+- Record the active tab as an animated preview from the popup (start / pause /
+  stop): the streamId is minted inside the popup's user gesture, the recorder
+  (MediaRecorder, VP8 software-encode preferred to dodge the hardware-encoder
+  corruption crbug) lives in an **offscreen document** so recordings survive
+  MV3 service-worker sleep — no keepalive pings.
+- The WebM draft is persisted to IndexedDB; the visible preview tab transcodes
+  it to GIF on demand (gifenc: seek-based frame sampling, one global palette
+  from a mosaic pass, 8×8 Bayer dithering) and offers MP4 download via mediabunny.
+- Robustness: 5-minute recording cap (auto-save + system notification),
+  bounded seeks (no infinite spinner on a damaged draft), race-free start/stop
+  (double-click safe; track-ended vs. manual stop can't double-report), and a
+  reconcile alarm that clears a stuck "recording" state if Chrome reclaims the
+  offscreen document.
+
+### Changed
+
+- `minimum_chrome_version` is now **116** (required by
+  `runtime.getContexts` / `tabCapture.getMediaStreamId`).
+- Screenshot mode selection persists across sessions.
+
+### Permissions
+
+- New: `debugger` (full-page screenshot only, one-shot attach + single CDP
+  screenshot call, immediate detach), `tabCapture` (one tab's video, user-click
+  initiated, no audio), `offscreen` (hosts the invisible GIF recorder document,
+  exists only while a recording is active). Justifications are documented in
+  `packages/extension/store-listing.md`.
+
 ## [0.2.0] - 2026-09-19
 
 > ⚠️ **Protocol change — the extension and the MCP server must be updated together.**

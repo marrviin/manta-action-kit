@@ -229,7 +229,8 @@ export const screenshotMode = storage.defineItem<ScreenshotMode>(
  * for the preview tab to read on mount. Session area: the data URL of a
  * full-page capture can be several MB — too large for a URL query param, and
  * there is no reason to persist it across browser restarts. Overwritten on
- * every capture; the preview page reads it once into state, so a newer capture
+ * every capture; the preview page reads it once into state (then removes the
+ * item — no tens-of-MB base64 lingering in session storage), so a newer capture
  * doesn't disturb an already-open preview.
  */
 export const screenshotPreview = storage.defineItem<ScreenshotPreview | null>(

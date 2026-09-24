@@ -10,7 +10,16 @@ export type ScreenshotMode = 'visible' | 'fullPage';
 export type ScreenshotErrorCode =
   | 'unsupported-page' // chrome://, Web Store, or a non-http(s) target
   | 'debugger-conflict' // DevTools (or another client) is already attached
+  | 'preview-too-large' // capture OK, but too big for the session-storage handoff
   | 'capture-failed'; // captureVisibleTab / CDP capture failed
+
+/**
+ * Safety cap for the `screenshotPreview` session-storage payload.
+ * chrome.storage.session has a ~10 MB default quota (Chrome 112+); a full-page
+ * PNG data URL (base64 inflates ~1.37×) on a very long page can exceed it, so
+ * the background rejects anything over this margin up front.
+ */
+export const SCREENSHOT_PREVIEW_MAX_BYTES = 8 * 1024 * 1024;
 
 /** Error whose message is a stable machine-readable code for the popup. */
 export class ScreenshotError extends Error {

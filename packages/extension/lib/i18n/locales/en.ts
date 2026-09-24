@@ -41,6 +41,8 @@ export const en = {
       "This page cannot be captured; use a regular web page",
     screenshotDebuggerConflict:
       "Capture failed: close DevTools for this tab and retry",
+    screenshotTooLarge:
+      "This page is too large to capture in full — try “Window” mode or a shorter page",
     screenshotFailed: "Screenshot failed",
     fileAccessHint:
       "For local files, enable “Allow access to file URLs” for this extension in chrome://extensions",
@@ -351,6 +353,9 @@ export const en = {
       "Connection status of the local MCP service and tool switches",
     mcpPackageDesc:
       "Local MCP service paired with this extension: speaks stdio to AI agents and bridges over a local WebSocket to read recordings, run actions, and forward requests through the sandbox proxy",
+    docsTitle: "Documentation",
+    docsDesc:
+      "Official usage guide and MCP tool reference — covering recording, actions, and the sandbox gateway",
     confirmTestTitle: "Confirmation test",
     confirmTestDesc:
       "Trigger the sandbox confirm dialog with a mock request to verify its UI; nothing is forwarded",

@@ -5,10 +5,11 @@
     <title>Manta Action Kit · GIF Recorder</title>
   </head>
   <body>
-    <!-- Offscreen document hosting the GIF recording pipeline (no visible UI):
-         tabCapture stream -> MediaRecorder (WebM) -> canvas frame sampling ->
-         gifenc -> chrome.downloads. Opened/closed by the background; see
-         lib/gif-recording/session.ts. -->
+    <!-- Offscreen document hosting the GIF capture side (no visible UI):
+         tabCapture stream -> MediaRecorder (WebM) -> IndexedDB draft. Opened/
+         closed by the background; see lib/gif-recording/session.ts. The
+         WebM->GIF transcode runs in the visible preview tab (gif-view.tsx) —
+         hidden documents never composite video frames. -->
     <script type="module" src="./main.ts"></script>
   </body>
 </html>

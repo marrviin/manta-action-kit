@@ -40,12 +40,14 @@ import { cn, isCapturableUrl } from "@/lib/utils";
 type ScreenshotErrorKey =
   | "popup.screenshotUnsupportedPage"
   | "popup.screenshotDebuggerConflict"
+  | "popup.screenshotTooLarge"
   | "popup.screenshotFailed";
 const screenshotErrorKey = (message: string): ScreenshotErrorKey => {
   if (!message.startsWith("screenshot:")) return "popup.screenshotFailed";
   const code = message.slice(11).split(" ")[0] as ScreenshotErrorCode;
   if (code === "unsupported-page") return "popup.screenshotUnsupportedPage";
   if (code === "debugger-conflict") return "popup.screenshotDebuggerConflict";
+  if (code === "preview-too-large") return "popup.screenshotTooLarge";
   return "popup.screenshotFailed";
 };
 

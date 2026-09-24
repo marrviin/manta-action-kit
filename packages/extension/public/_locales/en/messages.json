@@ -45,5 +45,13 @@
   "notifyGifFailedMessage": {
     "message": "The recording could not be encoded as a GIF",
     "description": "System notification body for a failed GIF recording."
+  },
+  "notifyGifTimeLimitTitle": {
+    "message": "GIF recording reached the time limit",
+    "description": "System notification title when a GIF recording auto-stopped at the maximum duration."
+  },
+  "notifyGifTimeLimitMessage": {
+    "message": "The recording was saved automatically and is ready in the preview tab",
+    "description": "System notification body when a GIF recording auto-stops at the maximum duration."
   }
 }

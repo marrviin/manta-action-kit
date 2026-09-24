@@ -45,5 +45,13 @@
   "notifyGifFailedMessage": {
     "message": "录制内容无法生成为 GIF",
     "description": "System notification body for a failed GIF recording."
+  },
+  "notifyGifTimeLimitTitle": {
+    "message": "GIF 录制已达时长上限",
+    "description": "System notification title when a GIF recording auto-stopped at the maximum duration."
+  },
+  "notifyGifTimeLimitMessage": {
+    "message": "录制已自动保存，请在预览标签页中查看",
+    "description": "System notification body when a GIF recording auto-stops at the maximum duration."
   }
 }
