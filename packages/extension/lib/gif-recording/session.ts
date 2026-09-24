@@ -160,15 +160,22 @@ export const resumeGifRecording = () => setGifPaused(false);
 export async function handleGifOffscreenDone(result: {
   ok: boolean;
   savedForPreview?: boolean;
+  /** Id of the persisted history record, so the preview tab addresses it. */
+  draftId?: string;
   hitTimeLimit?: boolean;
 }): Promise<void> {
   await gifRecordingState.setValue(null);
   void chrome.alarms.clear(STATE_WATCH_ALARM); // recording over either way
   if (result.ok && result.savedForPreview) {
     // Same handoff pattern as screenshots: open the preview tab, THEN tear the
-    // offscreen document down (the draft already sits in IndexedDB).
+    // offscreen document down (the draft already sits in IndexedDB, addressed
+    // by id so any history record can be re-opened later).
     await chrome.tabs.create({
-      url: browser.runtime.getURL('/preview.html?mode=gif'),
+      url: browser.runtime.getURL(
+        result.draftId
+          ? `/preview.html?mode=gif&id=${encodeURIComponent(result.draftId)}`
+          : '/preview.html?mode=gif',
+      ),
     });
     // The recording ended on its own (max duration) — tell the user why;
     // purely informational, the preview tab is already up.

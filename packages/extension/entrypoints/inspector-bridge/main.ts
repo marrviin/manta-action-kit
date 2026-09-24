@@ -12,7 +12,7 @@
  * The parent is the ONLY party we accept messages from (`e.source` check);
  * anything else (other frames, the page itself) is ignored.
  */
-import { saveInspectorCapture } from "@/lib/db";
+import { saveInspectorHistoryCapture } from "@/lib/db";
 import { sendMessage } from "@/lib/messaging";
 import type { InspectorCapturePayload } from "@/lib/inspector/types";
 
@@ -46,13 +46,15 @@ window.addEventListener("message", async (e: MessageEvent) => {
       reply(false, "bridge token rejected");
       return;
     }
-    // 1. Stash the full snapshot in the extension's own IndexedDB — this is
-    //    the hop that used to blow past the ~64MB runtime.sendMessage limit.
-    await saveInspectorCapture("preview", payload);
-    // 2. Tell the background the data is on disk; it pairs an existing
-    //    baseline into a diff (or not) and opens the preview tab. Its `ok`
-    //    covers the whole chain, so the content script toasts once on it.
-    await sendMessage("INSPECTOR_CAPTURE_PREVIEW_READY", undefined);
+    // 1. Stash the full snapshot in the extension's own IndexedDB as its own
+    //    history record — this is the hop that used to blow past the ~64MB
+    //    runtime.sendMessage limit. The generated id comes back so the
+    //    preview/diff tabs can address the record via URL params.
+    const captureId = await saveInspectorHistoryCapture(payload);
+    // 2. Tell the background the data is on disk (with its id); it opens the
+    //    element preview at it. Its `ok` covers the whole chain, so the
+    //    content script toasts once on it.
+    await sendMessage("INSPECTOR_CAPTURE_PREVIEW_READY", { captureId });
     reply(true);
   } catch (err) {
     console.error("[inspector-bridge] handoff failed", err);

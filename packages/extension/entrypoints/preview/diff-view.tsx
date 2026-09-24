@@ -1,22 +1,20 @@
-import { App, Button, Spin, Tag, Tooltip } from "antd";
+import { App, Button, Dropdown, Spin, Tag, Tooltip } from "antd";
 import {
   CheckCircleOutlined,
   CopyOutlined,
   DownOutlined,
   FileTextOutlined,
+  RollbackOutlined,
 } from "@ant-design/icons";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type {
-  InspectorCapturePayload,
-  InspectorDiffPair,
-} from "@/lib/inspector/types";
+import type { InspectorCapturePayload } from "@/lib/inspector/types";
 import {
   diffPayloads,
   formatDiffReport,
   type NodeDiff,
 } from "@/lib/inspector/diff";
-import { getInspectorDiffPair } from "@/lib/db";
+import { getInspectorCapture } from "@/lib/db";
 import { buildDom, createResetStyle, rootWidth } from "./element-build";
 
 /**
@@ -28,12 +26,11 @@ const HOVER_CSS =
   ".diff-hover{outline:2px solid #1677ff!important;outline-offset:2px!important;}";
 
 /**
- * Element-capture comparison view (?mode=diff). Snapshot A is the capture the
- * user pinned from the element preview toolbar; snapshot B is the next
- * capture taken afterwards. The background writes the pair as one IndexedDB
- * record (`inspectorCaptures`, id "diffPair") and opens this tab. The pair
- * is intentionally NOT removed after reading, so refreshing the tab
- * restores the same comparison; the next comparison simply overwrites it.
+ * Element-capture comparison view (?mode=diff&a=<id>&b=<id>). Both snapshots
+ * are history records in IndexedDB addressed by their uuid ids — any two
+ * captures can be compared, and refreshing the tab restores the same
+ * comparison because the ids live in the URL. The diff itself is recomputed
+ * on load (pure function, cheap), so no pair record is ever stored.
  *
  * Layout: A and B are rebuilt side by side in separate Shadow DOMs (same
  * rules as the element preview, so both panes render with full fidelity),
@@ -45,21 +42,36 @@ const HOVER_CSS =
 export default function ElementDiffView() {
   const { t } = useTranslation();
   const { message } = App.useApp();
-  const [pair, setPair] = useState<InspectorDiffPair | null>(null);
+  const [pair, setPair] = useState<{
+    aId: string;
+    bId: string;
+    a: InspectorCapturePayload;
+    b: InspectorCapturePayload;
+  } | null>(null);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    getInspectorDiffPair()
-      .then((v) => {
-        if (v) {
-          setPair(v);
+    const params = new URLSearchParams(window.location.search);
+    const aId = params.get("a");
+    const bId = params.get("b");
+    (async () => {
+      try {
+        if (!aId || !bId) return;
+        const [a, b] = await Promise.all([
+          getInspectorCapture(aId),
+          getInspectorCapture(bId),
+        ]);
+        // A missing side (evicted from history) lands on the not-found view.
+        if (a && b) {
+          setPair({ aId, bId, a, b });
           document.title = "Element diff";
         }
-      })
-      .catch((err) =>
-        console.error("[preview] failed to load element diff", err),
-      )
-      .finally(() => setLoaded(true));
+      } catch (err) {
+        console.error("[preview] failed to load element diff", err);
+      } finally {
+        setLoaded(true);
+      }
+    })();
   }, []);
 
   // Both shadow DOMs mount in one effect — A and B arrive together. A small
@@ -89,6 +101,21 @@ export default function ElementDiffView() {
     () => (pair ? diffPayloads(pair.a, pair.b) : null),
     [pair],
   );
+
+  // Git-style delta counts: + = nodes new in B, − = nodes gone from A,
+  // ~ = nodes present in both but modified. Surfaced on both pane title bars.
+  const delta = useMemo(() => {
+    if (!diff) return { added: 0, changed: 0, removed: 0 };
+    let added = 0;
+    let changed = 0;
+    let removed = 0;
+    for (const node of diff.nodes) {
+      if (node.kind === "only-b") added++;
+      else if (node.kind === "only-a") removed++;
+      else changed++;
+    }
+    return { added, changed, removed };
+  }, [diff]);
 
   // The diff list below is rendered twice (once per side) so each column
   // lines up under its preview pane; cards in the two columns must fold in
@@ -125,6 +152,20 @@ export default function ElementDiffView() {
 
   const copyJson = () => diff && clipboard(JSON.stringify(diff.nodes, null, 2));
 
+  /**
+   * Leave the comparison: back to the element preview the diff was opened
+   * from (the "Compare" dropdown navigates the same tab, so history applies);
+   * a tab opened straight by the background has no in-tab history — fall back
+   * to snapshot A's preview.
+   */
+  const goBack = () => {
+    if (window.history.length > 1) {
+      window.history.back();
+    } else if (pair) {
+      window.location.assign(`/preview.html?mode=element&id=${pair.aId}`);
+    }
+  };
+
   if (!loaded) {
     return (
       <div className="h-screen bg-black flex items-center justify-center">
@@ -144,10 +185,21 @@ export default function ElementDiffView() {
   return (
     <div className="h-screen flex flex-col p-6 gap-3 bg-[#f5f5f5]">
       {/* Side-by-side panes: A left, B right; each pane scrolls on its own
-          and keeps the capture-time width of its root element. */}
+          and keeps the capture-time width of its root element. The git-style
+          delta rides on the right end of each pane's title bar. */}
       <div className="flex-1 min-h-0 flex gap-4">
-        <DiffPane side="a" payload={pair.a} />
-        <DiffPane side="b" payload={pair.b} />
+        <DiffPane
+          side="a"
+          payload={pair.a}
+          delta={delta}
+          identical={diff.identical}
+        />
+        <DiffPane
+          side="b"
+          payload={pair.b}
+          delta={delta}
+          identical={diff.identical}
+        />
       </div>
 
       {/* Property-level differences as two scroll-synced columns, each
@@ -184,28 +236,40 @@ export default function ElementDiffView() {
         ))}
       </div>
 
-      {/* Capsule toolbar, same grammar as the other preview views. */}
+      {/* Capsule toolbar: copy actions on the left (dropdown), back on the
+          right — the diff count lives in the pane title bars above. */}
       <div className="flex justify-center">
         <div className="flex items-center gap-1 rounded-full bg-(--ant-color-bg-elevated) shadow-xl border border-(--ant-color-border) px-3 py-1.5">
+          <Dropdown
+            menu={{
+              items: [
+                {
+                  key: "report",
+                  icon: <FileTextOutlined />,
+                  label: t("preview.copyDiff"),
+                },
+                {
+                  key: "json",
+                  icon: <CopyOutlined />,
+                  label: t("preview.copyDiffJson"),
+                },
+              ],
+              onClick: ({ key }) => void (key === "report" ? copyReport() : copyJson()),
+            }}
+            trigger={["click"]}
+          >
+            <Button shape="round" type="text" icon={<CopyOutlined />}>
+              {t("preview.copy")}
+            </Button>
+          </Dropdown>
           <Button
             shape="round"
-            type="text"
-            icon={<FileTextOutlined />}
-            onClick={copyReport}
+            type="primary"
+            icon={<RollbackOutlined />}
+            onClick={goBack}
           >
-            {t("preview.copyDiff")}
+            {t("preview.back")}
           </Button>
-          <Button
-            shape="round"
-            type="text"
-            icon={<CopyOutlined />}
-            onClick={copyJson}
-          >
-            {t("preview.copyDiffJson")}
-          </Button>
-          <span className="text-xs text-(--ant-color-text-tertiary) px-2">
-            {t("preview.diffCount", { count: diff.nodes.length })}
-          </span>
         </div>
       </div>
     </div>
@@ -215,9 +279,14 @@ export default function ElementDiffView() {
 function DiffPane({
   side,
   payload,
+  delta,
+  identical,
 }: {
   side: "a" | "b";
   payload: InspectorCapturePayload;
+  /** Git-style +/~/− counts (same figures on both sides). */
+  delta: { added: number; changed: number; removed: number };
+  identical: boolean;
 }) {
   return (
     <div className="flex-1 min-w-0 flex flex-col gap-1.5">
@@ -229,6 +298,32 @@ function DiffPane({
         <Tooltip title={payload.page.url}>
           <span className="truncate opacity-60">{payload.page.url}</span>
         </Tooltip>
+        {/* Git-style delta on the right end of the title bar, split by side
+            like a diff: A (old) shows what it loses — red − for nodes only
+            in A; B (new) shows what it gains — green + for nodes only in B.
+            ~ modified (blue) is symmetric, shown on both. Green tick when
+            the two captures are identical. */}
+        {identical ? (
+          <CheckCircleOutlined className="shrink-0 ml-auto text-(--ant-color-success)" />
+        ) : (
+          <span className="shrink-0 ml-auto flex items-center gap-1.5 font-mono text-xs mr-1">
+            {side === "a" && delta.removed > 0 && (
+              <span className="text-(--ant-color-error)">
+                −{delta.removed}
+              </span>
+            )}
+            {side === "b" && delta.added > 0 && (
+              <span className="text-(--ant-color-success)">
+                +{delta.added}
+              </span>
+            )}
+            {delta.changed > 0 && (
+              <span className="text-(--ant-color-primary)">
+                ~{delta.changed}
+              </span>
+            )}
+          </span>
+        )}
       </div>
       <div className="no-scrollbar flex-1 min-h-0 overflow-auto rounded-lg bg-white border border-(--ant-color-border) flex p-4">
         <div

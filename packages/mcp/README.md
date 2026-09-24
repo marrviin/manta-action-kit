@@ -79,6 +79,14 @@ Every MCP process starts identically (via `npx`) and races for the WS bridge por
 | `get_call`                  | A single API call by id, with full request/response bodies & headers.                                                        |
 | `set_recording_description` | Write (overwrite) a recording's business-level, agent-authored flow summary (the only write path).                           |
 
+### Element captures (read-only UI snapshots)
+
+| Tool                     | Description                                                                                              |
+| ------------------------ | -------------------------------------------------------------------------------------------------------- |
+| `list_element_captures`  | Summaries of saved element-capture snapshots (id, url, title, capturedAt, elementCount).                 |
+| `get_element_capture`    | One capture's full element tree with computed styles — a faithful, LLM-ready description of the element. |
+| `diff_element_captures`  | Diff two captures: a text report of property-level changes per DOM path, plus an `identical` flag.       |
+
 ### Actions (replayable flows distilled from a recording)
 
 | Tool             | Description                                                                                    |
@@ -249,6 +257,14 @@ agent ──stdio (MCP)──▶ manta-action-kit-mcp ──WS 服务 ws://127.0
 | `get_endpoints`             | 按方法 + 归一化路径去重后的独立端点，请求/响应体推断为「脱敏 Schema」（含 `inputsFrom`）。 |
 | `get_call`                  | 按 id 获取单个 API 调用，包含完整的请求/响应体与请求头。                                   |
 | `set_recording_description` | 写入（覆盖）录制的业务级流程摘要（由 Agent 撰写），是唯一的写入路径。                      |
+
+### 元素捕获（只读 UI 快照）
+
+| 工具                     | 说明                                                                                       |
+| ------------------------ | ------------------------------------------------------------------------------------------ |
+| `list_element_captures`  | 已保存元素捕获快照的概要（id、url、标题、捕获时间、元素数）。                              |
+| `get_element_capture`    | 单个捕获的完整元素树与计算样式——对元素构建方式的忠实、可直接喂给 LLM 的描述。              |
+| `diff_element_captures`  | 对比两份捕获：按 DOM 路径列出逐属性变化的文本报告，另附 `identical` 标志。                 |
 
 ### 动作（从录制蒸馏出的可回放流程）
 

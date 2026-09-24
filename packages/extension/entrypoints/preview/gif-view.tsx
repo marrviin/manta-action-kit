@@ -12,7 +12,7 @@ import {
   Output,
   QUALITY_HIGH,
 } from "mediabunny";
-import { getGifDraft } from "@/lib/db";
+import { getGifDraft, listGifHistory } from "@/lib/db";
 import { encodeGif } from "@/lib/gif-recording/encode";
 import type { GifDraft } from "@/lib/gif-recording/types";
 
@@ -43,7 +43,10 @@ export default function GifPreviewView() {
 
   useEffect(() => {
     let objectUrl: string | null = null;
-    getGifDraft("latest")
+    // History record id from the URL (the normal handoff); no id (stale/legacy
+    // link) falls back to the newest record.
+    const urlId = new URLSearchParams(window.location.search).get("id");
+    (urlId ? getGifDraft(urlId) : listGifHistory().then(([m]) => m && getGifDraft(m.id)))
       .then(async (d) => {
         if (!d) return;
         setDraft(d);

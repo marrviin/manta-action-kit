@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Badge, Button, Tabs } from "antd";
 import {
   ApiOutlined,
+  CameraOutlined,
   CloudServerOutlined,
   SettingOutlined,
   ThunderboltOutlined,
@@ -11,6 +12,7 @@ import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { ApiRecordingFeature } from "@/components/recording/api-recording-feature";
 import { ActionFeature } from "@/components/action/action-feature";
+import { CaptureFeature } from "@/components/capture/capture-feature";
 import { GatewayFeature } from "@/components/gateway/gateway-feature";
 import { SettingsFeature } from "@/components/settings/settings-feature";
 import { useRecordingState } from "@/hooks/use-recording-state";
@@ -23,13 +25,17 @@ import { sidePanelTab, lastSidePanelTab } from "@/lib/storage";
  * full-screen and replace the whole view, so the bar only shows on home.
  */
 
-type FeatureKey = "api-recording" | "action" | "gateway";
+type FeatureKey = "api-recording" | "action" | "capture" | "gateway";
 /** The active home view: a feature tab, or the gear-opened settings view. */
 type ActiveView = FeatureKey | "settings";
 
 const FEATURES: {
   key: FeatureKey;
-  labelKey: "home.apiRecording" | "home.actions" | "home.gateway";
+  labelKey:
+    | "home.apiRecording"
+    | "home.actions"
+    | "home.capture"
+    | "home.gateway";
   icon: React.ReactNode;
 }[] = [
   { key: "action", labelKey: "home.actions", icon: <ThunderboltOutlined /> },
@@ -39,6 +45,7 @@ const FEATURES: {
     icon: <ApiOutlined />,
   },
   { key: "gateway", labelKey: "home.gateway", icon: <CloudServerOutlined /> },
+  { key: "capture", labelKey: "home.capture", icon: <CameraOutlined /> },
 ];
 
 export function HomePage() {
@@ -167,6 +174,8 @@ export function HomePage() {
           <ApiRecordingFeature onOpen={(id) => navigate(`/detail/${id}`)} />
         ) : active === "action" ? (
           <ActionFeature />
+        ) : active === "capture" ? (
+          <CaptureFeature />
         ) : active === "gateway" ? (
           <GatewayFeature />
         ) : (

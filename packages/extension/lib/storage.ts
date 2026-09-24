@@ -179,7 +179,11 @@ export const mcpConnStatus = storage.defineItem<McpConnStatus>(
  * then consumed and cleared by the home page on mount. `null` means "no request —
  * keep the default tab". Session-scoped so it survives SW sleep but not restart.
  */
-export type SidePanelTab = "api-recording" | "action" | "gateway";
+export type SidePanelTab =
+  | "api-recording"
+  | "action"
+  | "capture"
+  | "gateway";
 
 /**
  * One-shot open request for the side panel home view: a feature tab, or the

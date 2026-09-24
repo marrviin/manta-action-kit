@@ -16,11 +16,8 @@
  * a composited page — see lib/gif-recording/encode.ts).
  */
 import { sendMessage } from '@/lib/messaging';
-import { saveGifDraft } from '@/lib/db';
+import { saveGifHistory } from '@/lib/db';
 import { fileHost, timestamp } from '@/lib/screenshot/capture';
-
-/** Fixed id in the `gifDrafts` store — each recording replaces the last. */
-const GIF_DRAFT_ID = 'latest';
 
 /**
  * Hard cap on a single recording. The WebM→GIF transcode runs in the preview
@@ -64,16 +61,18 @@ browser.runtime.onMessage.addListener((raw: RuntimeMessage, _sender, sendRespons
             sendResponse({ ok: true });
             break;
           }
-          await persistDraft(webm);
+          const draftId = await persistDraft(webm);
           sendResponse({ ok: true });
           // Report done with a LOCAL catch: a failed ack (the background tears
           // this document down right after replying) must not fall into the
           // outer catch-all below, which would re-send {ok:false} and fire the
           // failure notification after a successful save. The draft is already
           // persisted here — nothing left to fail on this side.
-          await sendMessage('GIF_OFFSCREEN_DONE', { ok: true, savedForPreview: true }).catch(
-            () => {},
-          );
+          await sendMessage('GIF_OFFSCREEN_DONE', {
+            ok: true,
+            savedForPreview: true,
+            draftId,
+          }).catch(() => {});
           break;
         }
         case 'GIF_OFFSCREEN_PAUSE': {
@@ -165,10 +164,11 @@ function autoFinalize(hitTimeLimit: boolean): void {
   void (async () => {
     try {
       const webm = await stopRecording();
-      await persistDraft(webm);
+      const draftId = await persistDraft(webm);
       await sendMessage('GIF_OFFSCREEN_DONE', {
         ok: true,
         savedForPreview: true,
+        draftId,
         ...(hitTimeLimit ? { hitTimeLimit: true } : {}),
       }).catch(() => {});
     } catch (err) {
@@ -201,13 +201,12 @@ function stopRecording(): Promise<Blob | null> {
   });
 }
 
-/** Persist the recording for the preview tab. Throws when there's nothing to save. */
-async function persistDraft(webm: Blob | null): Promise<void> {
+/**
+ * Persist the recording as a new history entry and resolve with its id (the
+ * background forwards it so the preview tab addresses the right record).
+ * Throws when there's nothing to save.
+ */
+async function persistDraft(webm: Blob | null): Promise<string> {
   if (!webm || webm.size === 0) throw new Error('gif:encode-failed (empty recording)');
-  await saveGifDraft({
-    id: GIF_DRAFT_ID,
-    blob: webm,
-    filename: `gif-${fileHost(recordedUrl)}-${timestamp()}.gif`,
-    createdAt: Date.now(),
-  });
+  return saveGifHistory(webm, `gif-${fileHost(recordedUrl)}-${timestamp()}.gif`);
 }

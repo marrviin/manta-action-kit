@@ -9,12 +9,16 @@
  *  - `actions`: agent-authored replayable action sequences (v10, keyed by id,
  *     indexed by recordingId so deleting a recording cascades to its actions).
  *  - `gifDrafts`: recorded WebM blobs awaiting GIF conversion in the preview
- *     tab (v11, keyed by fixed id "latest" — each recording replaces the last).
- *  - `inspectorCaptures`: element-capture handoffs between the capture flow
- *    and the preview tabs (v12, fixed ids "preview" / "baseline" / "diffPair").
+ *     tab (v11, keyed by uuid id — v13 turned the single "latest" slot into a
+ *     capped history, oldest evicted beyond GIF_HISTORY_LIMIT).
+ *  - `inspectorCaptures`: element-capture history between the capture flow
+ *    and the preview tabs (v12, one uuid-id record per capture, capped).
  *    IndexedDB instead of session storage: full snapshots with per-node
  *    computed styles can blow past the ~10MB session quota; IDB has no such
  *    ceiling, so the payload never needs to be degraded to a lean form.
+ *  - `screenshotHistory`: persisted screenshot history (v13, one uuid-id
+ *    record per capture — dataUrl strings, capped). Captures were previously
+ *    session-only handoffs; the side-panel capture tab lists them.
  *
  * The `cookieRules` / `cachedCookies` stores (v2) were removed in v4; the
  * `gatewayDomains` store (v3) was removed in v7 when the domain-whitelist model
@@ -26,19 +30,25 @@
 import type { ApiCall, Recording } from "./recording/types";
 import type { GatewayLog, GatewayProxyRule } from "./gateway/types";
 import type { Action } from "./action/types";
-import type { GifDraft } from "./gif-recording/types";
+import type { GifDraft, GifDraftMeta } from "./gif-recording/types";
 import type {
-  InspectorCapturePayload,
-  InspectorDiffPair,
-} from "./inspector/types";
+  ScreenshotHistoryEntry,
+  ScreenshotHistoryMeta,
+} from "./screenshot/types";
+import type { InspectorCapturePayload } from "./inspector/types";
+import { uuid } from "./utils";
 
 const DB_NAME = "manta-action-kit";
 // v9: replay feature removed; drop the replayRuns store (added in v8).
 // v10: action feature; new `actions` store (agent-authored replayable sequences).
 // v11: GIF recording; new `gifDrafts` store (recorded WebM awaiting conversion).
-// v12: inspector capture; new `inspectorCaptures` store (preview/baseline/diffPair
-// handoffs — IndexedDB, not session storage, so large snapshots are never degraded).
-const DB_VERSION = 12;
+// v12: inspector capture; new `inspectorCaptures` store (element-capture
+// history — IndexedDB, not session storage, so large snapshots are never
+// degraded). Records are addressed by uuid id; the preview/diff tabs receive
+// ids via URL params, so any two records can be compared and re-opened.
+// v13: capture history tab; new `screenshotHistory` store, and `gifDrafts`
+// turned from a single "latest" slot into a capped uuid-id history.
+const DB_VERSION = 13;
 const STORE_RECORDINGS = "recordings";
 const STORE_CALLS = "calls";
 const STORE_COOKIE_RULES = "cookieRules";
@@ -51,8 +61,12 @@ const STORE_GATEWAY_PROXY_RULES = "gatewayProxyRules";
 const STORE_ACTIONS = "actions";
 // v11: recorded WebM blobs awaiting GIF conversion in the preview tab.
 const STORE_GIF_DRAFTS = "gifDrafts";
-// v12: inspector element-capture handoffs (fixed ids, latest-wins per id).
+// v12: inspector element-capture history (one uuid-id record per capture,
+// oldest evicted beyond INSPECTOR_HISTORY_LIMIT).
 const STORE_INSPECTOR_CAPTURES = "inspectorCaptures";
+// v13: persisted screenshot history (one uuid-id record per capture,
+// oldest evicted beyond SCREENSHOT_HISTORY_LIMIT).
+const STORE_SCREENSHOT_HISTORY = "screenshotHistory";
 // Retired in v9 (replay feature removed). Kept only to delete the store on upgrade.
 const STORE_REPLAY_RUNS = "replayRuns";
 
@@ -116,6 +130,10 @@ function openDb(): Promise<IDBDatabase> {
       // v12: inspector capture handoffs. New store starts empty; no data migration.
       if (!db.objectStoreNames.contains(STORE_INSPECTOR_CAPTURES)) {
         db.createObjectStore(STORE_INSPECTOR_CAPTURES, { keyPath: "id" });
+      }
+      // v13: screenshot history. New store starts empty; no data migration.
+      if (!db.objectStoreNames.contains(STORE_SCREENSHOT_HISTORY)) {
+        db.createObjectStore(STORE_SCREENSHOT_HISTORY, { keyPath: "id" });
       }
       // v4: cookie-cache feature removed. Drop its stores so any previously
       // cached cookie values (incl. HttpOnly) are erased from disk.
@@ -498,23 +516,79 @@ export async function deleteAction(id: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// GIF drafts — recorded WebM awaiting conversion in the preview tab (v11)
+// GIF drafts — recorded WebM awaiting conversion in the preview tab
+// (v11 store; v13 turned the single "latest" slot into a capped history)
 // ---------------------------------------------------------------------------
 
+/** History records kept; the oldest recording is evicted beyond this. */
+const GIF_HISTORY_LIMIT = 10;
+
 /**
- * Store a recorded WebM draft (overwrites the previous one — only the latest
- * recording is kept). Blobs are first-class IndexedDB values, so the WebM rides
+ * Store a recorded WebM draft as its own history record (uuid id) and return
+ * the generated id. Blobs are first-class IndexedDB values, so the WebM rides
  * across contexts (offscreen → preview tab) with zero copying and no size
  * ceiling beyond regular IDB quota.
+ *
+ * Keeps at most GIF_HISTORY_LIMIT records — the oldest are evicted in the
+ * same transaction (same cursor-eviction pattern as saveInspectorHistoryCapture).
  */
-export async function saveGifDraft(draft: GifDraft): Promise<void> {
+export async function saveGifHistory(
+  blob: Blob,
+  filename: string,
+): Promise<string> {
+  const id = uuid();
+  const draft: GifDraft = { id, blob, filename, createdAt: Date.now() };
   const db = await openDb();
   await new Promise<void>((resolve, reject) => {
     const t = tx(db, [STORE_GIF_DRAFTS], "readwrite");
     t.oncomplete = () => resolve();
     t.onerror = () => reject(t.error);
-    t.objectStore(STORE_GIF_DRAFTS).put(draft);
+    const store = t.objectStore(STORE_GIF_DRAFTS);
+    store.put(draft);
+    const evictable: { id: string; createdAt: number }[] = [];
+    const cursorReq = store.openCursor();
+    cursorReq.onsuccess = () => {
+      const cursor = cursorReq.result;
+      if (!cursor) {
+        // Cursor exhausted: evict oldest-first beyond the cap (this recording
+        // is the newest, so `LIMIT - 1` older ones may stay).
+        const overflow = Math.max(0, evictable.length - (GIF_HISTORY_LIMIT - 1));
+        evictable
+          .sort((a, b) => a.createdAt - b.createdAt)
+          .slice(0, overflow)
+          .forEach((r) => store.delete(r.id));
+        return;
+      }
+      if (cursor.key !== id) {
+        evictable.push({
+          id: cursor.key as string,
+          createdAt: (cursor.value as GifDraft)?.createdAt ?? 0,
+        });
+      }
+      cursor.continue();
+    };
   });
+  return id;
+}
+
+/** List the recording history, newest first — metadata only (no blobs). */
+export async function listGifHistory(): Promise<GifDraftMeta[]> {
+  const db = await openDb();
+  const meta: GifDraftMeta[] = [];
+  await new Promise<void>((resolve, reject) => {
+    const t = tx(db, [STORE_GIF_DRAFTS], "readonly");
+    t.oncomplete = () => resolve();
+    t.onerror = () => reject(t.error);
+    const cursorReq = t.objectStore(STORE_GIF_DRAFTS).openCursor();
+    cursorReq.onsuccess = () => {
+      const cursor = cursorReq.result;
+      if (!cursor) return;
+      const { id, filename, createdAt } = cursor.value as GifDraft;
+      meta.push({ id, filename, createdAt });
+      cursor.continue();
+    };
+  });
+  return meta.sort((a, b) => b.createdAt - a.createdAt);
 }
 
 /** Get a stored GIF draft by id. */
@@ -539,35 +613,81 @@ export async function deleteGifDraft(id: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// Inspector captures — element-capture handoffs (v12)
+// Inspector captures — element-capture history (v12 store, uuid ids)
 // ---------------------------------------------------------------------------
 
-/** Fixed ids in the `inspectorCaptures` store (latest-wins per id). */
-export type InspectorCaptureId = "preview" | "baseline" | "diffPair";
+/** Fixed ids from the retired slot model; deleted lazily on the next save. */
+const LEGACY_INSPECTOR_IDS = ["preview", "baseline", "diffPair"];
+
+/** History records kept; the oldest capture is evicted beyond this. */
+const INSPECTOR_HISTORY_LIMIT = 20;
+
+/** One element capture in history: its uuid id plus the full payload. */
+export interface InspectorHistoryEntry {
+  id: string;
+  payload: InspectorCapturePayload;
+}
 
 /**
- * Store an inspector element capture under a fixed id ("preview" = the latest
- * capture for the element preview tab, "baseline" = the pinned diff baseline).
- * Overwrites the previous value. Unlike the old session-storage handoff, IDB
- * has no ~10MB quota, so the FULL snapshot (with per-node computed styles)
- * always fits — no lean degradation, no silently missing preview.
+ * Store an inspector element capture as its OWN history record and return the
+ * generated id. The preview/diff tabs address captures by id via URL params,
+ * so any two records can be compared and re-opened later.
+ *
+ * Keeps at most INSPECTOR_HISTORY_LIMIT records: the oldest are evicted
+ * (this capture is the newest). Legacy fixed ids from the old slot model are
+ * dropped lazily here, same transaction.
  */
-export async function saveInspectorCapture(
-  id: Extract<InspectorCaptureId, "preview" | "baseline">,
+export async function saveInspectorHistoryCapture(
   payload: InspectorCapturePayload,
-): Promise<void> {
+): Promise<string> {
+  const id = uuid();
   const db = await openDb();
   await new Promise<void>((resolve, reject) => {
     const t = tx(db, [STORE_INSPECTOR_CAPTURES], "readwrite");
     t.oncomplete = () => resolve();
     t.onerror = () => reject(t.error);
-    t.objectStore(STORE_INSPECTOR_CAPTURES).put({ id, value: payload });
+    const store = t.objectStore(STORE_INSPECTOR_CAPTURES);
+    store.put({ id, value: payload });
+    // One pass over the store: drop legacy slot records, collect the rest.
+    // Eviction runs inside the cursor-completion callback so the deletes land
+    // in the SAME transaction (issued after `complete` they'd open a new one).
+    const evictable: { id: string; capturedAt: string }[] = [];
+    const cursorReq = store.openCursor();
+    cursorReq.onsuccess = () => {
+      const cursor = cursorReq.result;
+      if (!cursor) {
+        // Cursor exhausted: evict oldest-first beyond the cap (this capture
+        // is the newest, so `LIMIT - 1` older ones may stay).
+        const overflow = Math.max(
+          0,
+          evictable.length - (INSPECTOR_HISTORY_LIMIT - 1),
+        );
+        evictable
+          .sort((a, b) => a.capturedAt.localeCompare(b.capturedAt))
+          .slice(0, overflow)
+          .forEach((r) => store.delete(r.id));
+        return;
+      }
+      if (LEGACY_INSPECTOR_IDS.includes(cursor.key as string)) {
+        cursor.delete();
+      } else if (cursor.key !== id) {
+        const { value } = cursor.value as {
+          value: InspectorCapturePayload;
+        };
+        evictable.push({
+          id: cursor.key as string,
+          capturedAt: value?.capturedAt ?? "",
+        });
+      }
+      cursor.continue();
+    };
   });
+  return id;
 }
 
-/** Read back a capture stored by `saveInspectorCapture`. */
+/** Read back one capture by id (uuid from `saveInspectorHistoryCapture`). */
 export async function getInspectorCapture(
-  id: Extract<InspectorCaptureId, "preview" | "baseline">,
+  id: string,
 ): Promise<InspectorCapturePayload | undefined> {
   const db = await openDb();
   const rec = (await reqToPromise(
@@ -580,10 +700,8 @@ export async function getInspectorCapture(
   return rec?.value;
 }
 
-/** Drop a capture (e.g. the one-shot baseline after the background pairs it). */
-export async function deleteInspectorCapture(
-  id: InspectorCaptureId,
-): Promise<void> {
+/** Delete a capture history record (side-panel capture tab). */
+export async function deleteInspectorCapture(id: string): Promise<void> {
   const db = await openDb();
   await new Promise<void>((resolve, reject) => {
     const t = tx(db, [STORE_INSPECTOR_CAPTURES], "readwrite");
@@ -593,37 +711,129 @@ export async function deleteInspectorCapture(
   });
 }
 
-/**
- * Store a complete comparison (baseline A + fresh capture B) under the fixed
- * "diffPair" id. Kept after reading — refreshing the diff tab restores the
- * same comparison; the next comparison overwrites it.
- */
-export async function saveInspectorDiffPair(
-  pair: InspectorDiffPair,
-): Promise<void> {
-  const db = await openDb();
-  await new Promise<void>((resolve, reject) => {
-    const t = tx(db, [STORE_INSPECTOR_CAPTURES], "readwrite");
-    t.oncomplete = () => resolve();
-    t.onerror = () => reject(t.error);
-    t.objectStore(STORE_INSPECTOR_CAPTURES).put({
-      id: "diffPair",
-      value: pair,
-    });
-  });
-}
-
-/** Read back the diff pair stored by `saveInspectorDiffPair`. */
-export async function getInspectorDiffPair(): Promise<
-  InspectorDiffPair | undefined
+/** List the capture history, newest first (by the payload's capturedAt). */
+export async function listInspectorCaptures(): Promise<
+  InspectorHistoryEntry[]
 > {
   const db = await openDb();
-  const rec = (await reqToPromise(
+  const recs = (await reqToPromise(
     tx(db, [STORE_INSPECTOR_CAPTURES], "readonly")
       .objectStore(STORE_INSPECTOR_CAPTURES)
-      .get("diffPair") as IDBRequest<
-      { id: string; value: InspectorDiffPair } | undefined
+      .getAll() as IDBRequest<
+      { id: string; value: InspectorCapturePayload }[]
     >,
-  )) as { value: InspectorDiffPair } | undefined;
-  return rec?.value;
+  )) as { id: string; value: InspectorCapturePayload }[];
+  return recs
+    .map((r) => ({ id: r.id, payload: r.value }))
+    .sort((a, b) =>
+      (b.payload.capturedAt ?? "").localeCompare(a.payload.capturedAt ?? ""),
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Screenshot history — persisted captures for the side-panel tab (v13)
+// ---------------------------------------------------------------------------
+
+/** History records kept; the oldest screenshot is evicted beyond this. */
+const SCREENSHOT_HISTORY_LIMIT = 20;
+
+/**
+ * Store a captured screenshot as its own history record (uuid id) and return
+ * the generated id. The dataUrl string is stored as-is — the preview tab's
+ * `<img>` consumes it directly, and IDB stores a base64 string no worse than
+ * the equivalent Blob. Evicts oldest-first beyond SCREENSHOT_HISTORY_LIMIT
+ * (same cursor-eviction pattern as saveInspectorHistoryCapture).
+ */
+export async function saveScreenshotHistory(
+  dataUrl: string,
+  filename: string,
+): Promise<string> {
+  const id = uuid();
+  const entry: ScreenshotHistoryEntry = {
+    id,
+    dataUrl,
+    filename,
+    createdAt: Date.now(),
+  };
+  const db = await openDb();
+  await new Promise<void>((resolve, reject) => {
+    const t = tx(db, [STORE_SCREENSHOT_HISTORY], "readwrite");
+    t.oncomplete = () => resolve();
+    t.onerror = () => reject(t.error);
+    const store = t.objectStore(STORE_SCREENSHOT_HISTORY);
+    store.put(entry);
+    const evictable: { id: string; createdAt: number }[] = [];
+    const cursorReq = store.openCursor();
+    cursorReq.onsuccess = () => {
+      const cursor = cursorReq.result;
+      if (!cursor) {
+        // Cursor exhausted: evict oldest-first beyond the cap (this capture
+        // is the newest, so `LIMIT - 1` older ones may stay).
+        const overflow = Math.max(
+          0,
+          evictable.length - (SCREENSHOT_HISTORY_LIMIT - 1),
+        );
+        evictable
+          .sort((a, b) => a.createdAt - b.createdAt)
+          .slice(0, overflow)
+          .forEach((r) => store.delete(r.id));
+        return;
+      }
+      if (cursor.key !== id) {
+        evictable.push({
+          id: cursor.key as string,
+          createdAt: (cursor.value as ScreenshotHistoryEntry)?.createdAt ?? 0,
+        });
+      }
+      cursor.continue();
+    };
+  });
+  return id;
+}
+
+/** List the screenshot history, newest first — metadata only (no dataUrls). */
+export async function listScreenshotHistory(): Promise<
+  ScreenshotHistoryMeta[]
+> {
+  const db = await openDb();
+  const meta: ScreenshotHistoryMeta[] = [];
+  await new Promise<void>((resolve, reject) => {
+    const t = tx(db, [STORE_SCREENSHOT_HISTORY], "readonly");
+    t.oncomplete = () => resolve();
+    t.onerror = () => reject(t.error);
+    // Cursor projection: never materialize the dataUrl payloads just to list.
+    const cursorReq = t.objectStore(STORE_SCREENSHOT_HISTORY).openCursor();
+    cursorReq.onsuccess = () => {
+      const cursor = cursorReq.result;
+      if (!cursor) return;
+      const { id, filename, createdAt } =
+        cursor.value as ScreenshotHistoryEntry;
+      meta.push({ id, filename, createdAt });
+      cursor.continue();
+    };
+  });
+  return meta.sort((a, b) => b.createdAt - a.createdAt);
+}
+
+/** Read back one screenshot by id (uuid from `saveScreenshotHistory`). */
+export async function getScreenshotHistory(
+  id: string,
+): Promise<ScreenshotHistoryEntry | undefined> {
+  const db = await openDb();
+  return reqToPromise(
+    tx(db, [STORE_SCREENSHOT_HISTORY], "readonly")
+      .objectStore(STORE_SCREENSHOT_HISTORY)
+      .get(id) as IDBRequest<ScreenshotHistoryEntry | undefined>,
+  );
+}
+
+/** Delete a screenshot history record (side-panel list, or user removal). */
+export async function deleteScreenshotHistory(id: string): Promise<void> {
+  const db = await openDb();
+  await new Promise<void>((resolve, reject) => {
+    const t = tx(db, [STORE_SCREENSHOT_HISTORY], "readwrite");
+    t.oncomplete = () => resolve();
+    t.onerror = () => reject(t.error);
+    t.objectStore(STORE_SCREENSHOT_HISTORY).delete(id);
+  });
 }

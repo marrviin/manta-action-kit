@@ -7,6 +7,7 @@ import ElementPreviewView from "./element-view";
 import ElementDiffView from "./diff-view";
 import type { ScreenshotPreview } from "@/lib/screenshot/types";
 import { screenshotPreview } from "@/lib/storage";
+import { getScreenshotHistory } from "@/lib/db";
 
 /**
  * Screenshot preview tab. Opened by the background right after a capture; the
@@ -21,10 +22,12 @@ import { screenshotPreview } from "@/lib/storage";
  * both toolbar actions (fetch + decode happens once).
  */
 /**
- * Two preview modes share this entrypoint: the screenshot capture (default)
- * and the GIF recording handoff (`?mode=gif`, opened by the background once
- * the offscreen recorder saved its WebM draft). A third (`?mode=element`)
- * shows the inspector element capture rebuilt in a Shadow DOM.
+ * Preview modes sharing this entrypoint: the screenshot capture (default, or
+ * `?mode=screenshot&id=` from history), the GIF recording handoff (`?mode=gif`,
+ * optionally `&id=` for a specific history record — both opened by the
+ * background/preview launcher once the offscreen recorder saved its WebM
+ * draft), the inspector element capture (`?mode=element`) and its comparison
+ * (`?mode=diff`). History re-opens are addressed by `id` (IndexedDB).
  */
 export default function PreviewApp() {
   const mode = new URLSearchParams(window.location.search).get("mode");
@@ -50,13 +53,36 @@ function ScreenshotPreviewView() {
   useEffect(() => {
     let cancelled = false;
     let objectUrl: string | null = null;
-    screenshotPreview.getValue().then(async (v) => {
+    // `?id=` (side-panel history re-open) reads the persisted record instead;
+    // without it this is the fresh-capture handoff via session storage.
+    const urlId = new URLSearchParams(window.location.search).get("id");
+    (urlId
+      ? getScreenshotHistory(urlId).then((e) =>
+          e
+            ? {
+                dataUrl: e.dataUrl,
+                filename: e.filename,
+                keepSession: false,
+              }
+            : null,
+        )
+      : screenshotPreview.getValue().then((v) =>
+          v
+            ? {
+                dataUrl: v.dataUrl,
+                filename: v.filename,
+                keepSession: true,
+              }
+            : null,
+        )
+    ).then(async (v) => {
       if (!v) return;
-      setShot(v);
-      // The state above now owns the data — drop the session-storage copy
-      // (a full-page capture can be tens of MB of base64) so it doesn't sit
-      // in session storage for the rest of the browser session.
-      screenshotPreview.removeValue().catch(() => {});
+      setShot({ dataUrl: v.dataUrl, filename: v.filename });
+      // Fresh captures: the state above now owns the data — drop the
+      // session-storage copy (a full-page capture can be tens of MB of base64)
+      // so it doesn't sit in session storage for the rest of the session.
+      // History records keep theirs in IndexedDB — nothing to clean up.
+      if (v.keepSession) screenshotPreview.removeValue().catch(() => {});
       // The tab title mirrors the future file name.
       document.title = v.filename;
       try {

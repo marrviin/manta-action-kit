@@ -71,23 +71,35 @@ export const zhCN: Messages = {
     copy: "复制",
     agentPrompt:
       "请参考下面的元素快照，用相同的结构与视觉效果重新实现该 UI 组件。快照捕获自「{{title}}」({{url}})。HTML 中每个节点都内联了捕获时刻的完整计算样式——请不要照抄这些内联样式，而是提炼出语义化 HTML 与整洁的 CSS 规则来还原同样的视觉效果。注意自定义属性、伪元素规则(<style> 块)与精确的像素尺寸。\n\n{{html}}",
-    pinBaseline: "对比",
-    pinned: "已设为对比基准，下一次任意捕获将打开对比页",
-    pinFailed: "设置对比基准失败",
-    diffMissing: "对比数据不存在或已失效。请先在预览页设为基准，再重新捕获。",
+    compare: "对比",
+    compareEmpty: "暂无其他捕获记录",
+    back: "返回",
+    diffMissing: "对比数据不存在或已失效，请在元素预览页重新发起对比。",
     noDiff: "无差异——两次捕获完全一致。",
     copyDiff: "复制差异",
     copyDiffJson: "差异 JSON",
     diffCount: "{{count}} 处差异",
     diffOnlyA: "仅 A 有",
     diffOnlyB: "仅 B 有",
-    toggleBackdrop: "背景",
   },
   home: {
     apiRecording: "接口录制",
     actions: "动作库",
+    capture: "页面采集",
     gateway: "安全沙箱",
     settings: "设置",
+  },
+  capture: {
+    tabCaptures: "元素",
+    tabScreenshots: "截图",
+    tabGif: "录制",
+    emptyCaptures: "暂无元素捕获。在页面上通过 popup 或 Alt+Shift+I 框选/点选元素。",
+    emptyScreenshots: "暂无截图。从 popup 发起截图。",
+    emptyGif: "暂无录制。从 popup 发起 GIF 录制。",
+    elementCount: "{{count}} 个元素",
+    boxSelect: "框选",
+    openPreview: "打开预览",
+    deleteTitle: "删除这条捕获？",
   },
   recording: {
     tabRecords: "录制记录",
@@ -279,6 +291,15 @@ export const zhCN: Messages = {
     set_recording_descriptionLabel: "设置录制描述",
     set_recording_descriptionDesc:
       "为录制写入由 agent 生成的「整体流程」业务描述——用途、能干什么、复用注意事项（而非逐接口字段罗列）；专用写入接口，详情页只读展示",
+    list_element_capturesLabel: "查询元素捕获列表",
+    list_element_capturesDesc:
+      "获取已保存的元素捕获快照概要（页面、标题、元素数量）；用于分析组件或与其他快照做对比",
+    get_element_captureLabel: "查询元素捕获详情",
+    get_element_captureDesc:
+      "获取指定捕获的完整元素树与计算样式——对元素构建方式的忠实、可直接喂给 LLM 的描述",
+    diff_element_capturesLabel: "对比元素捕获",
+    diff_element_capturesDesc:
+      "对比两份快照并返回文本差异报告（按 DOM 路径列出文本/样式/伪元素的逐属性变化）——例如同一组件在两种上下文下的各一次捕获",
     get_flowLabel: "查询接口调用依赖流",
     get_flowDesc:
       "获取录制的调用流：按序步骤概要 + 接口间的字段依赖关系（上一接口的响应作为下一接口的入参）",

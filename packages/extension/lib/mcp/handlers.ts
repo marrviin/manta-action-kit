@@ -5,16 +5,19 @@
  */
 import {
   getCalls,
+  getInspectorCapture,
   getRecording,
   listActions,
   listActionsByRecording,
   listGatewayProxyRules,
+  listInspectorCaptures,
   listRecordings,
   upsertAction,
   deleteAction,
   getAction,
   updateRecordingDescription,
 } from "@/lib/db";
+import { diffPayloads, formatDiffReport } from "@/lib/inspector/diff";
 import { runGatewayFetch, runGatewaySse } from "@/lib/gateway/run";
 import { resolveProxyRule } from "@/lib/gateway/proxy-rule";
 import {
@@ -121,6 +124,40 @@ export async function handleRpc<M extends RpcMethod>(
       await updateRecordingDescription(id, description);
       const recording = (await getRecording(id)) ?? null;
       return { recording } as RpcMap[M]["result"];
+    }
+
+    case "list_element_captures": {
+      const captures = (await listInspectorCaptures()).map(
+        ({ id, payload }) => ({
+          id,
+          url: payload.page.url,
+          title: payload.page.title,
+          capturedAt: payload.capturedAt,
+          elementCount: payload.elementCount,
+        }),
+      );
+      return { captures } as RpcMap[M]["result"];
+    }
+
+    case "get_element_capture": {
+      const { id } = params as RpcMap["get_element_capture"]["params"];
+      if (!id) throw new Error('get_element_capture: missing "id"');
+      const capture = (await getInspectorCapture(id)) ?? null;
+      return { capture } as RpcMap[M]["result"];
+    }
+
+    case "diff_element_captures": {
+      const { a, b } = params as RpcMap["diff_element_captures"]["params"];
+      if (!a || !b) throw new Error('diff_element_captures: missing "a"/"b"');
+      const [pa, pb] = await Promise.all([
+        getInspectorCapture(a),
+        getInspectorCapture(b),
+      ]);
+      if (!pa) throw new Error(`diff_element_captures: no capture with id "${a}"`);
+      if (!pb) throw new Error(`diff_element_captures: no capture with id "${b}"`);
+      const diff = diffPayloads(pa, pb);
+      // Text report (not JSON): agent-friendly, mirrors the diff view's cards.
+      return { report: formatDiffReport(pa, pb, diff), identical: diff.identical } as RpcMap[M]["result"];
     }
 
     case "get_call": {

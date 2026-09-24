@@ -78,25 +78,36 @@ export const en = {
     copy: "Copy",
     agentPrompt:
       'Recreate the UI element below so it matches this reference visually and structurally. It was captured from "{{title}}" ({{url}}). Every node in the HTML has its full computed styles inlined from capture time — do NOT copy those inline styles verbatim; instead derive clean semantic HTML and CSS rules that reproduce the same look. Pay attention to custom properties, pseudo-element rules (in the <style> block) and exact pixel sizes.\n\n{{html}}',
-    pinBaseline: "Compare",
-    pinned:
-      "Pinned as baseline — the next capture anywhere opens the diff view",
-    pinFailed: "Failed to pin baseline",
+    compare: "Compare",
+    compareEmpty: "No other captures yet",
+    back: "Back",
     diffMissing:
-      "Comparison data not found or expired. Pin a baseline first, then capture again.",
+      "Comparison data not found or expired. Re-open the comparison from the element preview.",
     noDiff: "No differences — the two captures are identical.",
     copyDiff: "Copy diff",
     copyDiffJson: "Diff JSON",
     diffCount: "{{count}} difference(s)",
     diffOnlyA: "Only in A",
     diffOnlyB: "Only in B",
-    toggleBackdrop: "Backdrop",
   },
   home: {
     apiRecording: "API Recording",
     actions: "Actions",
+    capture: "Page Capture",
     gateway: "Secure Sandbox",
     settings: "Settings",
+  },
+  capture: {
+    tabCaptures: "Elements",
+    tabScreenshots: "Screenshots",
+    tabGif: "Recordings",
+    emptyCaptures: "No element captures yet. Use the popup or Alt+Shift+I on a page to capture an element.",
+    emptyScreenshots: "No screenshots yet. Capture one from the popup.",
+    emptyGif: "No recordings yet. Start a GIF recording from the popup.",
+    elementCount: "{{count}} elements",
+    boxSelect: "Box select",
+    openPreview: "Open preview",
+    deleteTitle: "Delete this capture?",
   },
   recording: {
     tabRecords: "Recordings",
@@ -305,6 +316,15 @@ export const en = {
     set_recording_descriptionLabel: "Set recording description",
     set_recording_descriptionDesc:
       "Write an agent-authored, business-level summary of the whole flow — its purpose, what it can do, and caveats for reuse (not a per-endpoint field dump). Dedicated write path; shown read-only on the detail page",
+    list_element_capturesLabel: "List element captures",
+    list_element_capturesDesc:
+      "Get an overview of saved element-capture snapshots (page, title, element count); material for analyzing a component or diffing against another snapshot",
+    get_element_captureLabel: "Get element capture detail",
+    get_element_captureDesc:
+      "Get one capture's full element tree with computed styles — a faithful, LLM-ready description of how the element is built",
+    diff_element_capturesLabel: "Diff element captures",
+    diff_element_capturesDesc:
+      "Diff two snapshots and return a text report of property-level changes (text/styles/pseudo-elements per DOM path) — e.g. the same component captured in two contexts",
     get_flowLabel: "Get API call dependency flow",
     get_flowDesc:
       "Get a recording's call flow: an ordered step summary plus the field dependencies between APIs (an earlier response feeding a later request)",

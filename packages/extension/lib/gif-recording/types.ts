@@ -25,13 +25,20 @@ export interface GifRecordingState {
 
 /**
  * A recorded WebM waiting for GIF conversion in the preview tab. Stored in the
- * `gifDrafts` IndexedDB store under the fixed id "latest" (each recording
- * replaces the last — drafts are transient, not a library).
+ * `gifDrafts` IndexedDB store under a uuid id (v13 — each recording is its own
+ * history record, oldest evicted beyond GIF_HISTORY_LIMIT).
  */
 export interface GifDraft {
   id: string;
   blob: Blob;
   /** Download filename for the eventual GIF (e.g. "gif-example.com-20260923.gif"). */
+  filename: string;
+  createdAt: number;
+}
+
+/** List-view projection of `GifDraft` — no blob payload. */
+export interface GifDraftMeta {
+  id: string;
   filename: string;
   createdAt: number;
 }

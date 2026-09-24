@@ -140,14 +140,15 @@ export interface ProtocolMap {
 
   /**
    * Inspector bridge (extension-origin iframe) -> background: the capture
-   * payload is ALREADY in IndexedDB (id "preview") — the bridge page wrote it
-   * directly, bypassing runtime.sendMessage entirely (full snapshots with
-   * per-node computed styles can exceed its ~64MB structured-clone cap; the
-   * postMessage hop to the bridge has no such limit). The background pairs a
-   * pinned baseline into a diff pair if present, then opens the preview tab.
+   * payload is ALREADY in IndexedDB as its own history record (uuid id in
+   * `captureId`) — the bridge page wrote it directly, bypassing
+   * runtime.sendMessage entirely (full snapshots with per-node computed styles
+   * can exceed its ~64MB structured-clone cap; the postMessage hop to the
+   * bridge has no such limit). The background opens the element preview tab
+   * at that id; comparisons are launched from there via the history dropdown.
    */
   INSPECTOR_CAPTURE_PREVIEW_READY: {
-    request: void;
+    request: { captureId: string };
     response: { ok: boolean };
   };
 
@@ -244,7 +245,13 @@ export interface ProtocolMap {
    * background can tell the user why the recording ended on its own.
    */
   GIF_OFFSCREEN_DONE: {
-    request: { ok: boolean; savedForPreview?: boolean; hitTimeLimit?: boolean };
+    request: {
+      ok: boolean;
+      savedForPreview?: boolean;
+      /** Id of the persisted history record, forwarded to the preview tab URL. */
+      draftId?: string;
+      hitTimeLimit?: boolean;
+    };
     response: { ok: boolean };
   };
 }

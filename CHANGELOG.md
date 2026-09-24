@@ -7,6 +7,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+#### Element capture: preview tab & history comparison
+
+- Every capture opens a preview tab (`preview.html?mode=element&id=…`): the
+  element tree is rebuilt inside a Shadow DOM with its capture-time computed
+  styles inlined (pseudo-elements re-attached via generated rules), so the
+  snapshot renders exactly as it did on the page.
+- The preview toolbar copies four flavors: rebuilt HTML (pseudo-element rules
+  included), lean JSON (same as the capture clipboard), full JSON, and an
+  agent-ready prompt wrapping the HTML.
+- Captures are kept as a bounded history (last 20, oldest evicted) in IndexedDB.
+  The preview's *Compare* dropdown lists the other records and opens a
+  side-by-side diff for any pair: both snapshots rebuilt in parallel panes,
+  property-level differences below as collapsible cards (hover a card to
+  spotlight the node in both panes), and a git-style delta on each pane's
+  title bar (red `−` removed in A, green `+` added in B, blue `~` modified).
+- Diff results are recomputed on load — never stored — and diff pages are
+  addressed by URL (`preview.html?mode=diff&a=…&b=…`), so refreshing restores
+  the same comparison. The toolbar copies the diff as a report or JSON, and
+  *Back* returns to the preview the comparison was launched from.
+
+#### Page capture history (side panel tab)
+
+- New side panel tab **Page capture** with a bottom segmented bar (Elements /
+  Screenshots / Recordings) aggregating the histories of the three capture
+  flows: open any record's preview tab by id, or delete it inline.
+- Screenshots now keep a persistent history (last 20, oldest evicted) instead
+  of the one-shot session handoff; the preview URL is id-addressed
+  (`preview.html?mode=screenshot&id=…`) with the session channel kept as a
+  fallback.
+- GIF recordings keep a history too (last 10, oldest evicted): each recording
+  gets a uuid that is threaded through the offscreen-done message to the
+  id-addressed preview URL (`preview.html?mode=gif&id=…`).
+
+#### Element capture: shadow DOM support
+
+- Capture now descends into open and closed shadow roots (via
+  `chrome.dom.openOrClosedShadowRoot`): hit-testing, subtree description,
+  box-select collection and the nesting pass all traverse the composed tree,
+  so elements inside micro-frontend shadow hosts are captured like any other.
+
+#### Element capture MCP tools (read-only)
+
+- `list_element_captures` — summaries of saved snapshots (page, title,
+  capturedAt, element count).
+- `get_element_capture` — one capture's full element tree with computed
+  styles, an LLM-ready description of how the element is built.
+- `diff_element_captures` — diff two snapshots and return a text report of
+  property-level changes per DOM path, plus an `identical` flag.
+
 ## [0.3.0] - 2026-09-24
 
 ### Added

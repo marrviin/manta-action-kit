@@ -1,16 +1,19 @@
 import { App, Button, Dropdown, Spin } from "antd";
 import {
-  BgColorsOutlined,
   CodeOutlined,
   CopyOutlined,
   DiffOutlined,
-  DownOutlined,
   RobotOutlined,
 } from "@ant-design/icons";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { InspectorCapturePayload } from "@/lib/inspector/types";
-import { getInspectorCapture, saveInspectorCapture } from "@/lib/db";
+import {
+  getInspectorCapture,
+  listInspectorCaptures,
+  type InspectorHistoryEntry,
+} from "@/lib/db";
+import { shortPath } from "@/lib/utils";
 import {
   buildDom,
   createResetStyle,
@@ -19,12 +22,13 @@ import {
 } from "./element-build";
 
 /**
- * Element-capture preview view (opened at /preview.html?mode=element right
- * after an inspector capture). The payload arrives via IndexedDB
- * (`inspectorCaptures`, id "preview" — full snapshots can exceed any
- * session-storage quota) and stays there: the view reads it into state, and
- * refreshing the tab restores the same capture (the record is simply
- * overwritten by the next capture).
+ * Element-capture preview view (opened at /preview.html?mode=element&id=<uuid>
+ * right after an inspector capture). The payload lives in IndexedDB as its own
+ * history record (`inspectorCaptures`, uuid id passed in the URL — full
+ * snapshots can exceed any session-storage quota); the view reads it into
+ * state, and refreshing the tab restores the same capture because the id is
+ * addressable. With no id in the URL (legacy link) it falls back to the newest
+ * record.
  *
  * The captured element tree is rebuilt inside a Shadow DOM so the preview
  * page's own styles (antd/Tailwind) can't leak in. Fidelity now comes from
@@ -35,39 +39,49 @@ import {
  * `styles` + reset approach). Pseudo-elements can't be inlined, so they are
  * re-attached via generated `[data-pe]` rules inside the shadow root.
  *
- * The floating toolbar offers four copy targets: the rebuilt HTML (with
- * pseudo-element rules), the lean JSON (same as the capture clipboard —
- * fullStyles/pseudo/textFull stripped), the full snapshot JSON, and an
- * agent-ready prompt wrapping the HTML.
+ * The floating toolbar offers four copy targets (the rebuilt HTML with
+ * pseudo-element rules, the lean JSON — same as the capture clipboard —
+ * the full snapshot JSON, and an agent-ready prompt wrapping the HTML) and a
+ * compare dropdown that diffs this capture against any other history record
+ * on the spot.
  */
 export default function ElementPreviewView() {
   const { t } = useTranslation();
   const { message } = App.useApp();
   const [payload, setPayload] = useState<InspectorCapturePayload | null>(null);
+  const [captureId, setCaptureId] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
-  const [darkBackdrop, setDarkBackdrop] = useState(false);
-  const [pinned, setPinned] = useState(false);
+  /** History entries for the compare dropdown, loaded when it opens. */
+  const [history, setHistory] = useState<InspectorHistoryEntry[]>([]);
   /** Latest rebuilt DOM node — serialized on demand for the copy menu. */
   const rootRef = useRef<HTMLElement | null>(null);
   const pseudoCssRef = useRef<string>("");
   const payloadRef = useRef<InspectorCapturePayload | null>(null);
 
   useEffect(() => {
-    getInspectorCapture("preview")
-      .then(async (v) => {
-        if (!v) return;
-        setPayload(v);
-        payloadRef.current = v;
-        document.title = "Element preview";
-        // Left in IndexedDB (NOT removed after reading): refreshing the tab
-        // restores the same capture, same contract as the diff pair. The next
-        // capture simply overwrites the record — an already-open preview keeps
-        // its own React state and is never disturbed.
-      })
-      .catch((err) =>
-        console.error("[preview] failed to load element capture", err),
-      )
-      .finally(() => setLoaded(true));
+    const urlId = new URLSearchParams(window.location.search).get("id");
+    (async () => {
+      try {
+        let entry: InspectorHistoryEntry | undefined;
+        if (urlId) {
+          const v = await getInspectorCapture(urlId);
+          if (v) entry = { id: urlId, payload: v };
+        } else {
+          // No id in the URL (stale/legacy link): show the newest record.
+          [entry] = await listInspectorCaptures();
+        }
+        if (entry) {
+          setPayload(entry.payload);
+          payloadRef.current = entry.payload;
+          setCaptureId(entry.id);
+          document.title = "Element preview";
+        }
+      } catch (err) {
+        console.error("[preview] failed to load element capture", err);
+      } finally {
+        setLoaded(true);
+      }
+    })();
   }, []);
 
   useEffect(() => {
@@ -131,21 +145,12 @@ export default function ElementPreviewView() {
     }
   };
 
-  /**
-   * Pin this snapshot as the comparison baseline: the NEXT capture anywhere
-   * becomes snapshot B and opens the diff view (one-shot, cleared by the
-   * background). A fresh pin replaces any previous one.
-   */
-  const pinBaseline = async () => {
-    const v = payloadRef.current;
-    if (!v) return;
-    try {
-      await saveInspectorCapture("baseline", v);
-      setPinned(true);
-      message.success(t("preview.pinned"));
-    } catch {
-      message.error(t("preview.pinFailed"));
-    }
+  /** Open the diff view: this capture as A, the picked history record as B. */
+  const compareWith = (otherId: string) => {
+    if (!captureId) return;
+    window.location.assign(
+      `/preview.html?mode=diff&a=${captureId}&b=${otherId}`,
+    );
   };
 
   if (!loaded) {
@@ -164,13 +169,15 @@ export default function ElementPreviewView() {
     );
   }
 
+  const otherCaptures = history.filter((h) => h.id !== captureId);
+
   return (
     /* Same layout grammar as the screenshot/GIF views: the rebuilt element
        fills the space above a floating capsule toolbar. The host keeps the
        capture-time size of the root element; oversize scrolls. */
     <div
       className="h-screen flex flex-col p-6 gap-4"
-      style={{ background: darkBackdrop ? "#000" : "#f5f5f5" }}
+      style={{ background: "#f5f5f5" }}
     >
       <div className="no-scrollbar flex-1 min-h-0 overflow-auto rounded-lg flex">
         <div
@@ -213,25 +220,49 @@ export default function ElementPreviewView() {
             trigger={["click"]}
           >
             <Button shape="round" type="text" icon={<CopyOutlined />}>
-              {t("preview.copy")} <DownOutlined />
+              {t("preview.copy")}
             </Button>
           </Dropdown>
-          <Button
-            shape="round"
-            type="primary"
-            icon={<BgColorsOutlined />}
-            onClick={() => setDarkBackdrop((d) => !d)}
+          {/* Compare with another history record: the dropdown lists the
+              capture history (newest first, this one excluded); picking one
+              navigates straight to the diff view. */}
+          <Dropdown
+            menu={{
+              items:
+                otherCaptures.length > 0
+                  ? otherCaptures.map((h) => ({
+                      key: h.id,
+                      label: (
+                        <span
+                          title={h.payload.page.url}
+                          className="flex items-center gap-2 max-w-[280px]"
+                        >
+                          <span className="truncate">
+                            {h.payload.page.title || shortPath(h.payload.page.url)}
+                          </span>
+                          <span className="shrink-0 text-(--ant-color-text-tertiary) text-xs">
+                            {new Date(h.payload.capturedAt).toLocaleString()}
+                          </span>
+                        </span>
+                      ),
+                    }))
+                  : [{ key: "empty", label: t("preview.compareEmpty"), disabled: true }],
+              onClick: ({ key }) => compareWith(key),
+            }}
+            onOpenChange={(open) => {
+              if (open)
+                listInspectorCaptures()
+                  .then(setHistory)
+                  .catch((err) =>
+                    console.error("[preview] failed to list captures", err),
+                  );
+            }}
+            trigger={["click"]}
           >
-            {t("preview.toggleBackdrop")}
-          </Button>
-          <Button
-            shape="round"
-            type={pinned ? "primary" : "text"}
-            icon={<DiffOutlined />}
-            onClick={pinBaseline}
-          >
-            {t("preview.pinBaseline")}
-          </Button>
+            <Button shape="round" type="text" icon={<DiffOutlined />}>
+              {t("preview.compare")}
+            </Button>
+          </Dropdown>
         </div>
       </div>
     </div>

@@ -4,12 +4,9 @@ import { initMcpBridge } from "@/lib/mcp/bridge";
 import {
   clearGatewayLogs,
   deleteGatewayProxyRule,
-  deleteInspectorCapture,
-  getInspectorCapture,
   listGatewayLogs,
   listGatewayProxyRules,
-  saveInspectorCapture,
-  saveInspectorDiffPair,
+  saveScreenshotHistory,
   upsertGatewayProxyRule,
 } from "@/lib/db";
 import {
@@ -169,46 +166,45 @@ export default defineBackground(() => {
             } catch (err) {
               throw new ScreenshotError("preview-too-large", String(err));
             }
+            // Persist to history BEFORE opening the preview so the tab can
+            // address this exact record by id (re-openable from the side-panel
+            // capture tab). Best-effort: a failed save must not lose the
+            // capture — the session handoff still works.
+            let historyId: string | undefined;
+            try {
+              historyId = await saveScreenshotHistory(
+                shot.dataUrl,
+                shot.filename,
+              );
+            } catch (err) {
+              console.error("[background] screenshot history save failed", err);
+            }
             await chrome.tabs.create({
-              url: browser.runtime.getURL("/preview.html"),
+              url: browser.runtime.getURL(
+                historyId
+                  ? `/preview.html?mode=screenshot&id=${historyId}`
+                  : "/preview.html",
+              ),
             });
             sendResponse({ ok: true });
             break;
           }
 
           case "INSPECTOR_CAPTURE_PREVIEW_READY": {
-            // The capture payload is already in IndexedDB (id "preview"): it
-            // was written by the inspector-bridge iframe in the EXTENSION
-            // origin, because a content script only sees the PAGE's IDB, and
-            // the old runtime.sendMessage handoff capped at ~64MB structured
-            // clone — full snapshots with per-node computed styles can blow
-            // past that on large pages. Here we only consume what's on disk.
-            const capture = await getInspectorCapture("preview");
-            if (!capture) {
-              // The bridge said READY but the record is gone — report instead
-              // of opening a tab that would land on the not-found view.
-              sendResponse({ ok: false });
-              break;
-            }
-            // Comparison flow: if the user pinned a baseline from the preview
-            // toolbar, this new capture becomes snapshot B. The pair (A+B) is
-            // written as ONE item and left in storage — the diff view never
-            // deletes it, so refreshing the tab restores the same diff. The
-            // pin itself is one-shot: cleared right here, after pairing (as
-            // is the now-paired preview record).
-            const baseline = await getInspectorCapture("baseline");
-            if (baseline) {
-              await saveInspectorDiffPair({ a: baseline, b: capture });
-              await deleteInspectorCapture("baseline");
-              await deleteInspectorCapture("preview");
-              await chrome.tabs.create({
-                url: browser.runtime.getURL("/preview.html?mode=diff"),
-              });
-              sendResponse({ ok: true });
-              break;
-            }
+            // The capture payload is already in IndexedDB as its own history
+            // record (`msg.data.captureId`): it was written by the
+            // inspector-bridge iframe in the EXTENSION origin, because a
+            // content script only sees the PAGE's IDB, and the old
+            // runtime.sendMessage handoff capped at ~64MB structured clone —
+            // full snapshots with per-node computed styles can blow past that
+            // on large pages. Here we only consume the id and open the
+            // element preview at it (comparisons are launched from there via
+            // the history dropdown).
+            const { captureId } = msg.data;
             await chrome.tabs.create({
-              url: browser.runtime.getURL("/preview.html?mode=element"),
+              url: browser.runtime.getURL(
+                `/preview.html?mode=element&id=${captureId}`,
+              ),
             });
             sendResponse({ ok: true });
             break;

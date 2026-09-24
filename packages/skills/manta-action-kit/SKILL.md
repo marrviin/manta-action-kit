@@ -1,6 +1,6 @@
 ---
 name: manta-action-kit
-description: Usage guide for the manta-action-kit suite (Chrome extension + MCP server): environment checks and initialization, extension/MCP/connection troubleshooting, recording APIs, and action management — creating actions from recordings, searching and executing actions, cookie-injecting proxy forwarding. Use when the user says "manta", "check recordings", "view call chains", "create an action / turn a recording into an action", "execute an action / run that action", "search actions / what actions are available", "call the API with my login state", "proxy_fetch", "check environment", "initialize environment", "can't connect", etc.
+description: Usage guide for the manta-action-kit suite (Chrome extension + MCP server): environment checks and initialization, extension/MCP/connection troubleshooting, recording APIs, and action management — creating actions from recordings, searching and executing actions, cookie-injecting proxy forwarding. Use when the user says "manta", "check recordings", "view call chains", "create an action / turn a recording into an action", "execute an action / run that action", "search actions / what actions are available", "call the API with my login state", "proxy_fetch", "show element captures / compare element captures", "check environment", "initialize environment", "can't connect", etc.
 ---
 
 # manta-action-kit Suite Usage Guide
@@ -134,6 +134,30 @@ only for ad-hoc, one-off single calls.
 | "analyze step dependencies / where fields come from"           | `get_flow`        | Ordered steps + inferred field dependencies (must read before create_action) |
 | "show API contracts / deduplicated endpoints"                  | `get_endpoints`   | Deduplicated endpoints + sanitized schemas (must read before create_action)  |
 | "show a single call"                                           | `get_call`        | Fetch a single API call by id                                                |
+
+### Element captures (UI reference / visual diffing)
+
+The user can capture any on-page element from the extension popup (click or box-select; Alt+Shift+I
+also works). Each capture is a faithful, LLM-ready snapshot of how the element is built: a flattened
+element tree where every node carries tag/id/classes/text, whitelisted attributes, full computed
+styles (including custom properties and `::before`/`::after` rules), and a source-file hint when
+available. Captures are stored locally (up to 20, oldest evicted) and the user can diff any two of
+them in the extension's preview tab.
+
+| User says                                                      | Tool                     | Notes                                                                       |
+| -------------------------------------------------------------- | ------------------------ | --------------------------------------------------------------------------- |
+| "list element captures / what UI snapshots do I have"          | `list_element_captures`  | Summaries only (page, title, element count) — pick an id here first         |
+| "show that capture / how is this component built"              | `get_element_capture`    | Full element tree with computed styles                                      |
+| "compare these two captures / why do the styles differ"        | `diff_element_captures`  | Returns a text report of property-level changes per DOM path + an `identical` flag |
+
+Typical use cases: the user rebuilt a UI and wants you to check it, they reference another project's
+module when building a new one, or a component renders differently standalone vs. as a micro-app
+child (capture both, then diff).
+
+Consuming a capture to recreate UI: build semantic HTML and clean CSS rules from the snapshot —
+**do not copy the inlined computed styles verbatim**. Each node inlines the full computed style of
+the moment; treat it as ground truth for *what it should look like*, not as the stylesheet to ship.
+Pay attention to custom properties and pseudo-element rules, which are emitted in a `<style>` block.
 
 ### Direct forwarding (ad-hoc / one-off calls)
 

@@ -62,6 +62,7 @@
       <a href="#element-capture" data-i18n="docs.tocElementCapture">Element capture</a>
       <a class="lv2" href="#ec-interaction" data-i18n="docs.tocEcInteraction">Trigger &amp; interaction</a>
       <a class="lv2" href="#ec-payload" data-i18n="docs.tocEcPayload">Captured payload</a>
+      <a class="lv2" href="#ec-preview" data-i18n="docs.tocEcPreview">Preview &amp; compare</a>
       <a href="#screenshots" data-i18n="docs.tocScreenshot">Screenshots</a>
       <a class="lv2" href="#shot-modes" data-i18n="docs.tocShotModes">Two modes</a>
       <a class="lv2" href="#shot-preview" data-i18n="docs.tocShotPreview">Preview &amp; export</a>
@@ -71,6 +72,7 @@
       <a href="#skills" data-i18n="docs.tocSkills">Agent skill</a>
       <a href="#tools" data-i18n="docs.tocTools">MCP tools reference</a>
       <a class="lv2" href="#tools-rec" data-i18n="docs.tocToolsRec">Recordings</a>
+      <a class="lv2" href="#tools-element" data-i18n="docs.tocToolsElement">Element captures</a>
       <a class="lv2" href="#tools-actions" data-i18n="docs.tocToolsAct">Actions</a>
       <a class="lv2" href="#tools-rules" data-i18n="docs.tocToolsRules">Proxy rules</a>
       <a class="lv2" href="#tools-gateway" data-i18n="docs.tocToolsGw">Gateway calls</a>
@@ -182,9 +184,11 @@ client → auth    { proof = HMAC(token, "manta/auth/" + nonce) }</pre>
 
         <h3 id="ui-panel" data-i18n="docs.ui.panelH">Side panel</h3>
         <p data-i18n="docs.ui.panelP">
-          Tabs for <strong>API Recording</strong>, <strong>Actions</strong>, and
-          <strong>Secure Sandbox</strong>, plus a gear button that reveals the settings
-          view below.
+          Tabs for <strong>API Recording</strong>, <strong>Actions</strong>,
+          <strong>Secure Sandbox</strong>, and <strong>Page capture</strong>, plus a
+          gear button that reveals the settings view below. <strong>Page capture</strong>
+          aggregates the histories of the three capture flows — element captures,
+          screenshots, and GIF recordings — behind a bottom segmented bar.
         </p>
 
         <h3 id="ui-settings" data-i18n="docs.ui.settingsH">Settings</h3>
@@ -197,6 +201,12 @@ client → auth    { proof = HMAC(token, "manta/auth/" + nonce) }</pre>
 
       <section class="doc-section" id="recording">
         <h2 data-i18n="docs.rec.h">Recording</h2>
+        <p data-i18n="docs.rec.p0">
+          <strong>When to use it</strong>: you want your agent to work inside a site
+          you're logged into. Perform the task once — submitting a form, creating a
+          ticket, paginating a list — while recording, and the captured API chain
+          becomes the blueprint your agent can inspect, learn from, and replay.
+        </p>
         <p data-i18n="docs.rec.p1">
           Click <em>Start</em> in the popup, use the site normally, click <em>Stop</em>.
           A MAIN-world script hooks the page's <code>fetch</code>/<code>XHR</code> (no
@@ -233,6 +243,13 @@ client → auth    { proof = HMAC(token, "manta/auth/" + nonce) }</pre>
 
       <section class="doc-section" id="actions">
         <h2 data-i18n="docs.act.h">Actions</h2>
+        <p data-i18n="docs.act.p0">
+          <strong>When to use it</strong>: anything you'd otherwise repeat by hand —
+          creating the same ticket every morning, pulling an order's status, pushing
+          data between two admin panels. Record once, parameterize what changes (ids,
+          keywords, dates), and let your agent run the flow on demand: your login
+          state, API speed, zero re-clicking.
+        </p>
         <p data-i18n="docs.act.p1">
           Recordings are the raw material; <strong>Actions are the product</strong>.
           <code>create_action</code> distills a recording into a saved, parameterized,
@@ -258,6 +275,13 @@ client → auth    { proof = HMAC(token, "manta/auth/" + nonce) }</pre>
 
       <section class="doc-section" id="gateway">
         <h2 data-i18n="docs.gw.h">Sandbox gateway</h2>
+        <p data-i18n="docs.gw.p0">
+          <strong>When to use it</strong>: the agent needs a call you didn't record —
+          an ad-hoc query against your logged-in session, a brand-new endpoint, or a
+          script that needs authenticated requests without hardcoding tokens. The
+          agent supplies only method/URL/body; your cookies do the talking, behind
+          gates you control.
+        </p>
         <p data-i18n="docs.gw.p1">
           <code>proxy_fetch</code> / <code>proxy_sse</code> take only
           <code>method/url/headers/body</code> — no credentials. The extension injects
@@ -317,6 +341,12 @@ GET http://127.0.0.1:8788/gh-api/repos/marrviin/manta-action-kit
 
       <section class="doc-section" id="element-capture">
         <h2 data-i18n="docs.ec.h">Element capture</h2>
+        <p data-i18n="docs.ec.p0">
+          <strong>When to use it</strong>: you need to hand your agent — or yourself —
+          a faithful, structured copy of a piece of UI. Recreating a component from a
+          reference, reporting a styling bug with exact computed values, or pinning
+          down what actually changed between two states of a page.
+        </p>
 
         <h3 id="ec-interaction" data-i18n="docs.ec.interactionH">Trigger &amp; interaction</h3>
         <p data-i18n="docs.ec.p1">
@@ -340,10 +370,37 @@ GET http://127.0.0.1:8788/gh-api/repos/marrviin/manta-action-kit
           duplicate entries dropped), and the CSS custom properties actually in play.
           Paste it straight to your agent.
         </p>
+
+        <h3 id="ec-preview" data-i18n="docs.ec.previewH">Preview &amp; compare</h3>
+        <p data-i18n="docs.ec.p4">
+          Every capture opens a <strong>preview tab</strong>: the element tree is
+          rebuilt in a Shadow DOM with its capture-time computed styles inlined, so
+          it renders exactly as it did on the page. The toolbar copies four flavors
+          — rebuilt <strong>HTML</strong> (pseudo-element rules included),
+          <strong>lean JSON</strong> (same as the capture clipboard), <strong>full
+          JSON</strong>, and an <strong>agent prompt</strong> wrapping the HTML.
+        </p>
+        <p data-i18n="docs.ec.p5">
+          Captures are also kept as a small <strong>history</strong> (the last 20,
+          oldest evicted). The <em>Compare</em> dropdown on the preview toolbar lists
+          the other records; picking one opens a <strong>side-by-side diff</strong>:
+          both snapshots rebuilt, plus the property-level differences below as
+          collapsible cards — hover a card to spotlight the node in both panes. The
+          title bars carry a git-style delta (red <code>−</code> removed, green
+          <code>+</code> added, blue <code>~</code> modified). Copy the diff as a
+          report or JSON, and <em>Back</em> returns to the preview you came from.
+          Diff pages are addressable by URL, so refreshing restores the same
+          comparison.
+        </p>
       </section>
 
       <section class="doc-section" id="screenshots">
         <h2 data-i18n="docs.shot.h">Screenshots</h2>
+        <p data-i18n="docs.shot.p0">
+          <strong>When to use it</strong>: pixels matter — showing your agent what the
+          page actually renders like, attaching visual evidence to a bug report, or
+          archiving a full-page snapshot of a long document or dashboard.
+        </p>
 
         <h3 id="shot-modes" data-i18n="docs.shot.modesH">Two modes</h3>
         <ul>
@@ -353,14 +410,20 @@ GET http://127.0.0.1:8788/gh-api/repos/marrviin/manta-action-kit
 
         <h3 id="shot-preview" data-i18n="docs.shot.previewH">Preview &amp; export</h3>
         <p data-i18n="docs.shot.p3">
-          <strong>Nothing is auto-saved</strong>: the shot opens in a preview tab with
-          click-to-zoom, <em>Copy image</em> and <em>Download</em> — you decide what to
-          keep.
+          <strong>Nothing lands on your disk</strong>: the shot opens in a preview tab
+          with click-to-zoom, <em>Copy image</em> and <em>Download</em> — you decide what
+          to keep. Shots are also kept in a small history (the last 20), browsable from
+          the side panel's <em>Page capture</em> tab.
         </p>
       </section>
 
       <section class="doc-section" id="gif-recording">
         <h2 data-i18n="docs.gif.h">GIF recording</h2>
+        <p data-i18n="docs.gif.p0">
+          <strong>When to use it</strong>: you need to show a sequence, not a state —
+          reproducing an animation glitch, documenting a multi-step interaction, or
+          giving your agent and teammates a moving picture of what happened on screen.
+        </p>
 
         <h3 id="gif-record" data-i18n="docs.gif.recordH">Recording</h3>
         <p data-i18n="docs.gif.p1">
@@ -373,7 +436,8 @@ GET http://127.0.0.1:8788/gh-api/repos/marrviin/manta-action-kit
           Stopping opens the preview tab with a looping player and two exports:
           <strong>Download GIF</strong> (canvas frame sampling, with progress) and
           <strong>Download MP4</strong> (WebCodecs transcode; falls back to the original
-          WebM if conversion fails).
+          WebM if conversion fails). Recordings are also kept in a history (the last
+          10), browsable from the side panel's <em>Page capture</em> tab.
         </p>
       </section>
 
@@ -407,6 +471,17 @@ GET http://127.0.0.1:8788/gh-api/repos/marrviin/manta-action-kit
               <tr><td><code>get_endpoints</code></td><td>Distinct endpoints collapsed by method + normalized path, with REDACTED request/response schemas (+ <code>inputsFrom</code>).</td></tr>
               <tr><td><code>get_call</code></td><td>A single API call by id, with full request/response bodies &amp; headers.</td></tr>
               <tr><td><code>set_recording_description</code></td><td>Write a recording's business-level flow summary (the only write path).</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 id="tools-element" data-i18n="docs.tools.ecH">Element captures (read-only)</h3>
+        <div data-i18n="docs.tools.ecTable">
+          <table class="tools-table">
+            <tbody>
+              <tr><td><code>list_element_captures</code></td><td>Summaries of saved element-capture snapshots (id, url, title, capturedAt, elementCount).</td></tr>
+              <tr><td><code>get_element_capture</code></td><td>One capture's full element tree with computed styles — a faithful, LLM-ready description of the element.</td></tr>
+              <tr><td><code>diff_element_captures</code></td><td>Diff two captures: a text report of property-level changes per DOM path, plus an <code>identical</code> flag.</td></tr>
             </tbody>
           </table>
         </div>
@@ -542,6 +617,7 @@ pnpm test             # vitest unit suite (security-critical pure modules)</pre>
     "docs.tocElementCapture": "元素捕获",
     "docs.tocEcInteraction": "触发与交互",
     "docs.tocEcPayload": "捕获内容",
+    "docs.tocEcPreview": "预览与对比",
     "docs.tocScreenshot": "截图",
     "docs.tocShotModes": "两种模式",
     "docs.tocShotPreview": "预览与导出",
@@ -551,6 +627,7 @@ pnpm test             # vitest unit suite (security-critical pure modules)</pre>
     "docs.tocSkills": "Agent Skill",
     "docs.tocTools": "MCP 工具参考",
     "docs.tocToolsRec": "录制",
+    "docs.tocToolsElement": "元素捕获",
     "docs.tocToolsAct": "Action",
     "docs.tocToolsRules": "代理规则",
     "docs.tocToolsGw": "网关调用",
@@ -589,13 +666,14 @@ pnpm test             # vitest unit suite (security-critical pure modules)</pre>
     "docs.ui.popupLi5": "<strong>设置</strong>——打开侧边栏设置页。",
     "docs.ui.popupNote": "不支持的页面（<code>chrome://</code>、Chrome 商店）会被拒绝；<code>file://</code> 页面会提示先在 chrome://extensions 开启「允许访问文件网址」。",
     "docs.ui.panelH": "侧边栏",
-    "docs.ui.panelP": "<strong>接口录制</strong>、<strong>Action</strong>、<strong>安全沙箱</strong>三个标签页，右上角齿轮按钮展开下方设置视图。",
+    "docs.ui.panelP": "<strong>接口录制</strong>、<strong>Action</strong>、<strong>安全沙箱</strong>、<strong>页面采集</strong>标签页，右上角齿轮按钮展开下方设置视图。「页面采集」用底部分段栏聚合元素捕获、截图、GIF 录制三条流程的历史记录。",
     "docs.ui.settingsH": "设置",
     "docs.ui.settingsLi1": "<strong>语言</strong>——English / 中文，弹窗与侧边栏实时同步；默认跟随浏览器界面语言。",
     "docs.ui.settingsLi2": "<strong>连接器</strong>——实时桥接状态（已连接 / 连接中 / 未连接 / <em>认证失败</em>——最后一种的修复方式是重新复制安装提示词）。「工具」按钮展开<strong>按工具的 kill switch 列表</strong>：每个业务 MCP 工具都可单独关闭。",
     "docs.ui.settingsLi3": "<strong>关于</strong>——扩展版本 + Chrome 商店链接，以及配套 npm 包及其 npm registry 实时版本。",
 
     "docs.rec.h": "接口录制",
+    "docs.rec.p0": "<strong>使用场景</strong>：你想让 agent 在你已登录的站点里干活。边录制边把任务做一遍——提交一个表单、建一张工单、翻一页列表——捕获到的 API 调用链就是蓝图，agent 可以据此查看、学习并重放整个流程。",
     "docs.rec.p1": "在弹窗点 <em>开始</em>，正常操作网站，点 <em>结束</em>。MAIN world 注入脚本挂钩页面的 <code>fetch</code>/<code>XHR</code>（无 debugger 横幅），捕获每一条调用——含请求<strong>与</strong>响应——形成可本地查看的调用链，存入 IndexedDB。录制保存后系统通知会报告捕获条数。",
     "docs.rec.li1": "<strong>SSE 流</strong>（<code>text/event-stream</code>）经 <code>body.tee()</code> 增量捕获——页面自己的流完全不受影响。",
     "docs.rec.li2": "<strong>管理</strong>：录制可改名、删除、搜索；录制中弹窗与侧边栏同步显示呼吸灯 + 实时捕获计数。可从调用链中删除单条调用，不影响其余调用的等待时间。",
@@ -608,6 +686,7 @@ pnpm test             # vitest unit suite (security-critical pure modules)</pre>
     "docs.rec.redactP": "契约视图按方法 + 归一化路径合并调用（数字 id、UUID、长哈希折叠为 <code>:id</code>），并在字段名疑似敏感（password、token、authorization、cookie、apikey、csrf 等）或值疑似 JWT、长十六进制、base64 大块、邮箱时，把 Schema 示例脱敏为 <code>«redacted»</code>——录制内容可以放心交给 agent。",
 
     "docs.act.h": "Action",
+    "docs.act.p0": "<strong>使用场景</strong>：一切你原本要手工重复的事——每天早上建同一张工单、查一个订单状态、在两个后台之间搬运数据。录一次，把变化的部分参数化（id、关键词、日期），之后交给 agent 按需执行：带着你的登录态、以 API 的速度、零重复点击。",
     "docs.act.p1": "录制是素材，<strong>Action 是产物</strong>。<code>create_action</code> 把一段录制蒸馏为已保存、可参数化、可重放的流程：",
     "docs.act.li1": "<strong>params</strong>——运行时由 agent 填写的命名输入（如 <code>orderId</code>）。",
     "docs.act.li2": "<strong>steps</strong>——有序的 API 调用，每步从录制重新读取请求、再用模板覆写。",
@@ -616,6 +695,7 @@ pnpm test             # vitest unit suite (security-critical pure modules)</pre>
     "docs.act.p3": "侧边栏 <strong>Action 标签页</strong>是浏览 / 管理入口：搜索动作、查看声明的参数与步骤（类型、覆写数、等待毫秒）、确认后删除，以及<strong>复制安装提示词</strong>按钮。创建与执行始终走 MCP 工具——并经用户确认。",
 
     "docs.gw.h": "沙箱网关",
+    "docs.gw.p0": "<strong>使用场景</strong>：agent 需要一条你没录制过的调用——对已登录会话的临时查询、一个全新接口，或一段需要鉴权请求又不想硬编码 token 的脚本。agent 只提供 method/URL/body；说话的是你的 Cookie，且全程过你设定的关卡。",
     "docs.gw.p1": "<code>proxy_fetch</code> / <code>proxy_sse</code> 只接收 <code>method/url/headers/body</code>——不带任何凭证。扩展在转发时经 <code>chrome.cookies</code> + 短时效 <code>declarativeNetRequest</code> 规则注入浏览器 Cookie，Cookie 值永不到达 AI。",
     "docs.gw.p2": "每条转发调用都按顺序经过这些关卡：",
     "docs.gw.li1": "<strong>SSRF 防护</strong>——环回、私网、链路本地及云元数据地址（含 <code>169.254.169.254</code>）在任何域名策略之前被拒，对所有路径生效。",
@@ -635,24 +715,30 @@ pnpm test             # vitest unit suite (security-critical pure modules)</pre>
     "docs.gw.auditP": "每条转发调用都在本地留痕，带决策标签（已确认 / 自动放行 / 已拦截）与状态码。沙箱标签页提供 URL 搜索、<strong>导出日志文件</strong>，以及每行的复制操作——URL、响应、或重建的 <strong>cURL</strong>（注入的 Cookie 只以名称注释出现，永无值）。",
 
     "docs.ec.h": "元素捕获",
+    "docs.ec.p0": "<strong>使用场景</strong>：你需要给 agent——或你自己——一份忠实且结构化的 UI 副本。照着参考稿让 agent 复刻一个组件、带着精确计算值报一个样式 bug，或确认页面的两个状态之间到底改了什么。",
     "docs.ec.interactionH": "触发与交互",
     "docs.ec.p1": "从弹窗的「元素捕获」或快捷键 <span class=\"kbd\">Alt</span>+<span class=\"kbd\">Shift</span>+<span class=\"kbd\">I</span> 触发（<span class=\"kbd\">Esc</span> 退出）。DevTools 风格的覆盖层跟随光标：margin / border / padding / content 分色描边、flex 与 grid gap 高亮、尺寸角标。",
     "docs.ec.p2": "<strong>单击</strong>元素即捕获它及其全部可见子树；<strong>拖拽</strong>框选多个相交元素（最多 50 个，按 DOM 层级嵌套）。",
     "docs.ec.payloadH": "捕获内容",
     "docs.ec.p3": "捕获结果以 <strong>JSON 复制到剪贴板</strong>：tag / id / class、自身文本、源码位置（构建时注入的 文件 / 行 / 列）、视口矩形、约 40 项计算样式（剔除初始值与重复项）、以及实际生效的 CSS 自定义属性。直接粘贴给 agent 即可。",
+    "docs.ec.previewH": "预览与对比",
+    "docs.ec.p4": "每次捕获会打开一个<strong>预览页</strong>：元素树在 Shadow DOM 中重建，并内联捕获时刻的计算样式，因此渲染效果与页面上完全一致。工具栏提供四种复制目标——重建后的 <strong>HTML</strong>（含伪元素规则）、<strong>精简 JSON</strong>（与捕获剪贴板一致）、<strong>完整 JSON</strong>，以及包裹 HTML 的 <strong>Agent 提示词</strong>。",
+    "docs.ec.p5": "捕获还会保留一份小型<strong>历史记录</strong>（最近 20 条，超出淘汰最旧）。预览工具栏的「对比」下拉会列出其他记录，选中即打开<strong>左右并排的对比页</strong>：两个快照并排重建，下方以可折叠卡片列出属性级差异——悬停卡片可在两侧预览中定位高亮该节点。标题栏右侧带 git 风格差异标记（红色 <code>−</code> 删减、绿色 <code>+</code> 新增、蓝色 <code>~</code> 修改）。差异可复制为报告或 JSON，「返回」按钮回到发起对比的预览页。对比页由 URL 寻址，刷新后仍能恢复同一次对比。",
 
     "docs.shot.h": "截图",
+    "docs.shot.p0": "<strong>使用场景</strong>：需要看像素的时候——让 agent 直观看到页面渲染出的样子、给 bug 报告附上视觉证据，或把一份长文档 / 仪表盘整页存档。",
     "docs.shot.modesH": "两种模式",
     "docs.shot.li1": "<strong>窗口</strong>（可见区域）走 <code>captureVisibleTab</code>；<strong>整页</strong>走一次性 <code>chrome.debugger</code> + CDP <code>captureBeyondViewport</code>——与 DevTools「Capture full size screenshot」完全一致：单次渲染、不滚动、不改 DOM。「正在被调试」横幅只在捕获期间出现。",
     "docs.shot.li2": "超过 Chromium 16384px 捕获表面上限的页面会降采样以保完整（牺牲视网膜清晰度）。该标签页开着 DevTools 时整页捕获会报 <code>debugger-conflict</code> 提示——关掉 DevTools 重试。",
     "docs.shot.previewH": "预览与导出",
-    "docs.shot.p3": "<strong>不自动落盘</strong>：截图先开进预览标签页（点击缩放、复制图像、下载），所见即所得，由你决定去留。",
+    "docs.shot.p3": "<strong>不自动落盘</strong>：截图先开进预览标签页（点击缩放、复制图像、下载），所见即所得，由你决定去留。截图同时保留一份小型历史（最近 20 条），可在侧栏「页面采集」标签页查看。",
 
     "docs.gif.h": "GIF 录屏",
+    "docs.gif.p0": "<strong>使用场景</strong>：要展示的是过程而不是状态——复现一个动画 bug、记录一段多步交互操作，或给 agent 和同事一段屏幕上实际发生的「动图」。",
     "docs.gif.recordH": "录制",
     "docs.gif.p1": "弹窗里的<strong>录制 GIF</strong> 捕获当前标签页（离屏录制器，不受 MV3 service worker 休眠影响），支持暂停 / 继续 / 停止。",
     "docs.gif.exportH": "导出",
-    "docs.gif.p2": "停止后打开预览标签页，循环播放，并提供两种导出：<strong>下载 GIF</strong>（canvas 逐帧采样，带进度）与<strong>下载 MP4</strong>（WebCodecs 转码；转换失败时回退下载原始 WebM）。",
+    "docs.gif.p2": "停止后打开预览标签页，循环播放，并提供两种导出：<strong>下载 GIF</strong>（canvas 逐帧采样，带进度）与<strong>下载 MP4</strong>（WebCodecs 转码；转换失败时回退下载原始 WebM）。录制同样保留一份历史（最近 10 条），可在侧栏「页面采集」标签页查看。",
 
     "docs.skills.h": "Agent Skill",
     "docs.skills.p1": "仓库自带一个 Claude Code Skill（<code>@manta-action-kit/skills</code>），教你的 agent 使用整套工具——排障、环境检查、录制 / Action 工作流。装进任意项目：",
@@ -661,6 +747,8 @@ pnpm test             # vitest unit suite (security-critical pure modules)</pre>
     "docs.tools.h": "MCP 工具参考",
     "docs.tools.recH": "录制（读取 + 一个写入）",
     "docs.tools.recTable": "<table class=\"tools-table\"><tbody><tr><td><code>list_recordings</code></td><td>所有录制的元数据（id、名称、来源、创建时间、调用数）。</td></tr><tr><td><code>get_recording</code></td><td>单个录制 + 其完整 API 调用链（请求/响应/状态/耗时）。</td></tr><tr><td><code>get_flow</code></td><td>调用链：有序的轻量步骤 + 推断出的字段依赖关系。</td></tr><tr><td><code>get_endpoints</code></td><td>按方法 + 归一化路径去重的端点，请求/响应体为「脱敏 Schema」（含 <code>inputsFrom</code>）。</td></tr><tr><td><code>get_call</code></td><td>按 id 获取单个调用，含完整请求/响应体与请求头。</td></tr><tr><td><code>set_recording_description</code></td><td>写入录制的业务级流程摘要（唯一写入路径）。</td></tr></tbody></table>",
+    "docs.tools.ecH": "元素捕获（只读）",
+    "docs.tools.ecTable": "<table class=\"tools-table\"><tbody><tr><td><code>list_element_captures</code></td><td>已保存元素捕获快照的概要（id、url、标题、捕获时间、元素数）。</td></tr><tr><td><code>get_element_capture</code></td><td>单个捕获的完整元素树与计算样式——对元素构建方式的忠实、可直接喂给 LLM 的描述。</td></tr><tr><td><code>diff_element_captures</code></td><td>对比两份捕获：按 DOM 路径列出逐属性变化的文本报告，另附 <code>identical</code> 标志。</td></tr></tbody></table>",
     "docs.tools.actH": "Action",
     "docs.tools.actTable": "<table class=\"tools-table\"><tbody><tr><td><code>list_actions</code></td><td>所有已保存动作的概要（参数、步骤数）。</td></tr><tr><td><code>get_action</code></td><td>单个动作的完整定义（步骤、覆写、输出提取路径）。</td></tr><tr><td><code>search_actions</code></td><td>按关键词搜索动作名称/描述。</td></tr><tr><td><code>create_action</code></td><td>将一段录制蒸馏为可参数化的已保存动作（需用户确认）。</td></tr><tr><td><code>update_action</code></td><td>按 id 修改动作内容（需用户确认）。</td></tr><tr><td><code>delete_action</code></td><td>按 id 删除动作（需用户确认）。</td></tr><tr><td><code>execute_action</code></td><td>经网关端到端执行一个动作（注入 Cookie，按 host 逐个确认）。</td></tr></tbody></table>",
     "docs.tools.ruleH": "代理规则（脚本网关）",

@@ -306,6 +306,58 @@ export interface ActionRunResult {
 }
 
 // ---------------------------------------------------------------------------
+// Inspector capture (element snapshots)
+// ---------------------------------------------------------------------------
+
+/**
+ * One captured DOM node as the in-page element capture ("inspector capture")
+ * serializes it: tag/attrs/text plus computed styles, so the preview tab can
+ * rebuild the element 1:1 and the JSON doubles as an LLM-ready description.
+ * Styles carry only entries that differ from the CSS initial value / tree
+ * parent — inheritance and initial values reconstruct the rest.
+ */
+export interface ElementDescription {
+  tag: string;
+  id?: string;
+  classes?: string[];
+  text?: string;
+  /** Small high-signal attribute whitelist (form state, links, a11y hints). */
+  attrs?: Record<string, string>;
+  /** Source location from compiler-injected data attributes, when present. */
+  source?: { file: string; line?: number; column?: number };
+  /** Element viewport rect in CSS px at capture time. */
+  rect: { x: number; y: number; w: number; h: number };
+  /** Entries that differ from the CSS initial value / tree parent. */
+  styles?: Record<string, string>;
+  cssVars?: Record<string, string>;
+  /**
+   * Full computed styles (every non-empty property, resolved values) for
+   * pixel-fidelity preview rebuilding. Present only in the stored payload —
+   * stripped from the clipboard/lean JSON copies.
+   */
+  fullStyles?: Record<string, string>;
+  /**
+   * Computed styles of ::before / ::after decorations that actually render
+   * content, so icon/decoration pseudos survive the rebuild.
+   */
+  pseudo?: { before?: Record<string, string>; after?: Record<string, string> };
+  /** Untruncated own text, present when `text` was clipped at 80 chars. */
+  textFull?: string;
+  children?: ElementDescription[];
+}
+
+/** Full payload for one element-capture run (one IndexedDB history entry). */
+export interface InspectorCapturePayload {
+  type: 'inspector-capture';
+  page: { url: string; title: string };
+  capturedAt: string;
+  /** Box-selection rect, or "click" for a click-pick. */
+  selection: { x: number; y: number; w: number; h: number } | 'click';
+  elementCount: number;
+  elements: ElementDescription[];
+}
+
+// ---------------------------------------------------------------------------
 // RPC methods + per-method param/result shapes
 // ---------------------------------------------------------------------------
 
@@ -317,6 +369,9 @@ export type RpcMethod =
   | 'get_flow'
   | 'get_endpoints'
   | 'set_recording_description'
+  | 'list_element_captures'
+  | 'get_element_capture'
+  | 'diff_element_captures'
   | 'proxy_fetch'
   | 'proxy_sse'
   | 'proxy_rule'
@@ -378,6 +433,35 @@ export interface RpcMap {
   set_recording_description: {
     params: { id: string; description: string };
     result: { recording: Recording | null };
+  };
+  /**
+   * Agent-facing: list saved element captures (newest first), summaries only —
+   * get_element_capture fetches the full snapshot.
+   */
+  list_element_captures: {
+    params: void;
+    result: {
+      captures: {
+        id: string;
+        url: string;
+        title: string;
+        capturedAt: string;
+        elementCount: number;
+      }[];
+    };
+  };
+  /** Agent-facing: fetch one element capture's full payload (styles included). */
+  get_element_capture: {
+    params: { id: string };
+    result: { capture: InspectorCapturePayload | null };
+  };
+  /**
+   * Agent-facing: diff two element captures. Returns a preformatted text report
+   * (property-level A/B changes per DOM path) — agent-friendly, no JSON dance.
+   */
+  diff_element_captures: {
+    params: { a: string; b: string };
+    result: { report: string; identical: boolean };
   };
   /**
    * Forward one API call through the extension with the user's cookies injected.
@@ -674,6 +758,9 @@ export const TOOL_REGISTRY: ToolInfo[] = [
   { method: 'get_endpoints', group: 'read', sensitive: false },
   { method: 'get_call', group: 'read', sensitive: false },
   { method: 'set_recording_description', group: 'read', sensitive: false },
+  { method: 'list_element_captures', group: 'read', sensitive: false },
+  { method: 'get_element_capture', group: 'read', sensitive: false },
+  { method: 'diff_element_captures', group: 'read', sensitive: false },
   { method: 'proxy_fetch', group: 'gateway', sensitive: true },
   { method: 'proxy_sse', group: 'gateway', sensitive: true },
   { method: 'list_proxy_rules', group: 'gateway', sensitive: false },

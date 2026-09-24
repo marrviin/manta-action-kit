@@ -41,3 +41,24 @@ export interface ScreenshotPreview {
   dataUrl: string;
   filename: string;
 }
+
+/**
+ * One screenshot in the persisted `screenshotHistory` IndexedDB store (v13).
+ * The capture flow still uses the session handoff above; the history record
+ * is written alongside it (fire-and-forget) so the side-panel capture tab can
+ * list and re-open past captures.
+ */
+export interface ScreenshotHistoryEntry {
+  id: string;
+  dataUrl: string;
+  filename: string;
+  /** Epoch ms at capture time; eviction + "newest first" ordering. */
+  createdAt: number;
+}
+
+/** List-view projection of `ScreenshotHistoryEntry` — no dataUrl payload. */
+export interface ScreenshotHistoryMeta {
+  id: string;
+  filename: string;
+  createdAt: number;
+}

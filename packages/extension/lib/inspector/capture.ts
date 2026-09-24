@@ -532,9 +532,51 @@ function intersects(r: DOMRect, box: Box) {
 }
 
 function elementAt(x: number, y: number): Element | null {
-  const el = document.elementFromPoint(x, y);
+  const el = descendShadowRoots(document.elementFromPoint(x, y), x, y);
   if (!el || el.closest(`[${UI_MARKER}]`)) return null;
   return el;
+}
+
+/**
+ * Reach into shadow roots: micro-app shadowDOM mode, web components etc. hide
+ * their content behind a host element, and a plain elementFromPoint only ever
+ * returns that host. Descend host-by-host while the hit keeps landing inside
+ * a shadow root; fall back to the host itself when the root has no hit at the
+ * point (e.g. its own padding/border). Viewport coordinates are valid for
+ * every DocumentOrShadowRoot, so no offset math is needed.
+ */
+function descendShadowRoots(
+  el: Element | null,
+  x: number,
+  y: number,
+): Element | null {
+  if (!el) return el;
+  const root = shadowRootOf(el);
+  if (!root) return el;
+  return descendShadowRoots(root.elementFromPoint(x, y), x, y) ?? el;
+}
+
+/**
+ * Shadow root accessor that also reaches CLOSED roots: `chrome.dom` is
+ * available in extension content scripts (Chrome 90+), open roots work
+ * everywhere; on engines without it we degrade to open roots only.
+ */
+function shadowRootOf(host: Element): ShadowRoot | null {
+  const dom = (
+    globalThis as unknown as { chrome?: { dom?: ChromeDomNs } }
+  ).chrome?.dom;
+  try {
+    return dom?.openOrClosedShadowRoot
+      ? dom.openOrClosedShadowRoot(host)
+      : (host.shadowRoot ?? null);
+  } catch {
+    return host.shadowRoot ?? null;
+  }
+}
+
+/** Minimal structural type for the `chrome.dom` namespace. */
+interface ChromeDomNs {
+  openOrClosedShadowRoot?: (host: Element) => ShadowRoot;
 }
 
 // ---------- capture ----------
@@ -559,16 +601,46 @@ function describeSubtree(
   const cs = getComputedStyle(el);
   const entry = describeElement(el, parentCs, cs);
   const children: ElementDescription[] = [];
-  for (const child of el.children) {
-    if (child.hasAttribute(UI_MARKER)) continue;
-    if (!isVisible(child)) continue;
-    const r = child.getBoundingClientRect();
-    if (r.width < 1 && r.height < 1) continue;
-    const c = describeSubtree(child, budget, cs);
-    if (c) children.push(c);
+  // Shadow content is FLATTENED into `children`: the preview rebuilds the
+  // tree from ElementDescription.children, so a host's shadow children are
+  // rebuilt as its direct children (computed styles are per-element anyway).
+  // Inheritance stays correct because the shadow child's parentCs is the
+  // host's cs — the same chain the real style system uses across the boundary.
+  const childLists: Element[][] = [el.children as unknown as Element[]];
+  const root = shadowRootOf(el);
+  if (root) childLists.push(root.children as unknown as Element[]);
+  for (const list of childLists) {
+    for (const child of list) {
+      if (child.hasAttribute(UI_MARKER)) continue;
+      if (!isVisible(child)) continue;
+      const r = child.getBoundingClientRect();
+      if (r.width < 1 && r.height < 1) continue;
+      const c = describeSubtree(child, budget, cs);
+      if (c) children.push(c);
+    }
   }
   if (children.length) entry.children = children;
   return entry;
+}
+
+/**
+ * Composed-tree ancestor test: `contains()` returns false across a shadow
+ * boundary (different trees), so walk the composed parent chain
+ * (`parentElement`, hopping through `ShadowRoot.host`) instead.
+ */
+function composedContains(ancestor: Element, el: Element): boolean {
+  let cur: Element | null = composedParent(el);
+  while (cur) {
+    if (cur === ancestor) return true;
+    cur = composedParent(cur);
+  }
+  return false;
+}
+
+/** Parent in the composed tree: shadow children parent to the host. */
+function composedParent(el: Element): Element | null {
+  const root = el.getRootNode();
+  return root instanceof ShadowRoot ? root.host : el.parentElement;
 }
 
 /**
@@ -584,7 +656,10 @@ function nestAsForest(els: Element[]): ElementDescription[] {
     cs: CSSStyleDeclaration;
   }[] = [];
   for (const el of els) {
-    while (stack.length && !stack[stack.length - 1]!.el.contains(el))
+    while (
+      stack.length &&
+      !composedContains(stack[stack.length - 1]!.el, el)
+    )
       stack.pop();
     const parent = stack[stack.length - 1];
     const cs = getComputedStyle(el);
@@ -608,15 +683,28 @@ function countNodes(elements: ElementDescription[]): number {
 function collectIntersecting(box: Box): Element[] {
   const tagged: Element[] = [];
   const leaves: Element[] = [];
-  for (const el of document.querySelectorAll("body *")) {
+  // Queue traversal instead of `querySelectorAll("body *")` so shadow trees
+  // are covered: a host's shadowRoot children are enqueued after its light
+  // children. The overlay UI lives in the light DOM only, so the marker check
+  // cannot be true for shadow nodes (closest doesn't cross the boundary) —
+  // harmless to run anyway.
+  const queue: Element[] = [...document.body.children];
+  for (let i = 0; i < queue.length && i < 50_000; i++) {
+    const el = queue[i]!;
     if (el.closest(`[${UI_MARKER}]`)) continue;
     const cs = getComputedStyle(el);
     if (cs.display === "none" || cs.visibility === "hidden") continue;
     const r = el.getBoundingClientRect();
     if (r.width < 1 && r.height < 1) continue;
     if (!intersects(r, box)) continue;
+    // A shadow host with no light children still counts as a "leaf" here: its
+    // own background/border renders, and nestAsForest re-nests its shadow
+    // children beneath it via the composed tree.
     if (el.hasAttribute(ATTR_PATH)) tagged.push(el);
     else if (el.children.length === 0) leaves.push(el);
+    for (const child of el.children) queue.push(child);
+    const root = shadowRootOf(el);
+    if (root) for (const child of root.children) queue.push(child);
   }
   return (tagged.length ? tagged : leaves).slice(0, MAX_ELEMENTS);
 }

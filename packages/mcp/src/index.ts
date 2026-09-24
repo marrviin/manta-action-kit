@@ -213,6 +213,89 @@ server.registerTool(
 );
 
 server.registerTool(
+  "list_element_captures",
+  {
+    title: "List element captures",
+    description:
+      "List saved element-capture snapshots taken by the Manta Action Kit Chrome extension's in-page inspector (metadata only: id, url, title, capturedAt, elementCount). Each snapshot is a structured, LLM-ready description of a DOM element the user visually picked or boxed on a page — tag/attrs/text plus computed styles. Use list_element_captures to find ids, get_element_capture for the full tree, diff_element_captures to compare two snapshots (e.g. the same component captured in two contexts).",
+    inputSchema: {},
+  },
+  async () => {
+    try {
+      const res = (await call(
+        "list_element_captures",
+        undefined,
+      )) as RpcResults["list_element_captures"];
+      return jsonContent(res.captures);
+    } catch (err) {
+      return errorContent(err);
+    }
+  },
+);
+
+server.registerTool(
+  "get_element_capture",
+  {
+    title: "Get element capture detail",
+    description:
+      "Get one element-capture snapshot in full: the nested element tree with computed styles, pseudo-element styles and viewport rects — a faithful description of how the element is built, suitable for analyzing styles, replicating the component in code, or feeding a fix suggestion back to the user. Use list_element_captures first to find the id.",
+    inputSchema: {
+      id: z
+        .string()
+        .describe("The element-capture id (from list_element_captures)."),
+    },
+  },
+  async ({ id }) => {
+    try {
+      const res = (await call("get_element_capture", {
+        id,
+      })) as RpcResults["get_element_capture"];
+      if (!res.capture)
+        return errorContent(`No element capture found with id "${id}".`);
+      return jsonContent(res);
+    } catch (err) {
+      return errorContent(err);
+    }
+  },
+);
+
+server.registerTool(
+  "diff_element_captures",
+  {
+    title: "Diff element captures",
+    description:
+      "Diff two saved element-capture snapshots and return a preformatted TEXT report of property-level changes (text/styles/pseudo-elements per DOM path, A vs B) plus an `identical` flag. Typical use: the user captured the same component twice — before/after a change, or in two contexts (standalone vs embedded, page A vs page B) — and wants to know exactly which styles differ. Nodes are aligned by document order, so big structural changes between the two captures can produce noisy output.",
+    inputSchema: {
+      a: z
+        .string()
+        .describe("Id of the first (older / baseline) capture — from list_element_captures."),
+      b: z
+        .string()
+        .describe("Id of the second (newer / changed) capture — from list_element_captures."),
+    },
+  },
+  async ({ a, b }) => {
+    try {
+      const res = (await call("diff_element_captures", {
+        a,
+        b,
+      })) as RpcResults["diff_element_captures"];
+      return {
+        content: [
+          { type: "text" as const, text: res.report },
+          {
+            type: "text" as const,
+            text: `identical: ${res.identical}`,
+          },
+        ],
+      };
+    } catch (err) {
+      return errorContent(err);
+    }
+  },
+);
+
+server.registerTool(
   "set_recording_description",
   {
     title: "Set recording description",
