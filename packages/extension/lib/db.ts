@@ -10,6 +10,11 @@
  *     indexed by recordingId so deleting a recording cascades to its actions).
  *  - `gifDrafts`: recorded WebM blobs awaiting GIF conversion in the preview
  *     tab (v11, keyed by fixed id "latest" — each recording replaces the last).
+ *  - `inspectorCaptures`: element-capture handoffs between the capture flow
+ *    and the preview tabs (v12, fixed ids "preview" / "baseline" / "diffPair").
+ *    IndexedDB instead of session storage: full snapshots with per-node
+ *    computed styles can blow past the ~10MB session quota; IDB has no such
+ *    ceiling, so the payload never needs to be degraded to a lean form.
  *
  * The `cookieRules` / `cachedCookies` stores (v2) were removed in v4; the
  * `gatewayDomains` store (v3) was removed in v7 when the domain-whitelist model
@@ -22,12 +27,18 @@ import type { ApiCall, Recording } from "./recording/types";
 import type { GatewayLog, GatewayProxyRule } from "./gateway/types";
 import type { Action } from "./action/types";
 import type { GifDraft } from "./gif-recording/types";
+import type {
+  InspectorCapturePayload,
+  InspectorDiffPair,
+} from "./inspector/types";
 
 const DB_NAME = "manta-action-kit";
 // v9: replay feature removed; drop the replayRuns store (added in v8).
 // v10: action feature; new `actions` store (agent-authored replayable sequences).
 // v11: GIF recording; new `gifDrafts` store (recorded WebM awaiting conversion).
-const DB_VERSION = 11;
+// v12: inspector capture; new `inspectorCaptures` store (preview/baseline/diffPair
+// handoffs — IndexedDB, not session storage, so large snapshots are never degraded).
+const DB_VERSION = 12;
 const STORE_RECORDINGS = "recordings";
 const STORE_CALLS = "calls";
 const STORE_COOKIE_RULES = "cookieRules";
@@ -40,6 +51,8 @@ const STORE_GATEWAY_PROXY_RULES = "gatewayProxyRules";
 const STORE_ACTIONS = "actions";
 // v11: recorded WebM blobs awaiting GIF conversion in the preview tab.
 const STORE_GIF_DRAFTS = "gifDrafts";
+// v12: inspector element-capture handoffs (fixed ids, latest-wins per id).
+const STORE_INSPECTOR_CAPTURES = "inspectorCaptures";
 // Retired in v9 (replay feature removed). Kept only to delete the store on upgrade.
 const STORE_REPLAY_RUNS = "replayRuns";
 
@@ -99,6 +112,10 @@ function openDb(): Promise<IDBDatabase> {
       // v11: GIF recording. New store starts empty; no data migration.
       if (!db.objectStoreNames.contains(STORE_GIF_DRAFTS)) {
         db.createObjectStore(STORE_GIF_DRAFTS, { keyPath: "id" });
+      }
+      // v12: inspector capture handoffs. New store starts empty; no data migration.
+      if (!db.objectStoreNames.contains(STORE_INSPECTOR_CAPTURES)) {
+        db.createObjectStore(STORE_INSPECTOR_CAPTURES, { keyPath: "id" });
       }
       // v4: cookie-cache feature removed. Drop its stores so any previously
       // cached cookie values (incl. HttpOnly) are erased from disk.
@@ -519,4 +536,94 @@ export async function deleteGifDraft(id: string): Promise<void> {
     t.onerror = () => reject(t.error);
     t.objectStore(STORE_GIF_DRAFTS).delete(id);
   });
+}
+
+// ---------------------------------------------------------------------------
+// Inspector captures — element-capture handoffs (v12)
+// ---------------------------------------------------------------------------
+
+/** Fixed ids in the `inspectorCaptures` store (latest-wins per id). */
+export type InspectorCaptureId = "preview" | "baseline" | "diffPair";
+
+/**
+ * Store an inspector element capture under a fixed id ("preview" = the latest
+ * capture for the element preview tab, "baseline" = the pinned diff baseline).
+ * Overwrites the previous value. Unlike the old session-storage handoff, IDB
+ * has no ~10MB quota, so the FULL snapshot (with per-node computed styles)
+ * always fits — no lean degradation, no silently missing preview.
+ */
+export async function saveInspectorCapture(
+  id: Extract<InspectorCaptureId, "preview" | "baseline">,
+  payload: InspectorCapturePayload,
+): Promise<void> {
+  const db = await openDb();
+  await new Promise<void>((resolve, reject) => {
+    const t = tx(db, [STORE_INSPECTOR_CAPTURES], "readwrite");
+    t.oncomplete = () => resolve();
+    t.onerror = () => reject(t.error);
+    t.objectStore(STORE_INSPECTOR_CAPTURES).put({ id, value: payload });
+  });
+}
+
+/** Read back a capture stored by `saveInspectorCapture`. */
+export async function getInspectorCapture(
+  id: Extract<InspectorCaptureId, "preview" | "baseline">,
+): Promise<InspectorCapturePayload | undefined> {
+  const db = await openDb();
+  const rec = (await reqToPromise(
+    tx(db, [STORE_INSPECTOR_CAPTURES], "readonly")
+      .objectStore(STORE_INSPECTOR_CAPTURES)
+      .get(id) as IDBRequest<
+      { id: string; value: InspectorCapturePayload } | undefined
+    >,
+  )) as { value: InspectorCapturePayload } | undefined;
+  return rec?.value;
+}
+
+/** Drop a capture (e.g. the one-shot baseline after the background pairs it). */
+export async function deleteInspectorCapture(
+  id: InspectorCaptureId,
+): Promise<void> {
+  const db = await openDb();
+  await new Promise<void>((resolve, reject) => {
+    const t = tx(db, [STORE_INSPECTOR_CAPTURES], "readwrite");
+    t.oncomplete = () => resolve();
+    t.onerror = () => reject(t.error);
+    t.objectStore(STORE_INSPECTOR_CAPTURES).delete(id);
+  });
+}
+
+/**
+ * Store a complete comparison (baseline A + fresh capture B) under the fixed
+ * "diffPair" id. Kept after reading — refreshing the diff tab restores the
+ * same comparison; the next comparison overwrites it.
+ */
+export async function saveInspectorDiffPair(
+  pair: InspectorDiffPair,
+): Promise<void> {
+  const db = await openDb();
+  await new Promise<void>((resolve, reject) => {
+    const t = tx(db, [STORE_INSPECTOR_CAPTURES], "readwrite");
+    t.oncomplete = () => resolve();
+    t.onerror = () => reject(t.error);
+    t.objectStore(STORE_INSPECTOR_CAPTURES).put({
+      id: "diffPair",
+      value: pair,
+    });
+  });
+}
+
+/** Read back the diff pair stored by `saveInspectorDiffPair`. */
+export async function getInspectorDiffPair(): Promise<
+  InspectorDiffPair | undefined
+> {
+  const db = await openDb();
+  const rec = (await reqToPromise(
+    tx(db, [STORE_INSPECTOR_CAPTURES], "readonly")
+      .objectStore(STORE_INSPECTOR_CAPTURES)
+      .get("diffPair") as IDBRequest<
+      { id: string; value: InspectorDiffPair } | undefined
+    >,
+  )) as { value: InspectorDiffPair } | undefined;
+  return rec?.value;
 }

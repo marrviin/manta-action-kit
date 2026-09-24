@@ -69,6 +69,28 @@ export const en = {
     gifSaved: "GIF downloaded",
     gifEncodeFailed: "GIF encoding failed",
     gifDraftNotFound: "Recording data not found or expired. Record a new GIF.",
+    elementNotFound:
+      "Element capture data not found or expired. Capture again.",
+    copyHtml: "Copy HTML",
+    copyLeanJson: "Lean JSON",
+    copyFullJson: "Full JSON",
+    copyAgent: "Agent prompt",
+    copy: "Copy",
+    agentPrompt:
+      'Recreate the UI element below so it matches this reference visually and structurally. It was captured from "{{title}}" ({{url}}). Every node in the HTML has its full computed styles inlined from capture time — do NOT copy those inline styles verbatim; instead derive clean semantic HTML and CSS rules that reproduce the same look. Pay attention to custom properties, pseudo-element rules (in the <style> block) and exact pixel sizes.\n\n{{html}}',
+    pinBaseline: "Compare",
+    pinned:
+      "Pinned as baseline — the next capture anywhere opens the diff view",
+    pinFailed: "Failed to pin baseline",
+    diffMissing:
+      "Comparison data not found or expired. Pin a baseline first, then capture again.",
+    noDiff: "No differences — the two captures are identical.",
+    copyDiff: "Copy diff",
+    copyDiffJson: "Diff JSON",
+    diffCount: "{{count}} difference(s)",
+    diffOnlyA: "Only in A",
+    diffOnlyB: "Only in B",
+    toggleBackdrop: "Backdrop",
   },
   home: {
     apiRecording: "API Recording",

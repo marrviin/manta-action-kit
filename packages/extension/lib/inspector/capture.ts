@@ -21,6 +21,14 @@
  * is not wired here; strings are few and inline.
  */
 
+import {
+  ATTR_WHITELIST,
+  type ElementDescription,
+  type InspectorCapturePayload,
+} from "./types";
+import { leanElement } from "./lean";
+import { sendMessage } from "@/lib/messaging";
+
 /** Message type that toggles capture mode (popup -> content script, per-tab). */
 export const TOGGLE_INSPECTOR_CAPTURE = "TOGGLE_INSPECTOR_CAPTURE";
 
@@ -138,21 +146,31 @@ const INHERITED_PROPS = new Set([
   "cursor",
 ]);
 
-const MAX_ELEMENTS = 50;
+// Caps the captured subtree size. Every node carries its full computed-style
+// map (~300-400 properties), so this drives payload size roughly linearly:
+// 1000 nodes ≈ 20-100MB of JSON. The payload no longer travels through
+// runtime.sendMessage (its ~64MB structured-clone cap is what used to cap
+// this constant): it goes postMessage -> inspector-bridge iframe ->
+// IndexedDB, neither of which has that ceiling. The clipboard copy stays
+// lean (fullStyles/pseudo/textFull stripped), so it remains small.
+const MAX_ELEMENTS = 1000;
 const DRAG_THRESHOLD = 4;
 
 const L = navigator.language.startsWith("zh")
   ? {
-      hint: "选择要捕获的元素，结果复制到剪贴板",
+      hint: "选择要捕获的元素，结果复制到剪贴板并打开预览",
       exit: "点击任意处或按 Esc 退出",
       none: "未捕获到任何元素",
       copyFailed: "复制失败，JSON 已打印到控制台",
+      previewFailed: "预览打开失败，捕获结果已复制到剪贴板",
     }
   : {
-      hint: "Select an element to capture; the result is copied to the clipboard",
+      hint: "Select an element to capture; the result is copied to the clipboard and opened in a preview tab",
       exit: "Click anywhere or press Esc to exit",
       none: "No elements captured",
       copyFailed: "Copy failed; JSON printed to the console",
+      previewFailed:
+        "Failed to open the preview; the capture is on the clipboard",
     };
 
 interface Box {
@@ -186,19 +204,6 @@ interface SimpleRect {
   y: number;
   width: number;
   height: number;
-}
-
-interface ElementDescription {
-  tag: string;
-  id?: string;
-  classes?: string[];
-  text?: string;
-  source?: { file: string; line?: number; column?: number };
-  rect: { x: number; y: number; w: number; h: number };
-  /** Only entries that differ from the CSS initial value / tree parent. */
-  styles?: Record<string, string>;
-  cssVars?: Record<string, string>;
-  children?: ElementDescription[];
 }
 
 let active = false;
@@ -643,6 +648,41 @@ function collectCssVars(
 
 const VAR_REF_RE = /var\(\s*(--[\w-]+)/g;
 
+/**
+ * Every non-empty computed property (resolved values, no trimming) — the
+ * preview inlines these per node so the rebuild needs neither inheritance
+ * nor the capture-time dedup and still matches the original pixel-for-pixel.
+ */
+function fullStyleMap(cs: CSSStyleDeclaration): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (let i = 0; i < cs.length; i++) {
+    const prop = cs.item(i);
+    if (!prop || prop.startsWith("--")) continue;
+    const v = cs.getPropertyValue(prop).trim();
+    if (v) out[prop] = v;
+  }
+  return out;
+}
+
+/**
+ * Computed styles of ::before / ::after when they actually render content
+ * (icon glyphs, decorations). Without them, pseudo-driven visuals would be
+ * silently missing from the preview.
+ */
+function collectPseudoStyles(el: Element): ElementDescription["pseudo"] {
+  const before = getComputedStyle(el, "::before");
+  const after = getComputedStyle(el, "::after");
+  const bc = before.getPropertyValue("content").trim();
+  const ac = after.getPropertyValue("content").trim();
+  const hasBefore = !!bc && bc !== "none" && bc !== "normal";
+  const hasAfter = !!ac && ac !== "none" && ac !== "normal";
+  if (!hasBefore && !hasAfter) return undefined;
+  const out: NonNullable<ElementDescription["pseudo"]> = {};
+  if (hasBefore) out.before = fullStyleMap(before);
+  if (hasAfter) out.after = fullStyleMap(after);
+  return out;
+}
+
 function extractVarRefs(text: string, out: Set<string>): void {
   VAR_REF_RE.lastIndex = 0;
   let m: RegExpExecArray | null;
@@ -728,12 +768,12 @@ function describeElement(
     styles[prop] = v;
   }
   const cssVars = collectCssVars(el, cs);
-  const ownText = [...el.childNodes]
+  const ownTextFull = [...el.childNodes]
     .filter((n) => n.nodeType === Node.TEXT_NODE)
     .map((n) => n.textContent?.trim() ?? "")
     .join(" ")
-    .replace(/\s+/g, " ")
-    .slice(0, 80);
+    .replace(/\s+/g, " ");
+  const ownText = ownTextFull.slice(0, 80);
   const file = el.getAttribute(ATTR_PATH);
   const entry: ElementDescription = {
     tag: el.tagName.toLowerCase(),
@@ -754,8 +794,42 @@ function describeElement(
       h: Math.round(r.height),
     },
   };
+  const attrs: Record<string, string> = {};
+  // SVG elements (icons, shapes) are attribute-driven — `d`, `viewBox`,
+  // `fill`… are not covered by the whitelist, so capture ALL of them, or the
+  // preview renders empty graphics.
+  if (el instanceof SVGElement) {
+    for (const attr of el.attributes) {
+      attrs[attr.name] = attr.value;
+    }
+  } else {
+    for (const name of ATTR_WHITELIST) {
+      const v = el.getAttribute(name);
+      if (v == null || v === "") continue;
+      attrs[name] = v;
+    }
+  }
+  // Relative src/href would break outside the original page — resolve them
+  // to absolute URLs so the preview (and the clipboard JSON) are portable.
+  for (const name of ["src", "href", "xlink:href"]) {
+    const v = attrs[name];
+    if (v && !/^(data:|blob:|[a-z+]+:)/i.test(v)) {
+      try {
+        attrs[name] = new URL(v, location.href).href;
+      } catch {
+        /* keep the raw value */
+      }
+    }
+  }
+  if (Object.keys(attrs).length) entry.attrs = attrs;
   if (Object.keys(styles).length) entry.styles = styles;
   if (Object.keys(cssVars).length) entry.cssVars = cssVars;
+  // Preview-only bulk: the full resolved styles + pseudo decorations + the
+  // unclipped text. Stripped from the clipboard/lean copies by `leanElement`.
+  entry.fullStyles = fullStyleMap(cs);
+  const pseudo = collectPseudoStyles(el);
+  if (pseudo) entry.pseudo = pseudo;
+  if (ownTextFull.length > 80) entry.textFull = ownTextFull;
   return entry;
 }
 
@@ -765,7 +839,7 @@ function runCapture(elements: ElementDescription[], box: Box | null) {
     toast(L.none);
     return;
   }
-  const payload = {
+  const payload: InspectorCapturePayload = {
     type: "inspector-capture",
     page: { url: location.href, title: document.title },
     capturedAt: new Date().toISOString(),
@@ -775,14 +849,89 @@ function runCapture(elements: ElementDescription[], box: Box | null) {
     elementCount: countNodes(elements),
     elements,
   };
-  // Minified for the clipboard (token-lean); the console still gets the object
-  // itself, which DevTools pretty-prints for human debugging.
-  const json = JSON.stringify(payload);
-  console.log("[inspector-capture]", payload);
+  // Minified lean JSON for the clipboard (token-lean); the console logs the
+  // same lean object, which DevTools pretty-prints for human debugging.
+  const lean = { ...payload, elements: payload.elements.map(leanElement) };
+  const json = JSON.stringify(lean);
+  console.log("[inspector-capture]", lean);
   // Success is silent (no toast) — the overlay is already gone; only surface a
   // toast when the copy actually fails so the user is not left guessing.
   copyText(json).then((ok) => {
     if (!ok) toast(L.copyFailed);
+  });
+  // Fire-and-forget: the payload travels to the extension's IndexedDB via the
+  // inspector-bridge iframe (see handoffToBridge below), which then pings the
+  // background to open the preview tab. A failure here must never disturb the
+  // capture itself — it only toasts (the clipboard copy already succeeded).
+  void handoffToBridge(payload);
+}
+
+/**
+ * Hand the full capture payload to the extension's IndexedDB through a hidden
+ * extension-origin iframe (entrypoints/inspector-bridge). Two reasons this
+ * hop exists at all:
+ *
+ *  - A content script's `indexedDB` is scoped to the PAGE's origin — it
+ *    cannot reach the extension's own database.
+ *  - `runtime.sendMessage` clones one message with a ~64MB ceiling, which a
+ *    large capture can exceed. `postMessage` to the bridge has no such cap;
+ *    the bridge writes the record itself and pings the background
+ *    (INSPECTOR_CAPTURE_PREVIEW_READY) to open the preview tab.
+ *
+ * Strictly fire-and-forget: resolves (never rejects) once the chain is
+ * settled, and toasts `L.previewFailed` on failure or on a 15s timeout (e.g.
+ * the bridge failed to load), so the user is never left guessing.
+ */
+async function handoffToBridge(
+  payload: InspectorCapturePayload,
+): Promise<void> {
+  // Mint a one-shot token first: the bridge is embeddable by any web page,
+  // so it cannot trust postMessage alone. A token minted over
+  // runtime.sendMessage (page scripts can't send those) and verified by the
+  // background before the IDB write is what proves this is a real capture.
+  let token: string | undefined;
+  try {
+    ({ token } = await sendMessage("INSPECTOR_BRIDGE_MINT_TOKEN", undefined));
+  } catch (err) {
+    console.warn("[inspector-capture] bridge token mint failed", err);
+  }
+  if (!token) {
+    toast(L.previewFailed);
+    return;
+  }
+  const bridgeUrl = browser.runtime.getURL("/inspector-bridge.html");
+  return new Promise<void>((resolve) => {
+    const iframe = document.createElement("iframe");
+    iframe.setAttribute(UI_MARKER, "1");
+    iframe.src = bridgeUrl;
+    iframe.style.cssText =
+      "position:fixed;top:0;left:0;width:0;height:0;border:0;visibility:hidden;";
+    let settled = false;
+    const finish = (ok: boolean) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timer);
+      window.removeEventListener("message", onMessage);
+      iframe.remove();
+      if (!ok) toast(L.previewFailed);
+      resolve();
+    };
+    const timer = window.setTimeout(() => finish(false), 15_000);
+    const onMessage = (e: MessageEvent) => {
+      if (e.source !== iframe.contentWindow) return;
+      const msg = e.data as { type?: string; ok?: boolean };
+      if (msg?.type === "inspector-bridge-ready") {
+        // targetOrigin = the bridge's own origin; nothing else can read it.
+        iframe.contentWindow?.postMessage(
+          { type: "inspector-bridge-save", payload, token },
+          bridgeUrl,
+        );
+      } else if (msg?.type === "inspector-bridge-saved") {
+        finish(msg.ok === true);
+      }
+    };
+    window.addEventListener("message", onMessage);
+    document.documentElement.appendChild(iframe);
   });
 }
 

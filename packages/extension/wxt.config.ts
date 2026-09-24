@@ -56,6 +56,14 @@ export default defineConfig({
         resources: ["injected-api-hook.js"],
         matches: ["<all_urls>"],
       },
+      {
+        // Hidden iframe the inspector content script injects to hand large
+        // capture payloads into the extension's IndexedDB (the content
+        // script's own indexedDB belongs to the PAGE's origin). See
+        // entrypoints/inspector-bridge/ and lib/inspector/capture.ts.
+        resources: ["inspector-bridge.html"],
+        matches: ["<all_urls>"],
+      },
     ],
     action: {
       default_title: "__MSG_actionTitle__",

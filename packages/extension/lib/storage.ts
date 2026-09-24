@@ -90,10 +90,9 @@ export const settings = {
    * Sandbox denylist domains. Requests to these hosts are refused before any
    * other check. Deny wins over allow when a host matches both lists.
    */
-  gatewayDenyDomains: storage.defineItem<string[]>(
-    "local:gatewayDenyDomains",
-    { fallback: [] },
-  ),
+  gatewayDenyDomains: storage.defineItem<string[]>("local:gatewayDenyDomains", {
+    fallback: [],
+  }),
 
   /**
    * Whether every sandbox call requires the extension-side confirmation popup
@@ -165,10 +164,7 @@ export const recordingFilterRules = storage.defineItem<RecordingFilterRule[]>(
  * and updating the MCP config env.
  */
 export type McpConnStatus =
-  | "connecting"
-  | "connected"
-  | "disconnected"
-  | "unauthorized";
+  "connecting" | "connected" | "disconnected" | "unauthorized";
 
 export const mcpConnStatus = storage.defineItem<McpConnStatus>(
   "session:mcpConnStatus",

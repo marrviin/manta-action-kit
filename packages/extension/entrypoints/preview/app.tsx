@@ -3,6 +3,8 @@ import { CopyOutlined, DownloadOutlined } from "@ant-design/icons";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import GifPreviewView from "./gif-view";
+import ElementPreviewView from "./element-view";
+import ElementDiffView from "./diff-view";
 import type { ScreenshotPreview } from "@/lib/screenshot/types";
 import { screenshotPreview } from "@/lib/storage";
 
@@ -21,12 +23,20 @@ import { screenshotPreview } from "@/lib/storage";
 /**
  * Two preview modes share this entrypoint: the screenshot capture (default)
  * and the GIF recording handoff (`?mode=gif`, opened by the background once
- * the offscreen recorder saved its WebM draft).
+ * the offscreen recorder saved its WebM draft). A third (`?mode=element`)
+ * shows the inspector element capture rebuilt in a Shadow DOM.
  */
 export default function PreviewApp() {
-  const isGifMode =
-    new URLSearchParams(window.location.search).get("mode") === "gif";
-  return isGifMode ? <GifPreviewView /> : <ScreenshotPreviewView />;
+  const mode = new URLSearchParams(window.location.search).get("mode");
+  return mode === "gif" ? (
+    <GifPreviewView />
+  ) : mode === "element" ? (
+    <ElementPreviewView />
+  ) : mode === "diff" ? (
+    <ElementDiffView />
+  ) : (
+    <ScreenshotPreviewView />
+  );
 }
 
 function ScreenshotPreviewView() {
@@ -130,13 +140,20 @@ function ScreenshotPreviewView() {
           decoding="async"
           draggable={false}
           className={
-            zoomed ? "max-w-none block mx-auto" : "max-w-full max-h-full object-contain"
+            zoomed
+              ? "max-w-none block mx-auto"
+              : "max-w-full max-h-full object-contain"
           }
         />
       </div>
       <div className="flex justify-center">
         <div className="flex items-center gap-1 rounded-full bg-(--ant-color-bg-elevated) shadow-xl border border-(--ant-color-border) px-3 py-1.5">
-          <Button shape="round" type="text" icon={<CopyOutlined />} onClick={copyImage}>
+          <Button
+            shape="round"
+            type="text"
+            icon={<CopyOutlined />}
+            onClick={copyImage}
+          >
             {t("common.copy")}
           </Button>
           <Button

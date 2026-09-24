@@ -5,13 +5,13 @@
  * Keep the ProtocolMap as the single source of truth for message shapes. Extend it
  * as your business logic grows.
  */
-import type { CapturedCall, RecordingState } from './recording/types';
-import type { GatewayLog, GatewayProxyRule } from './gateway/types';
-import type { ScreenshotMode } from './screenshot/types';
+import type { CapturedCall, RecordingState } from "./recording/types";
+import type { GatewayLog, GatewayProxyRule } from "./gateway/types";
+import type { ScreenshotMode } from "./screenshot/types";
 export interface ProtocolMap {
   PING: {
     request: void;
-    response: { type: 'PONG'; at: number };
+    response: { type: "PONG"; at: number };
   };
 
   /** Popup -> background: begin recording the given (or active) tab. */
@@ -77,7 +77,10 @@ export interface ProtocolMap {
 
   /** Side panel -> background: patch a proxy rule (e.g. toggle enabled). */
   UPDATE_GATEWAY_PROXY_RULE: {
-    request: { id: string; patch: Partial<Omit<GatewayProxyRule, 'id' | 'createdAt'>> };
+    request: {
+      id: string;
+      patch: Partial<Omit<GatewayProxyRule, "id" | "createdAt">>;
+    };
     response: { rule: GatewayProxyRule };
   };
 
@@ -132,6 +135,44 @@ export interface ProtocolMap {
    */
   CAPTURE_SCREENSHOT: {
     request: { mode: ScreenshotMode };
+    response: { ok: boolean };
+  };
+
+  /**
+   * Inspector bridge (extension-origin iframe) -> background: the capture
+   * payload is ALREADY in IndexedDB (id "preview") — the bridge page wrote it
+   * directly, bypassing runtime.sendMessage entirely (full snapshots with
+   * per-node computed styles can exceed its ~64MB structured-clone cap; the
+   * postMessage hop to the bridge has no such limit). The background pairs a
+   * pinned baseline into a diff pair if present, then opens the preview tab.
+   */
+  INSPECTOR_CAPTURE_PREVIEW_READY: {
+    request: void;
+    response: { ok: boolean };
+  };
+
+  /**
+   * Content script -> background: mint a one-shot token authorizing the NEXT
+   * inspector-bridge capture handoff. The bridge iframe is embeddable by ANY
+   * web page (web_accessible_resource), so "e.source === parent" alone doesn't
+   * prove a real capture flow — a malicious page could embed it and feed it a
+   * fake payload. A token minted via runtime.sendMessage (unreachable for page
+   * scripts) and verified before the IDB write closes that hole.
+   */
+  INSPECTOR_BRIDGE_MINT_TOKEN: {
+    request: void;
+    response: { token: string };
+  };
+
+  /**
+   * Inspector bridge -> background: consume the token handed over with the
+   * capture. `ok:false` = unknown/expired/already-used token; the bridge MUST
+   * NOT write the payload to IndexedDB in that case. `metadata` is echoed back
+   * in the READY message chain (the bridge has no better way to tell the
+   * background which tab the capture came from).
+   */
+  INSPECTOR_BRIDGE_USE_TOKEN: {
+    request: { token: string; tabId?: number };
     response: { ok: boolean };
   };
 
@@ -212,13 +253,13 @@ export type MessageType = keyof ProtocolMap;
 
 /** Discriminated union of all messages — enables `switch (msg.type)` narrowing. */
 export type Message = {
-  [T in MessageType]: { type: T; data: ProtocolMap[T]['request'] };
+  [T in MessageType]: { type: T; data: ProtocolMap[T]["request"] };
 }[MessageType];
 
 /** Send a typed message to the background service worker. */
 export async function sendMessage<T extends MessageType>(
   type: T,
-  data: ProtocolMap[T]['request'],
-): Promise<ProtocolMap[T]['response']> {
+  data: ProtocolMap[T]["request"],
+): Promise<ProtocolMap[T]["response"]> {
   return browser.runtime.sendMessage({ type, data });
 }

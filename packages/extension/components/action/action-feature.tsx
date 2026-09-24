@@ -1,18 +1,13 @@
 import { useEffect, useState } from "react";
-import {
-  App,
-  Button,
-  Empty,
-  Input,
-  Spin,
-  Tag,
-  Typography,
-} from "antd";
+import { App, Button, Empty, Input, Spin, Tag, Typography } from "antd";
 import { CopyOutlined, SearchOutlined } from "@ant-design/icons";
 import { useTranslation } from "react-i18next";
 import { deleteAction, listActions } from "@/lib/db";
 import { settings } from "@/lib/storage";
-import { buildInstallPrompt, ensureMcpAuthToken } from "@/lib/mcp/install-prompt";
+import {
+  buildInstallPrompt,
+  ensureMcpAuthToken,
+} from "@/lib/mcp/install-prompt";
 import { Block } from "@/components/recording/call-node";
 import { UnifiedListItem } from "@/components/common/unified-list-item";
 import { cn } from "@/lib/utils";
@@ -99,10 +94,7 @@ export function ActionFeature() {
       <div className="flex flex-col h-full">
         <ActionIntroCard />
         <div className="flex-1 min-h-0 flex items-center justify-center">
-          <Empty
-            image={Empty.PRESENTED_IMAGE_SIMPLE}
-            description={t("action.empty")}
-          />
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={false} />
         </div>
       </div>
     );
@@ -158,12 +150,12 @@ function ActionIntroCard() {
   const [ports, setPorts] = useState({ mcp: 8787, proxy: 8788 });
 
   useEffect(() => {
-    settings.mcpPort.getValue().then((mcp) =>
-      setPorts((p) => ({ ...p, mcp: mcp ?? p.mcp })),
-    );
-    settings.proxyPort.getValue().then((proxy) =>
-      setPorts((p) => ({ ...p, proxy: proxy ?? p.proxy })),
-    );
+    settings.mcpPort
+      .getValue()
+      .then((mcp) => setPorts((p) => ({ ...p, mcp: mcp ?? p.mcp })));
+    settings.proxyPort
+      .getValue()
+      .then((proxy) => setPorts((p) => ({ ...p, proxy: proxy ?? p.proxy })));
   }, []);
 
   const copyInstallPrompt = async () => {
@@ -188,12 +180,12 @@ function ActionIntroCard() {
           theme; ::after paints a decorative radial glow in the top corner. */}
       <div
         className={cn(
-          'relative overflow-hidden rounded-xl p-3',
-          'bg-[image:linear-gradient(135deg,color-mix(in_srgb,var(--ant-color-primary-bg)_85%,transparent),color-mix(in_srgb,var(--ant-color-bg-container)_97%,transparent)_60%)]',
-          'border border-[color:color-mix(in_srgb,var(--ant-color-primary-border)_50%,transparent)]',
-          'shadow-[0_6px_20px_color-mix(in_srgb,var(--ant-color-primary)_9%,transparent),inset_0_1px_0_rgba(255,255,255,0.7)]',
+          "relative overflow-hidden rounded-xl p-3",
+          "bg-[image:linear-gradient(135deg,color-mix(in_srgb,var(--ant-color-primary-bg)_85%,transparent),color-mix(in_srgb,var(--ant-color-bg-container)_97%,transparent)_60%)]",
+          "border border-[color:color-mix(in_srgb,var(--ant-color-primary-border)_50%,transparent)]",
+          "shadow-[0_6px_20px_color-mix(in_srgb,var(--ant-color-primary)_9%,transparent),inset_0_1px_0_rgba(255,255,255,0.7)]",
           '[&::after]:content-[""] [&::after]:absolute [&::after]:-top-12 [&::after]:-end-8 [&::after]:size-32 [&::after]:rounded-full [&::after]:pointer-events-none',
-          '[&::after]:bg-[image:radial-gradient(circle,color-mix(in_srgb,var(--ant-color-primary)_16%,transparent),transparent_70%)]',
+          "[&::after]:bg-[image:radial-gradient(circle,color-mix(in_srgb,var(--ant-color-primary)_16%,transparent),transparent_70%)]",
         )}
       >
         <div className="relative flex gap-2.5">
@@ -305,7 +297,9 @@ function ActionDetail({ action }: { action: Action }) {
             {action.params.map((p) => (
               <div key={p.name} className="flex items-baseline gap-1.5">
                 <Text className="font-mono">{p.name}</Text>
-                <Tag className="me-0 text-[10px]! font-normal! rounded">{p.type}</Tag>
+                <Tag className="me-0 text-[10px]! font-normal! rounded">
+                  {p.type}
+                </Tag>
                 {!p.required && (
                   <Text type="secondary" className="text-xs">
                     {t("action.paramOptional")}

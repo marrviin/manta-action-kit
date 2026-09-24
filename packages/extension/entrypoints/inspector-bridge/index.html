@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Manta Action Kit · Inspector Bridge</title>
+  </head>
+  <body>
+    <!--
+      Inspector-capture bridge (no visible UI). Content scripts live in the
+      page's origin, so their indexedDB is the PAGE's — they cannot reach the
+      extension's IDB directly. This hidden iframe runs in the EXTENSION
+      origin (web_accessible_resource): it receives the capture payload over
+      postMessage (no ~64MB runtime.sendMessage limit), writes it to IndexedDB
+      via saveInspectorCapture("preview"), then pings the background
+      (INSPECTOR_CAPTURE_PREVIEW_READY) so it can pair a diff baseline and
+      open the preview tab. See lib/inspector/capture.ts.
+    -->
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

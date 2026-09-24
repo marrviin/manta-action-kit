@@ -1,6 +1,6 @@
 # Privacy Policy — Manta Action Kit
 
-_Last updated: 2026-09-20_
+_Last updated: 2026-09-24_
 
 Manta Action Kit ("the extension") is a developer tool that records API calls
 made by pages you visit and lets an AI agent, running on your own machine, read
@@ -44,6 +44,7 @@ transmitted to us or to any third party we control.
 | **Recorded API calls** — request method, URL, headers, request/response bodies, timing, and (for streaming responses) parsed SSE events                                            | IndexedDB, in your browser profile    | So you can review a recorded business flow and expose it to your agent |
 | **Settings** — enabled toggles, MCP port, sandbox-proxy toggle, UI language/theme                                                                                                  | `chrome.storage` (sync/local/session) | To remember your preferences                                           |
 | **Sandbox-proxy audit log** — for each agent-initiated call: method, URL, status, timing, the **names** of the cookies that were injected, and truncated request/response previews | IndexedDB                             | So you can audit exactly what your agent did                           |
+| **Screenshots & GIF recordings** — page captures you explicitly take from the popup, kept as local image/video drafts until you delete them or copy/download them out | IndexedDB (plus a transient `chrome.storage.session` handoff while opening the preview tab) | So you can preview, copy, or download the capture you just took       |
 
 **Cookie values are never stored.** The audit log records only cookie _names_
 (e.g. that a `session` cookie was attached), never their values.
@@ -118,6 +119,17 @@ The local MCP bridge connects only to a process on the loopback interface
   the element you pick and its subtree, including source coordinates and computed
   styles) to your clipboard so you can paste it to your agent. Written only on an
   explicit capture; the extension never reads your clipboard.
+- `debugger` — full-page screenshots only. A one-shot attach to the tab you
+  explicitly capture, followed by the single CDP call `Page.captureScreenshot`
+  (with `captureBeyondViewport`) — this is the only reliable way to render a
+  page taller than the viewport without scrolling or altering the DOM. Detach
+  happens immediately after the frame is captured; nothing is inspected,
+  modified, or injected, and no other tab is ever attached to.
+- `tabCapture` + `offscreen` — record a short animated preview (GIF) of the tab
+  you explicitly choose to record. Capture starts only on your click, covers
+  exactly one tab's video output, and no audio is requested or recorded. The
+  `offscreen` document exists only while a recording is active, is invisible,
+  and is closed as soon as the recording finishes.
 
 ## Data retention and deletion
 
