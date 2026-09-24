@@ -18,9 +18,8 @@
 
   var stored = null;
   try { stored = localStorage.getItem("manta-lang"); } catch (e) {}
-  var lang = stored === "en" || stored === "zh"
-    ? stored
-    : (navigator.language || "en").toLowerCase().indexOf("zh") === 0 ? "zh" : "en";
+  // Default is English; a stored choice from the toggle always wins.
+  var lang = stored === "en" || stored === "zh" ? stored : "en";
 
   function apply() {
     var dict = dicts[lang] || {};
