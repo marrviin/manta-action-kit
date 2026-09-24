@@ -28,6 +28,12 @@ import {
 } from "./types";
 import { leanElement } from "./lean";
 import { sendMessage } from "@/lib/messaging";
+import {
+  cancelCaptureFx,
+  playCaptureFx,
+  releaseCaptureFxHold,
+} from "./capture-fx";
+import { settings } from "@/lib/storage";
 
 /** Message type that toggles capture mode (popup -> content script, per-tab). */
 export const TOGGLE_INSPECTOR_CAPTURE = "TOGGLE_INSPECTOR_CAPTURE";
@@ -37,8 +43,13 @@ const ATTR_PATH = "data-inspector-relative-path";
 const ATTR_LINE = "data-inspector-line";
 const ATTR_COLUMN = "data-inspector-column";
 
-/** Marker attribute for all DOM nodes this module injects (overlay / toast). */
-const UI_MARKER = "data-inspector-capture-ui";
+/**
+ * Marker attribute for all DOM nodes this module injects (overlay / toast /
+ * capture fx). Exported because capture-fx.ts tags its layer with the same
+ * marker (single source; the import is circular but the value is only read at
+ * runtime, so module evaluation order never matters).
+ */
+export const UI_MARKER = "data-inspector-capture-ui";
 
 const STYLE_PROPS = [
   "display",
@@ -163,6 +174,7 @@ const L = navigator.language.startsWith("zh")
       none: "未捕获到任何元素",
       copyFailed: "复制失败，JSON 已打印到控制台",
       previewFailed: "预览打开失败，捕获结果已复制到剪贴板",
+      fxBeamedUp: "已上传至母船！",
     }
   : {
       hint: "Select an element to capture; the result is copied to the clipboard and opened in a preview tab",
@@ -171,7 +183,14 @@ const L = navigator.language.startsWith("zh")
       copyFailed: "Copy failed; JSON printed to the console",
       previewFailed:
         "Failed to open the preview; the capture is on the clipboard",
+      fxBeamedUp: "Beamed up to the mothership!",
     };
+
+/**
+ * Cached copy of `settings.inspectorCaptureFx`, refreshed on each activate().
+ * Defaults to true so a failed storage read never silently disables the fx.
+ */
+let fxEnabled = true;
 
 interface Box {
   left: number;
@@ -922,6 +941,24 @@ function describeElement(
 }
 
 function runCapture(elements: ElementDescription[], box: Box | null) {
+  // The confirming mouseup is followed by a `click` — but deactivate() below
+  // has already torn down the interception listeners by the time it fires, so
+  // without this the click would fall through to the page element (links
+  // navigate, buttons submit, dropdowns open). Swallow this one click with a
+  // one-shot capture-phase listener; the 500ms fallback removal (click fires
+  // right after mouseup) guarantees it can't eat an unrelated later click.
+  const swallowArmedClick = (e: Event) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+  window.addEventListener("click", swallowArmedClick, {
+    capture: true,
+    once: true,
+  });
+  setTimeout(
+    () => window.removeEventListener("click", swallowArmedClick, true),
+    500,
+  );
   deactivate();
   if (!elements.length) {
     toast(L.none);
@@ -947,11 +984,36 @@ function runCapture(elements: ElementDescription[], box: Box | null) {
   copyText(json).then((ok) => {
     if (!ok) toast(L.copyFailed);
   });
-  // Fire-and-forget: the payload travels to the extension's IndexedDB via the
-  // inspector-bridge iframe (see handoffToBridge below), which then pings the
-  // background to open the preview tab. A failure here must never disturb the
-  // capture itself — it only toasts (the clipboard copy already succeeded).
-  void handoffToBridge(payload);
+  // Copy first (user activation is freshest right now), play the UFO fx, and
+  // only then hand the payload off. The fx is resolve-only and additionally
+  // raced against a 5s hard timeout, so the preview can never be delayed by
+  // more than that — a broken fx degrades to the old immediate-handoff flow.
+  const fxRect = box
+    ? { x: box.x, y: box.y, w: box.width, h: box.height }
+    : (elements[0]?.rect ?? null);
+  void (async () => {
+    try {
+      await Promise.race([
+        playCaptureFx({
+          rect: fxRect,
+          enabled: fxEnabled,
+          labels: { beamed: L.fxBeamedUp },
+        }),
+        new Promise<void>((r) => setTimeout(r, 5_000)),
+      ]);
+    } catch (err) {
+      console.warn("[inspector-capture] fx failed", err);
+    }
+    // The payload travels to the extension's IndexedDB via the
+    // inspector-bridge iframe (see handoffToBridge below), which then pings the
+    // background to open the preview tab. A failure here must never disturb the
+    // capture itself — it only toasts (the clipboard copy already succeeded).
+    await handoffToBridge(payload);
+    // The preview tab is open (the "jump away"): let the full-white freeze
+    // linger a moment, then release it. Also self-releases on scroll / page
+    // hide / a 15s cap, so it can never stick on the page.
+    releaseCaptureFxHold();
+  })();
 }
 
 /**
@@ -1147,6 +1209,12 @@ function onKeydown(e: KeyboardEvent) {
 function activate() {
   if (active) return;
   active = true;
+  // Refresh the fx toggle once per activation; by mouseup it has settled.
+  // A failed read keeps the previous (default true) value.
+  settings.inspectorCaptureFx
+    .getValue()
+    .then((v) => (fxEnabled = v))
+    .catch(() => {});
   ui = buildUi();
   styleEl = document.createElement("style");
   styleEl.setAttribute(UI_MARKER, "1");
@@ -1185,6 +1253,7 @@ export function initInspectorCapture(
   registerInvalidated?.(() => {
     document.removeEventListener("keydown", onKeydown, true);
     deactivate();
+    cancelCaptureFx();
   });
 
   document.addEventListener("keydown", onKeydown, true);

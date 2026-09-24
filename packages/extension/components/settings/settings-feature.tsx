@@ -60,6 +60,7 @@ export function SettingsFeature() {
   const [toolsOpen, setToolsOpen] = useState(false);
   const [testing, setTesting] = useState(false);
   const [devMode, setDevMode] = useStorage(settings.devMode);
+  const [captureFx, setCaptureFx] = useStorage(settings.inspectorCaptureFx);
   // Companion npm package version, resolved from the registry (null = hidden).
   const [mcpVersion, setMcpVersion] = useState<string | null>(null);
   // Easter-egg state: consecutive taps on the version tag (not persisted).
@@ -211,6 +212,22 @@ export function SettingsFeature() {
             onChange={(v) => void setLocale(v)}
             className="[&_.ant-segmented-group]:gap-1 [&_.ant-segmented-item]:shadow-none!"
           />
+        </div>
+      </section>
+
+      {/* Capture animation card: the UFO fx played in the page after an
+          element capture is confirmed (see lib/inspector/capture-fx.ts). */}
+      <section className="flex-none rounded-xl border border-(--ant-color-border-secondary) bg-(--ant-color-bg-container) overflow-hidden">
+        <div className="flex items-center justify-between gap-2 px-3 py-2.5">
+          <div className="min-w-0">
+            <Text strong className="text-sm block">
+              {t('settings.inspectorCaptureFxTitle')}
+            </Text>
+            <Text type="secondary" className="text-xs!">
+              {t('settings.inspectorCaptureFxDesc')}
+            </Text>
+          </div>
+          <Switch checked={captureFx} onChange={(v) => void setCaptureFx(v)} />
         </div>
       </section>
 

@@ -390,6 +390,9 @@ export const en = {
     language: "Language",
     languageChinese: "中文",
     languageEnglish: "English",
+    inspectorCaptureFxTitle: "Capture animation",
+    inspectorCaptureFxDesc:
+      "Play the UFO animation in the page after capturing an element, before the preview opens",
     connectorTitle: "Connector",
     connectorDesc:
       "Connection status of the local MCP service and tool switches",

@@ -113,6 +113,16 @@ export const settings = {
   devMode: storage.defineItem<boolean>("local:devMode", {
     fallback: false,
   }),
+
+  /**
+   * Fun UFO capture animation played after an element capture is confirmed,
+   * before the preview tab opens (see lib/inspector/capture-fx.ts). User-facing
+   * preference, hence `sync` — unlike `local:devMode`, which is a per-machine
+   * debug flag. Read by the content script on each capture activation.
+   */
+  inspectorCaptureFx: storage.defineItem<boolean>("sync:inspectorCaptureFx", {
+    fallback: true,
+  }),
 };
 
 /**
