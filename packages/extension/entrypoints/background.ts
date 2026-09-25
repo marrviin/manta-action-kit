@@ -15,7 +15,7 @@ import {
 } from "@/lib/gateway/manage-rules";
 import { captureScreenshot } from "@/lib/screenshot/capture";
 import { captureFullPageStitched } from "@/lib/screenshot/stitch";
-import { PLAY_SCREENSHOT_FX, nextShutterColor } from "@/lib/screenshot/focus-fx";
+import { PLAY_SCREENSHOT_FX } from "@/lib/screenshot/focus-fx";
 import {
   ScreenshotError,
   SCREENSHOT_PREVIEW_MAX_BYTES,
@@ -188,11 +188,18 @@ export default defineBackground(() => {
             // fullPage prefers scroll-and-stitch (width pinned to the
             // viewport — no blank-edge inflation — and lazy images load on
             // the way down); anything that goes wrong falls back to the
-            // DevTools-equivalent CDP single render below.
+            // DevTools-equivalent CDP single render below. Which path won
+            // matters for the fx below: the stitched sweep already played
+            // the same camera (focus intro + shutter outro), so a second
+            // iris here would be a duplicate flourish.
+            let stitched = false;
             const shot = await (async () => {
               if (msg.data.mode === "fullPage") {
-                const stitched = await captureFullPageStitched(tab);
-                if (stitched) return stitched;
+                const result = await captureFullPageStitched(tab);
+                if (result) {
+                  stitched = true;
+                  return result;
+                }
               }
               return captureScreenshot(tab, msg.data.mode);
             })();
@@ -222,14 +229,11 @@ export default defineBackground(() => {
             // resize (CDP captureBeyondViewport) plus the debugger infobar's
             // attach/detach; give it a beat to settle so the fx opens on a
             // calm, correctly-sized viewport.
-            if (msg.data.mode === "fullPage") {
+            if (msg.data.mode === "fullPage" && !stitched) {
               await new Promise((r) => setTimeout(r, 200));
             }
             let fxSettled: Promise<unknown> = Promise.resolve();
-            if (await settings.screenshotCaptureFx.getValue()) {
-              // Round-robin shutter color (see SHUTTER_COLORS) — each
-              // screenshot closes the iris in a different hue.
-              const shutterColor = await nextShutterColor();
+            if (!stitched && (await settings.screenshotCaptureFx.getValue())) {
               // 2.5s hard timeout: the fx itself runs ~1.15s, plus the
               // content script waits for its next real paint before starting
               // (double rAF) and fullPage adds a 200ms settle — the reply can
@@ -237,7 +241,6 @@ export default defineBackground(() => {
               fxSettled = Promise.race([
                 chrome.tabs.sendMessage(tab.id, {
                   type: PLAY_SCREENSHOT_FX,
-                  color: shutterColor,
                 }),
                 new Promise((r) => setTimeout(r, 2_500)),
               ]).catch(() => {

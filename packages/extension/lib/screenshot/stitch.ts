@@ -1,7 +1,9 @@
 import { fileHost, timestamp } from "./capture";
+import { settings } from "@/lib/storage";
 import {
   FULLPAGE_BEGIN,
   FULLPAGE_END,
+  FULLPAGE_FX,
   FULLPAGE_SCROLL,
   FULLPAGE_STITCH,
   type FullpageMetrics,
@@ -80,6 +82,16 @@ export async function captureFullPageStitched(
 
   try {
     console.info("[screenshot] fullpage: scroll-stitch capture starting");
+    // Camera fx obeys the same kill switch as the single-shot iris fx; when
+    // off, the fx messages are skipped entirely (no overlay, no round trips).
+    const fxEnabled = await settings.screenshotCaptureFx.getValue();
+    // Focus intro up first, so it is already on while BEGIN's warm pass
+    // sweeps the page. Fire-and-forget: fx failures never block capture.
+    if (fxEnabled) {
+      chrome.tabs
+        .sendMessage(tabId, { type: FULLPAGE_FX, visible: true })
+        .catch(() => {});
+    }
     const { metrics } = await send<{ metrics: FullpageMetrics }>(
       FULLPAGE_BEGIN,
       {},
@@ -87,18 +99,28 @@ export async function captureFullPageStitched(
     );
     const vh = metrics.vh;
     if (!(vh > 0)) throw new Error(`fullpage: bad viewport height ${vh}`);
+    // Focus intro done — hide the overlay for the ENTIRE sweep. Any overlay
+    // pixel visible during a capture lands in the shot; the clean middle
+    // (page just scrolling) is the point of the intro/clean/outro split.
+    if (fxEnabled) {
+      await send(FULLPAGE_FX, { visible: false }).catch(() => {});
+    }
     // The stitcher sizes the canvas from the docH the capture loop actually
     // saw (pages can grow mid-capture) — the live scrollHeight after END is
     // not trustworthy, so thread the last reported one through to STITCH.
     let lastDocH = metrics.docH;
 
-    // Paced per-screen capture: wait out the rate limit before each call, and
-    // back off + retry once if the quota still trips (the allowance is shared
-    // across everything capturing this window, other extensions included).
+    // Paced per-screen capture: Chrome allows 2 captureVisibleTab calls per
+    // second per tab, so each screen waits out the rate limit — and that
+    // wait MUST happen while the overlay is still visible (it's the viewer-
+    // facing "recording" time). Only the capture itself hides the overlay,
+    // keeping the blink short (~100ms) against a mostly-visible overlay.
     let lastCaptureAt = 0;
-    const captureScreen = async (): Promise<string> => {
+    const pace = async (): Promise<void> => {
       const waitMs = lastCaptureAt + CAPTURE_INTERVAL_MS - Date.now();
       if (waitMs > 0) await new Promise((r) => setTimeout(r, waitMs));
+    };
+    const captureScreen = async (): Promise<string> => {
       const attempt = () =>
         withTimeout(
           chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" }),
@@ -128,6 +150,9 @@ export async function captureFullPageStitched(
         FULLPAGE_SCROLL,
         { y: target },
       );
+      // The overlay stays hidden for the whole sweep (hidden once above) —
+      // the rate-limit pacing here is pure wait, no fx choreography.
+      await pace();
       parts.push(await captureScreen());
       offsets.push(actual);
       lastDocH = Math.max(lastDocH, docH);
@@ -164,10 +189,14 @@ export async function captureFullPageStitched(
     console.warn("[screenshot] stitch capture failed, falling back to CDP", err);
     return null;
   } finally {
-    // Always release the page: unhide fixed/sticky, restore scroll — even on
-    // the failure paths (harmless no-op when BEGIN never went through).
-    chrome.tabs
-      .sendMessage(tabId, { type: FULLPAGE_END })
-      .catch(() => {});
+    // Always release the page: unhide fixed/sticky, tear down the camera fx
+    // overlay, restore scroll — even on the failure paths (harmless no-op
+    // when BEGIN never went through). Awaited briefly so the overlay is
+    // really gone before a CDP fallback captures the page.
+    await withTimeout(
+      chrome.tabs.sendMessage(tabId, { type: FULLPAGE_END }).catch(() => {}),
+      "fullpage-end",
+      1_000,
+    ).catch(() => {});
   }
 }

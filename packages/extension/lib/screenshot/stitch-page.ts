@@ -1,7 +1,15 @@
 import { effectiveScale, stitchBands, stitchScale } from "./stitch-math";
 import {
+  hideFocusOverlayForCapture,
+  playShutterOutro,
+  removeFocusOverlay,
+  startFocusIntro,
+} from "./focus-fx";
+import {
+  FP_OVERLAY_ATTR,
   FULLPAGE_BEGIN,
   FULLPAGE_END,
+  FULLPAGE_FX,
   FULLPAGE_SCROLL,
   FULLPAGE_STITCH,
   type FullpageMetrics,
@@ -32,7 +40,7 @@ const ATTR = "data-manta-fullpage";
  * at BEGIN keeps the content width identical across every screen.
  */
 const STYLE = `
-  html[${ATTR}], html[${ATTR}] * {
+  html[${ATTR}], html[${ATTR}] *:not([${FP_OVERLAY_ATTR}], [${FP_OVERLAY_ATTR}] *) {
     scroll-behavior: auto !important;
     scroll-snap-type: none !important;
     transition: none !important;
@@ -124,6 +132,15 @@ async function begin(): Promise<unknown> {
   const prevBodyOverflowY = body ? body.style.overflowY : "";
 
   const tagOne = (el: Element) => {
+    // The capture overlay is ours and position:fixed by design — hiding it
+    // would defeat the recording effect (the background toggles its
+    // visibility around each capture instead).
+    if (
+      el.hasAttribute(FP_OVERLAY_ATTR) ||
+      el.closest(`[${FP_OVERLAY_ATTR}]`)
+    ) {
+      return;
+    }
     // Already neutralized — and re-adding our classes is a no-op anyway, but
     // skipping the getComputedStyle here keeps the (attribute-noisy) observer
     // cheap on busy pages.
@@ -185,6 +202,7 @@ async function begin(): Promise<unknown> {
     undo = null;
     observer.disconnect();
     clearTimeout(safety);
+    removeFocusOverlay();
     style.remove();
     html.removeAttribute(ATTR);
     if (body) body.style.overflowY = prevBodyOverflowY;
@@ -351,19 +369,28 @@ async function stitch(
 /** Entry from the content-script message listener; null = not ours. */
 export function handleFullpageMessage(msg: unknown): Promise<unknown> | null {
   if (!msg || typeof msg !== "object") return null;
-  const { type, y, parts, offsets, metrics, docH } = msg as {
+  const { type, y, parts, offsets, metrics, docH, visible } = msg as {
     type?: unknown;
     y?: unknown;
     parts?: unknown;
     offsets?: unknown;
     metrics?: Partial<FullpageMetrics>;
     docH?: unknown;
+    visible?: unknown;
   };
   switch (type) {
     case FULLPAGE_BEGIN:
       return begin();
     case FULLPAGE_SCROLL:
       return scrollStep(typeof y === "number" ? y : 0);
+    case FULLPAGE_FX:
+      // Hide resolves only after the intro's minimum on-screen time AND the
+      // hidden state reached the compositor — the background captures the
+      // whole sweep while hidden. Show is the camera-focus intro (same fx as
+      // the single-shot capture); it plays over the warm pass and is instant.
+      return visible === false
+        ? hideFocusOverlayForCapture()
+        : Promise.resolve(startFocusIntro());
     case FULLPAGE_STITCH:
       return stitch(
         Array.isArray(parts) ? (parts as string[]) : [],
@@ -372,8 +399,13 @@ export function handleFullpageMessage(msg: unknown): Promise<unknown> | null {
         typeof docH === "number" ? docH : document.documentElement.scrollHeight,
       );
     case FULLPAGE_END:
-      undo?.();
-      return Promise.resolve({ ok: true });
+      // Shutter outro first (bounds ~500ms), THEN release the page. Acks land
+      // after the overlay is really gone so a CDP fallback capture can never
+      // race the iris onto the page.
+      return playShutterOutro().then(() => {
+        undo?.();
+        return { ok: true };
+      });
     default:
       return null;
   }

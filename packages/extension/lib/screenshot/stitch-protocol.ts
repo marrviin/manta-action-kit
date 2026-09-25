@@ -20,6 +20,21 @@ export const FULLPAGE_BEGIN = "FULLPAGE_BEGIN";
 export const FULLPAGE_SCROLL = "FULLPAGE_SCROLL";
 export const FULLPAGE_END = "FULLPAGE_END";
 export const FULLPAGE_STITCH = "FULLPAGE_STITCH";
+/**
+ * Camera fx for the sweep (lib/screenshot/focus-fx.ts, staged form): the
+ * focus beats play as the intro over the warm pass, the layer hides for the
+ * ENTIRE sweep — any overlay pixel visible during a capture lands in the
+ * shot — and the shutter iris fires as the outro.
+ */
+export const FULLPAGE_FX = "FULLPAGE_FX";
+
+/**
+ * Marks the fx overlay's root in the page DOM: the capture's page
+ * neutralization (stitch-page.ts) must never hide/unstick it — it is
+ * position:fixed by design, and the background hides it around captures
+ * instead.
+ */
+export const FP_OVERLAY_ATTR = "data-manta-fp-overlay";
 
 /** The stitcher's output: a data URL plus its actual format (PNG, or JPEG
  * when the page is huge and PNG would blow the session-storage handoff cap). */

@@ -64,9 +64,7 @@ export default defineContentScript({
         ) {
           return;
         }
-        playScreenshotFocusFx({
-          shutterColor: (msg as { color?: string }).color,
-        }).then((played) => sendResponse({ played }));
+        playScreenshotFocusFx().then((played) => sendResponse({ played }));
         return true;
       },
     );
