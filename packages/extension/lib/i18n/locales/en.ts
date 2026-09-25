@@ -393,6 +393,9 @@ export const en = {
     inspectorCaptureFxTitle: "Capture animation",
     inspectorCaptureFxDesc:
       "Play the UFO animation in the page after capturing an element, before the preview opens",
+    screenshotCaptureFxTitle: "Screenshot focus animation",
+    screenshotCaptureFxDesc:
+      "Play a camera-focus animation in the page before the screenshot is taken",
     connectorTitle: "Connector",
     connectorDesc:
       "Connection status of the local MCP service and tool switches",

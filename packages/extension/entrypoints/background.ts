@@ -14,11 +14,12 @@ import {
   updateProxyRuleContent,
 } from "@/lib/gateway/manage-rules";
 import { captureScreenshot } from "@/lib/screenshot/capture";
+import { PLAY_SCREENSHOT_FX, nextShutterColor } from "@/lib/screenshot/focus-fx";
 import {
   ScreenshotError,
   SCREENSHOT_PREVIEW_MAX_BYTES,
 } from "@/lib/screenshot/types";
-import { screenshotPreview } from "@/lib/storage";
+import { screenshotPreview, settings } from "@/lib/storage";
 import {
   handleGifOffscreenDone,
   initGifStateWatch,
@@ -45,6 +46,37 @@ import {
  * MV3 service workers are event-driven and terminate when idle; durable state
  * lives in storage.session / IndexedDB, not in module scope.
  */
+
+/**
+ * Screenshot failures notify instead of toasting: the popup closes itself as
+ * soon as the request is sent (it must not cover the page during the focus
+ * fx), so nobody is left to display the mapped error — same idiom as the GIF
+ * failure notification.
+ */
+function notifyScreenshotFailed(err: unknown) {
+  const message = err instanceof Error ? err.message : String(err);
+  // "screenshot:debugger-conflict" — DevTools (or another client) is attached
+  // to the tab; the fix is user-actionable, so call it out specifically.
+  const conflict = message.includes("debugger-conflict");
+  chrome.notifications
+    .create({
+      type: "basic",
+      iconUrl: chrome.runtime.getURL("/icon/128.png"),
+      title:
+        browser.i18n.getMessage("notifyScreenshotFailedTitle") ||
+        "Screenshot failed",
+      message:
+        browser.i18n.getMessage(
+          conflict
+            ? "notifyScreenshotConflictMessage"
+            : "notifyScreenshotFailedMessage",
+        ) ||
+        (conflict
+          ? "Close DevTools on this tab and try again"
+          : "This page could not be captured"),
+    })
+    .catch((e) => console.error("[background] notification failed", e));
+}
 export default defineBackground(() => {
   // Open the side panel when the toolbar icon is clicked (Chromium only).
   if (chrome.sidePanel?.setPanelBehavior) {
@@ -149,6 +181,9 @@ export default defineBackground(() => {
             if (!tab?.id) {
               throw new ScreenshotError("unsupported-page", "no active tab");
             }
+            // Capture FIRST, while the page is still pristine — the shot can
+            // never contain the fx overlay, and a failed capture skips the
+            // show entirely instead of playing it for nothing.
             const shot = await captureScreenshot(tab, msg.data.mode);
             // Hand the capture to the preview tab via session storage (a
             // full-page data URL is far too large for a query param), then
@@ -166,6 +201,38 @@ export default defineBackground(() => {
             } catch (err) {
               throw new ScreenshotError("preview-too-large", String(err));
             }
+            // Now play the camera-focus fx as a pure celebration. Fire it
+            // right away (the page sits idle otherwise) and let it run
+            // concurrently with the history write; both must finish before
+            // the preview tab opens, so the jump reads as the iris snap's
+            // recovery. No content script / setting off / timeout → straight
+            // to the preview, i.e. the old behavior.
+            // fullPage mode just dragged the renderer through a surface
+            // resize (CDP captureBeyondViewport) plus the debugger infobar's
+            // attach/detach; give it a beat to settle so the fx opens on a
+            // calm, correctly-sized viewport.
+            if (msg.data.mode === "fullPage") {
+              await new Promise((r) => setTimeout(r, 200));
+            }
+            let fxSettled: Promise<unknown> = Promise.resolve();
+            if (await settings.screenshotCaptureFx.getValue()) {
+              // Round-robin shutter color (see SHUTTER_COLORS) — each
+              // screenshot closes the iris in a different hue.
+              const shutterColor = await nextShutterColor();
+              // 2.5s hard timeout: the fx itself runs ~1.15s, plus the
+              // content script waits for its next real paint before starting
+              // (double rAF) and fullPage adds a 200ms settle — the reply can
+              // legitimately arrive past 1.5s without anything being wrong.
+              fxSettled = Promise.race([
+                chrome.tabs.sendMessage(tab.id, {
+                  type: PLAY_SCREENSHOT_FX,
+                  color: shutterColor,
+                }),
+                new Promise((r) => setTimeout(r, 2_500)),
+              ]).catch(() => {
+                /* no content script on this tab — straight to the preview */
+              });
+            }
             // Persist to history BEFORE opening the preview so the tab can
             // address this exact record by id (re-openable from the side-panel
             // capture tab). Best-effort: a failed save must not lose the
@@ -178,6 +245,18 @@ export default defineBackground(() => {
               );
             } catch (err) {
               console.error("[background] screenshot history save failed", err);
+            }
+            // A recovery beat before the jump: the snap back to the clean
+            // page is part of the camera metaphor (shutter black → viewfinder
+            // returns → you look at the photo). Only when the fx actually
+            // played — skip paths open the preview straight away.
+            const fxResult = await fxSettled;
+            if (
+              fxResult &&
+              typeof fxResult === "object" &&
+              (fxResult as { played?: boolean }).played
+            ) {
+              await new Promise((r) => setTimeout(r, 600));
             }
             await chrome.tabs.create({
               url: browser.runtime.getURL(
@@ -338,6 +417,7 @@ export default defineBackground(() => {
         // promise never settles and its UI hangs (spinner forever). Reply with a
         // shaped error so the channel closes.
         console.error("[background] message handler failed", msg.type, err);
+        if (msg.type === "CAPTURE_SCREENSHOT") notifyScreenshotFailed(err);
         sendResponse({
           __error: err instanceof Error ? err.message : String(err),
         });

@@ -363,6 +363,8 @@ export const zhCN: Messages = {
     languageEnglish: "English",
     inspectorCaptureFxTitle: "捕获动画",
     inspectorCaptureFxDesc: "捕获元素后在页面中播放 UFO 采集动画，再打开预览",
+    screenshotCaptureFxTitle: "截图对焦动画",
+    screenshotCaptureFxDesc: "截图前在页面中播放相机对焦动画",
     connectorTitle: "连接器",
     connectorDesc: "与本地 MCP 服务的连接状态和工具开关",
     mcpPackageDesc:

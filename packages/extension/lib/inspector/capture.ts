@@ -174,7 +174,6 @@ const L = navigator.language.startsWith("zh")
       none: "未捕获到任何元素",
       copyFailed: "复制失败，JSON 已打印到控制台",
       previewFailed: "预览打开失败，捕获结果已复制到剪贴板",
-      fxBeamedUp: "已上传至母船！",
     }
   : {
       hint: "Select an element to capture; the result is copied to the clipboard and opened in a preview tab",
@@ -183,7 +182,6 @@ const L = navigator.language.startsWith("zh")
       copyFailed: "Copy failed; JSON printed to the console",
       previewFailed:
         "Failed to open the preview; the capture is on the clipboard",
-      fxBeamedUp: "Beamed up to the mothership!",
     };
 
 /**
@@ -994,12 +992,8 @@ function runCapture(elements: ElementDescription[], box: Box | null) {
   void (async () => {
     try {
       await Promise.race([
-        playCaptureFx({
-          rect: fxRect,
-          enabled: fxEnabled,
-          labels: { beamed: L.fxBeamedUp },
-        }),
-        new Promise<void>((r) => setTimeout(r, 5_000)),
+        playCaptureFx({ rect: fxRect, enabled: fxEnabled }),
+        new Promise<void>((r) => setTimeout(r, 6_000)),
       ]);
     } catch (err) {
       console.warn("[inspector-capture] fx failed", err);

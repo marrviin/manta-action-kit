@@ -2,7 +2,7 @@
  * UFO capture animation ("capture fx"), played after an element capture is
  * confirmed and before the preview tab opens (see `runCapture` in capture.ts).
  *
- * Choreography (~3.5s + hold): a UFO flies in from the bottom-right off-screen
+ * Choreography (~4.3s + hold): a UFO flies in from the bottom-right off-screen
  * and hovers beside the selection -> a slanted beam shoots down from the
  * craft onto the selection while a blue grid + scan line lock onto it -> a
  * white sweep covers it ("beamed up") -> the beam retracts up into the craft
@@ -16,7 +16,10 @@
  * Design constraints:
  *  - Resolve-only: every path (throw, skip condition, superseded, early scroll)
  *    resolves — the capture flow must never wait on the fx. `runCapture` still
- *    races a 3s hard timeout on top as a second belt.
+ *    races a 6s hard timeout on top as a second belt.
+ *  - prefers-reduced-motion gets a motion-free degraded variant: a quick white
+ *    blink on the selection (feedback preserved, choreography dropped) — see
+ *    `runReducedFx`.
  *  - All inline styles + Web Animations API (`element.animate`): the animation
  *    parameters derive from the selection rect, which CSS keyframes can't take
  *    as input without injecting a per-capture <style>; WAAPI also makes cleanup
@@ -46,8 +49,6 @@ export interface CaptureFxOptions {
   rect: CaptureFxRect | null;
   /** Master switch (settings.inspectorCaptureFx), read by the caller. */
   enabled: boolean;
-  /** Caption bubble text, e.g. "Beamed up to the mothership!". */
-  labels?: { beamed: string };
 }
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -62,15 +63,15 @@ const UFO_H = 83;
  */
 const UFO_BEAM_TOP = 72;
 
-// ---------- timeline (total ~3.9s + freeze) ----------
+// ---------- timeline (total ~4.3s + freeze) ----------
 // 0–1100       fly in along an arc from the bottom-right (scale .2→1, settle)
-// 1100–end     organic hover drift (sway + bob + tilt, never static)
-// 1150–1600    beam expands with a slight elastic overshoot
-// 1350–1850    grid fades in
-// 1500–2200    scan line sweeps
-// 1600–end     beam flicker
-// 1550–2450    caption bubble pops in, then fades
-// 2050–2850    white sweep covers the selection
+// 1100–end     organic hover: dual-frequency drift (3.7s × 2.6s, Lissajous)
+// 1150–1600    beam expands with elastic overshoot; craft "strains" (img pulse)
+// ~1600        impact ring where the beam meets the selection's top edge
+// 1350–1850    grid locks in (fade + 1.03→1 scale)
+// 1500–2400    scan line sweeps down fast, returns slow
+// 1600–end     organic beam flicker (slow wave + occasional deep dip)
+// 2050–2850    white sweep covers the selection (bar leads, base follows late)
 // 2850–3050    full-white hold
 // 3050–3430    beam retracts up into the craft, grid dims behind it
 // 3430–4290    anticipation crouch + arcing climb away to the top-right
@@ -82,12 +83,8 @@ const BEAM_MS = 450;
 const GRID_DELAY = 1350;
 const GRID_MS = 500;
 const SCAN_DELAY = 1500;
-const SCAN_MS = 700;
+const SCAN_MS = 900;
 const FLICKER_DELAY = 1600;
-const BUBBLE_IN_DELAY = 1550;
-const BUBBLE_IN_MS = 260;
-const BUBBLE_OUT_DELAY = 2400;
-const BUBBLE_OUT_MS = 200;
 const SWEEP_DELAY = 2050;
 const SWEEP_MS = 800;
 /** Hold time before the exit stage (fly-in + beam + grid + white sweep). */
@@ -160,6 +157,110 @@ function releaseHold(state: FxState, delayMs: number) {
 }
 
 /**
+ * Expand a tiny rect to a 24px visual floor (the grid/scan need something to
+ * draw on), pad the whole scan zone out a few px beyond the selection, and
+ * clip to the viewport. Returns null when nothing is visible.
+ */
+function visRect(rect: CaptureFxRect, vw: number, vh: number) {
+  let { x, y, w, h } = rect;
+  if (w < 24) {
+    x -= (24 - w) / 2;
+    w = 24;
+  }
+  if (h < 24) {
+    y -= (24 - h) / 2;
+    h = 24;
+  }
+  // The rect is viewport-relative already; clip defensively anyway.
+  const gx = Math.max(0, x);
+  const gy = Math.max(0, y);
+  const gw = Math.min(w, vw - gx);
+  const gh = Math.min(h, vh - gy);
+  if (gw <= 0 || gh <= 0) return null;
+  // The whole scan zone breathes a few px beyond the selection so the grid /
+  // sweep / freeze never end cramped exactly at the element's edge.
+  const pad = 6;
+  const px = Math.max(0, gx - pad);
+  const py = Math.max(0, gy - pad);
+  const pw = Math.min(vw, gx + gw + pad) - px;
+  const ph = Math.min(vh, gy + gh + pad) - py;
+  return { gx: px, gy: py, gw: pw, gh: ph };
+}
+
+/**
+ * Leave only the white freeze on screen and arm its self-release watchers:
+ * scroll → instant, page hide → instant (bfcache), hidden tab → lingered, plus
+ * the FREEZE_CAP_MS safety timeout. Resolves the fx promise as `true`.
+ */
+function armHoldWatchers(state: FxState, resolve: (value: boolean) => void) {
+  state.holding = true;
+  const onHoldScroll = () => releaseHold(state, 0);
+  const onHide = () => {
+    if (document.hidden) releaseHold(state, RELEASE_DELAY_MS);
+  };
+  // bfcache restores would otherwise resurrect a stale freeze.
+  const onLeave = () => {
+    state.stopHoldWatchers?.();
+    if (fxState === state) fxState = null;
+    state.root.remove();
+  };
+  const cap = setTimeout(() => releaseHold(state, 0), FREEZE_CAP_MS);
+  state.stopHoldWatchers = () => {
+    window.removeEventListener("scroll", onHoldScroll, true);
+    document.removeEventListener("visibilitychange", onHide);
+    window.removeEventListener("pagehide", onLeave);
+    window.clearTimeout(cap);
+  };
+  window.addEventListener("scroll", onHoldScroll, {
+    capture: true,
+    passive: true,
+  });
+  document.addEventListener("visibilitychange", onHide);
+  window.addEventListener("pagehide", onLeave);
+  resolve(true);
+}
+
+/**
+ * Degraded variant for prefers-reduced-motion: no choreography, just a quick
+ * white blink on the selection so the "captured" feedback survives, then the
+ * same freeze/release lifecycle as the full fx.
+ */
+function runReducedFx(rect: CaptureFxRect): Promise<boolean> {
+  return new Promise<boolean>((resolve) => {
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const vis = visRect(rect, vw, vh);
+    if (!vis) {
+      resolve(false);
+      return;
+    }
+    const root = document.createElement("div");
+    root.setAttribute(UI_MARKER, "1");
+    root.style.cssText =
+      "position:fixed;inset:0;z-index:2147483647;pointer-events:none;overflow:hidden;";
+    document.documentElement.appendChild(root);
+    const state: FxState = { root, white: null, aborted: false, holding: false };
+    fxState = state;
+    const white = document.createElement("div");
+    state.white = white;
+    white.style.cssText = `position:absolute;left:${vis.gx}px;top:${vis.gy}px;width:${vis.gw}px;height:${vis.gh}px;border-radius:4px;background:#fff;opacity:0;`;
+    root.appendChild(white);
+    white.animate([{ opacity: 0 }, { opacity: 1 }], {
+      duration: 250,
+      easing: "ease-out",
+      fill: "forwards",
+    });
+    setTimeout(() => {
+      if (state.aborted) {
+        resolve(false);
+        return;
+      }
+      armHoldWatchers(state, resolve);
+    }, 320);
+  });
+}
+
+/**
  * Play the capture animation. Resolves `true` when fully played, `false` when
  * skipped or interrupted. Never rejects.
  */
@@ -171,40 +272,27 @@ export function playCaptureFx(opts: CaptureFxOptions): Promise<boolean> {
     return Promise.resolve(false);
   }
   if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-    return Promise.resolve(false);
+    return runReducedFx(rect);
   }
-  return runFx(rect, opts.labels?.beamed).catch((err) => {
+  return runFx(rect).catch((err) => {
     console.warn("[inspector-capture] fx failed", err);
     cancelCaptureFx();
     return false;
   });
 }
 
-function runFx(rect: CaptureFxRect, beamed?: string): Promise<boolean> {
+function runFx(rect: CaptureFxRect): Promise<boolean> {
   return new Promise<boolean>((resolve) => {
     const vw = window.innerWidth;
     const vh = window.innerHeight;
 
-    // Visual floor: the grid/scan need something to draw on, so a tiny element
-    // (a 2px checkbox) gets a 24x24 visualization centered on its real rect.
-    let { x, y, w, h } = rect;
-    if (w < 24) {
-      x -= (24 - w) / 2;
-      w = 24;
-    }
-    if (h < 24) {
-      y -= (24 - h) / 2;
-      h = 24;
-    }
-    // The rect is viewport-relative already; clip defensively anyway.
-    const gx = Math.max(0, x);
-    const gy = Math.max(0, y);
-    const gw = Math.min(w, vw - gx);
-    const gh = Math.min(h, vh - gy);
-    if (gw <= 0 || gh <= 0) {
+    // Visual floor + viewport clip (tiny elements get a 24px visualization).
+    const vis = visRect(rect, vw, vh);
+    if (!vis) {
       resolve(false);
       return;
     }
+    const { gx, gy, gw, gh } = vis;
 
     // Hover point: above the selection but deliberately offset LEFT of its
     // center (20% from the left edge — reads better next to the caption
@@ -259,28 +347,43 @@ function runFx(rect: CaptureFxRect, beamed?: string): Promise<boolean> {
       resolve(value);
     }
 
-    // ---------- stage 1: fly in (0-450ms), then hover bob ----------
+    // ---------- stage 1: fly in (0-1100ms), then dual-frequency hover ----------
 
+    // The craft is three nested wrappers + the artwork, each owning exactly one
+    // transform group (WAAPI animations on the same property fully override
+    // each other, so layers must not share): the OUTER wrapper flies (fly-in /
+    // exit), two INNER wrappers split the idle drift into independent x (3.7s)
+    // and y (2.6s) oscillations — coprime periods make the combined Lissajous
+    // path never visibly repeat — and the artwork itself carries the tiny
+    // "strain" pulses that sync the craft with its beam (cause & effect).
     const ufo = document.createElement("div");
     ufo.style.cssText = `position:absolute;left:0;top:0;width:${UFO_W}px;height:${UFO_H}px;z-index:3;will-change:transform;filter:drop-shadow(0 6px 14px rgba(96,140,248,.55));`;
-    // The artwork itself is a static PNG (ufo-small.png, see import); motion
-    // lives on the wrapper's transform so everything stays on the compositor.
+    const sway = document.createElement("div");
+    sway.style.cssText = "position:absolute;inset:0;will-change:transform;";
+    const bob = document.createElement("div");
+    bob.style.cssText = "position:absolute;inset:0;will-change:transform;";
+    // The artwork is a static PNG (ufo-small.png, see import); all motion is
+    // compositor-only transforms on the wrappers.
     const img = document.createElement("img");
     img.src = ufoPng;
     img.alt = "";
     img.style.cssText = "width:100%;height:100%;display:block;";
-    ufo.appendChild(img);
+    bob.appendChild(img);
+    sway.appendChild(bob);
+    ufo.appendChild(sway);
     root.appendChild(ufo);
 
     // Arc in from the bottom-right: the straight line start/target would read
     // as a stiff rocket path, so the keyframes lag BELOW the line (swoop under,
     // then climb into the hover point) while scale grows .2→1 across the whole
     // path — with a small low-and-right overshoot that settles into place, so
-    // the growth AND the landing are both clearly visible.
+    // the growth AND the landing are both clearly visible. fill:forwards keeps
+    // holding the landing transform through the idle phase (the inner drift
+    // layers add their offsets on top).
     const sx0 = vw + 140;
     const sy0 = vh + 120;
     const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
-    const flyIn = ufo.animate(
+    ufo.animate(
       [
         {
           transform: `translate(${sx0}px, ${sy0}px) scale(0.2) rotate(-18deg)`,
@@ -300,27 +403,26 @@ function runFx(rect: CaptureFxRect, beamed?: string): Promise<boolean> {
       ],
       { duration: FLY_MS, fill: "forwards" },
     );
-    // Idle drift: a closed loop (sway right, sway left, return) instead of a
-    // metronome up/down — the craft never sits perfectly still nor loops
-    // obviously.
-    const bob = ufo.animate(
+    // Idle drift: two independent closed loops (no fill — during their delay
+    // the fly-in's forwards fill holds the pose; a backwards fill would pin
+    // the craft at its first keyframe from t=0 and hide the whole fly-in).
+    sway.animate(
       [
-        { transform: `translate(${hx}px, ${hy}px) rotate(0deg)` },
-        { transform: `translate(${hx + 8}px, ${hy + 7}px) rotate(1.6deg)` },
-        { transform: `translate(${hx - 5}px, ${hy + 12}px) rotate(-1.6deg)` },
-        { transform: `translate(${hx}px, ${hy}px) rotate(0deg)` },
+        { transform: "translateX(0)" },
+        { transform: "translateX(9px)" },
+        { transform: "translateX(-6px)" },
+        { transform: "translateX(0)" },
       ],
-      {
-        duration: 2600,
-        iterations: Infinity,
-        easing: "ease-in-out",
-        delay: FLY_MS,
-        // NO backwards fill: a backwards fill would apply this animation's
-        // first keyframe (the landing point, scale 1) from t=0 and, being the
-        // later animation, override the whole fly-in — the craft would just
-        // sit at its landing spot. During the delay nothing applies, and
-        // flyIn's forwards fill holds the landing transform.
-      },
+      { duration: 3700, iterations: Infinity, easing: "ease-in-out", delay: FLY_MS },
+    );
+    bob.animate(
+      [
+        { transform: "translateY(0) rotate(0deg)" },
+        { transform: "translateY(7px) rotate(1.4deg)" },
+        { transform: "translateY(12px) rotate(-1.2deg)" },
+        { transform: "translateY(0) rotate(0deg)" },
+      ],
+      { duration: 2600, iterations: Infinity, easing: "ease-in-out", delay: FLY_MS },
     );
 
     // ---------- stage 2: beam + grid + scan line ----------
@@ -359,18 +461,43 @@ function runFx(rect: CaptureFxRect, beamed?: string): Promise<boolean> {
           fill: "both",
         },
       );
-      // Steady flicker while beaming; the exit fade (created later) wins over it.
+      // Cause & effect: emitting the beam visibly "costs" the craft a small
+      // strain pulse (on the artwork layer, so it composes with the wrappers).
+      img.animate(
+        [
+          { transform: "scale(1)", easing: "ease-in-out" },
+          { transform: "scale(1.035)", offset: 0.7, easing: "ease-out" },
+          { transform: "scale(1)" },
+        ],
+        { duration: BEAM_MS + 120, delay: BEAM_DELAY },
+      );
+      // Organic flicker: a slow shallow wave with one occasional deep dip —
+      // a uniform metronome blink reads mechanical.
       beam.animate(
         [
-          { opacity: 1 },
-          { opacity: 0.65 },
+          { opacity: 1, easing: "ease-in-out" },
+          { opacity: 0.9, offset: 0.3, easing: "ease-in-out" },
+          { opacity: 0.62, offset: 0.55, easing: "ease-in" },
+          { opacity: 0.96, offset: 0.78, easing: "ease-out" },
           { opacity: 1 },
         ],
+        { duration: 1500, iterations: Infinity, delay: FLICKER_DELAY },
+      );
+      // Impact accent: where the beam lands on the selection's top edge, a
+      // flattened ring expands and dies — the "hit" gets a beat of its own.
+      const ring = document.createElement("div");
+      ring.style.cssText = `position:absolute;left:${gx + gw / 2}px;top:${gy}px;width:56px;height:18px;margin:-9px 0 0 -28px;border:2px solid rgba(186,230,253,.9);border-radius:50%;z-index:2;`;
+      root.appendChild(ring);
+      ring.animate(
+        [
+          { transform: "scale(.3)", opacity: 0.9 },
+          { transform: "scale(1.7)", opacity: 0 },
+        ],
         {
-          duration: 260,
-          iterations: Infinity,
-          delay: FLICKER_DELAY,
-          easing: "ease-in-out",
+          duration: 340,
+          delay: BEAM_DELAY + BEAM_MS - 80,
+          easing: "ease-out",
+          fill: "both",
         },
       );
     }
@@ -378,77 +505,64 @@ function runFx(rect: CaptureFxRect, beamed?: string): Promise<boolean> {
     const grid = document.createElement("div");
     grid.style.cssText = `position:absolute;left:${gx}px;top:${gy}px;width:${gw}px;height:${gh}px;border:1px solid rgba(147,197,253,.45);border-radius:4px;background:repeating-linear-gradient(0deg, rgba(147,197,253,.3) 0 1px, transparent 1px 24px),repeating-linear-gradient(90deg, rgba(147,197,253,.3) 0 1px, transparent 1px 24px);box-shadow:0 0 10px rgba(96,165,250,.3), inset 0 0 18px rgba(96,165,250,.15);`;
     root.appendChild(grid);
+    // Lock-on: the fade rides a tiny settle (1.03→1) so the grid reads as
+    // snapping into place, not just appearing.
     grid.animate(
-      [{ opacity: 0 }, { opacity: 1 }],
+      [
+        { opacity: 0, transform: "scale(1.03)" },
+        { opacity: 1, transform: "scale(1)" },
+      ],
       { duration: GRID_MS, delay: GRID_DELAY, easing: "ease-out", fill: "both" },
     );
     const scan = document.createElement("div");
     scan.style.cssText =
       "position:absolute;left:0;top:0;width:100%;height:2px;background:linear-gradient(90deg, transparent, #dbeeff, transparent);";
     grid.appendChild(scan);
+    // Double pass: a quick scan down, then a slower, deliberate return —
+    // "checked and confirmed", and it hands the eye over to the white sweep.
     scan.animate(
-      [{ transform: "translateY(0)" }, { transform: `translateY(${gh - 2}px)` }],
-      { duration: SCAN_MS, delay: SCAN_DELAY, easing: "ease-in-out", fill: "both" },
+      [
+        { transform: "translateY(0)", easing: "ease-in" },
+        { transform: `translateY(${gh - 2}px)`, offset: 0.4, easing: "ease-out" },
+        { transform: "translateY(0)" },
+      ],
+      { duration: SCAN_MS, delay: SCAN_DELAY, fill: "both" },
     );
 
-    // ---------- stage 3: caption bubble + white sweep ----------
-
-    if (beamed) {
-      const bubble = document.createElement("div");
-      bubble.style.cssText =
-        "position:absolute;z-index:4;white-space:nowrap;background:rgba(17,24,39,.92);color:#fff;font:13px/1.6 system-ui,sans-serif;padding:6px 14px;border-radius:999px;border:1px solid rgba(139,197,255,.5);";
-      bubble.textContent = beamed;
-      root.appendChild(bubble);
-      // Prefer the UFO's right side; flip left when it would clip the viewport.
-      const bw2 = bubble.offsetWidth;
-      const bLeft =
-        hx + UFO_W + 10 + bw2 > vw - 8 ? hx - 10 - bw2 : hx + UFO_W + 10;
-      bubble.style.left = `${bLeft}px`;
-      bubble.style.top = `${hy + 4}px`;
-      bubble.animate(
-        [
-          { transform: "scale(.6) translateY(6px)", opacity: 0 },
-          { transform: "scale(1) translateY(0)", opacity: 1 },
-        ],
-        {
-          duration: BUBBLE_IN_MS,
-          delay: BUBBLE_IN_DELAY,
-          easing: "cubic-bezier(0.34, 1.56, 0.64, 1)", // soft pop
-          fill: "both",
-        },
-      );
-      bubble.animate([{ opacity: 1 }, { opacity: 0 }], {
-        duration: BUBBLE_OUT_MS,
-        delay: BUBBLE_OUT_DELAY,
-        fill: "forwards",
-      });
-    }
+    // ---------- stage 3: white sweep ----------
 
     const white = document.createElement("div");
     state.white = white; // remembered for the post-exit freeze release
-    white.style.cssText = `position:absolute;left:${gx}px;top:${gy}px;width:${gw}px;height:${gh}px;background:#fff;overflow:hidden;`;
+    white.style.cssText = `position:absolute;left:${gx}px;top:${gy}px;width:${gw}px;height:${gh}px;border-radius:4px;background:#fff;overflow:hidden;`;
     root.appendChild(white);
-    // The base fading in guarantees the selection ends fully white; the bar
-    // below only sells the diagonal sweep — the two need not line up exactly.
-    white.animate([{ opacity: 0 }, { opacity: 1 }], {
-      duration: SWEEP_MS,
-      delay: SWEEP_DELAY,
-      easing: "linear",
-      fill: "both",
-    });
+    // The base guarantees the selection ends fully white, but it HOLDS BACK
+    // until the bar has mostly crossed (opacity 0 for the first 55%) — if the
+    // base fades in alongside the sweep, the uniform whitening drowns the
+    // sweep's direction and the wipe reads as nothing.
+    white.animate(
+      [
+        { opacity: 0, easing: "ease-in" },
+        { opacity: 0, offset: 0.55 },
+        { opacity: 1 },
+      ],
+      { duration: SWEEP_MS, delay: SWEEP_DELAY, fill: "both" },
+    );
     const d = Math.sqrt(gw * gw + gh * gh);
     const bar = document.createElement("div");
-    bar.style.cssText = `position:absolute;left:50%;top:50%;width:${d}px;height:${d * 1.6}px;margin-left:${-d / 2}px;margin-top:${-d * 0.8}px;background:linear-gradient(to bottom, #fff 0%, rgba(255,255,255,.95) 40%, rgba(255,255,255,0) 100%);`;
+    // Mostly solid with a short trailing feather — a tight "blade" edge so the
+    // wipe has a visible cutting line (the old 40%-long feather was too soft).
+    bar.style.cssText = `position:absolute;left:50%;top:50%;width:${d}px;height:${d * 1.6}px;margin-left:${-d / 2}px;margin-top:${-d * 0.8}px;background:linear-gradient(to bottom, #fff 0%, #fff 60%, rgba(255,255,255,0) 100%);`;
     white.appendChild(bar);
     // rotate(45deg) points the bar's local -Y axis at the top-right corner, so
     // a translateY(66% -> -66%) sweep runs bottom-left -> top-right regardless
     // of the selection's aspect ratio — why this beats a clip-path tween.
+    // Ease-in: the wipe accelerates, like the content is being sucked up.
     bar.animate(
       [
         { transform: "rotate(45deg) translateY(66%)" },
         { transform: "rotate(45deg) translateY(-66%)" },
       ],
-      { duration: SWEEP_MS, delay: SWEEP_DELAY, easing: "linear", fill: "both" },
+      { duration: SWEEP_MS, delay: SWEEP_DELAY, easing: "ease-in", fill: "both" },
     );
 
     // ---------- stage 4: beam retract + exit, then the white freeze ----------
@@ -461,16 +575,29 @@ function runFx(rect: CaptureFxRect, beamed?: string): Promise<boolean> {
       // mouth) and the grid dims behind it — the UFO leaves only after its
       // beam is fully retracted.
       if (beam) {
+        // Start from the flicker's LIVE opacity — a hardcoded first frame
+        // would jump-cut whenever the flicker happens to sit in a dip. The
+        // beam then brightens to full while it sucks in: a final burst before
+        // shutdown. The craft answers with a matching ease-back pulse.
+        const beamOpacity = getComputedStyle(beam).opacity;
         beam.animate(
           [
-            { transform: "scaleY(1)", opacity: 1 },
-            { transform: "scaleY(0)", opacity: 0.9 },
+            { transform: "scaleY(1)", opacity: beamOpacity },
+            { transform: "scaleY(0)", opacity: 1 },
           ],
           {
             duration: BEAM_RETRACT_MS,
             easing: "cubic-bezier(0.6, 0, 0.8, 0.4)", // accelerating suck-back
             fill: "forwards",
           },
+        );
+        img.animate(
+          [
+            { transform: "scale(1)", easing: "ease-in-out" },
+            { transform: "scale(0.965)", offset: 0.7, easing: "ease-out" },
+            { transform: "scale(1)" },
+          ],
+          { duration: BEAM_RETRACT_MS + 120 },
         );
       }
       grid.animate([{ opacity: 1 }, { opacity: 0 }], {
@@ -482,24 +609,26 @@ function runFx(rect: CaptureFxRect, beamed?: string): Promise<boolean> {
       await sleep(BEAM_RETRACT_MS + 60);
       if (done || state.aborted) return;
       // ---------- stage 4b: the craft departs ----------
-      // Stop the hover drift but START the exit from wherever the drift
-      // currently is (its live computed transform) — no snap back to the
-      // landing point.
-      const cur = getComputedStyle(ufo).transform;
-      const from = cur === "none" ? `translate(${hx}px, ${hy}px)` : cur;
-      bob.cancel();
-      // Exit reads as: pull up + swell (anticipation), then climb away to the
-      // top-right along an arc (y lags x so the path bows below the straight
-      // line and bends upward), shrinking hard so the getaway is unmistakable.
+      // The outer wrapper starts from the landing pose (the fly-in's forwards
+      // fill holds it); the idle-drift inner layers keep running and wobble
+      // the craft as it leaves — organic, and no drift-to-landing snap since
+      // they compose instead of competing for the same transform.
+      // Classic anticipation first: DIP down + squash (opposite the launch
+      // direction) so the climb-away springs; then arc up-right (y lags x so
+      // the path bows below the straight line and bends upward), shrinking
+      // hard so the getaway is unmistakable.
       const ex = vw + 160;
       const ey = -hy - 260;
       ufo.animate(
         [
-          { transform: from, easing: "ease-out" },
           {
-            transform: `translate(${hx - 8}px, ${hy - 18}px) scale(1.12) rotate(-5deg)`,
-            offset: 0.2,
-            easing: "cubic-bezier(0.6, 0, 0.8, 0.4)", // brief charge, then launch
+            transform: `translate(${hx}px, ${hy}px) scale(1) rotate(0deg)`,
+            easing: "ease-out",
+          },
+          {
+            transform: `translate(${hx - 4}px, ${hy + 10}px) scale(1.08, 0.93) rotate(-3deg)`,
+            offset: 0.22,
+            easing: "cubic-bezier(0.6, 0, 0.8, 0.4)", // charge, then launch
           },
           {
             transform: `translate(${lerp(hx, ex, 0.5)}px, ${lerp(hy, ey, 0.34)}px) scale(0.68) rotate(12deg)`,
@@ -518,31 +647,7 @@ function runFx(rect: CaptureFxRect, beamed?: string): Promise<boolean> {
       ufo.remove();
       grid.remove();
       beam?.remove();
-      state.holding = true;
-      const onHoldScroll = () => releaseHold(state, 0);
-      const onHide = () => {
-        if (document.hidden) releaseHold(state, RELEASE_DELAY_MS);
-      };
-      // bfcache restores would otherwise resurrect a stale freeze.
-      const onLeave = () => {
-        state.stopHoldWatchers?.();
-        if (fxState === state) fxState = null;
-        state.root.remove();
-      };
-      const cap = setTimeout(() => releaseHold(state, 0), FREEZE_CAP_MS);
-      state.stopHoldWatchers = () => {
-        window.removeEventListener("scroll", onHoldScroll, true);
-        document.removeEventListener("visibilitychange", onHide);
-        window.removeEventListener("pagehide", onLeave);
-        window.clearTimeout(cap);
-      };
-      window.addEventListener("scroll", onHoldScroll, {
-        capture: true,
-        passive: true,
-      });
-      document.addEventListener("visibilitychange", onHide);
-      window.addEventListener("pagehide", onLeave);
-      resolve(true);
+      armHoldWatchers(state, () => resolve(true));
     })();
   });
 }

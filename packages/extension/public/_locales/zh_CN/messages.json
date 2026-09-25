@@ -53,5 +53,17 @@
   "notifyGifTimeLimitMessage": {
     "message": "录制已自动保存，请在预览标签页中查看",
     "description": "System notification body when a GIF recording auto-stops at the maximum duration."
+  },
+  "notifyScreenshotFailedTitle": {
+    "message": "截图失败",
+    "description": "System notification title when a screenshot could not be captured (shown because the popup already closed itself)."
+  },
+  "notifyScreenshotConflictMessage": {
+    "message": "请关闭此标签页上的 DevTools 后重试",
+    "description": "System notification body when another debugger (usually DevTools) is attached to the tab."
+  },
+  "notifyScreenshotFailedMessage": {
+    "message": "当前页面无法完成截图",
+    "description": "System notification body for a generic screenshot failure."
   }
 }

@@ -61,6 +61,9 @@ export function SettingsFeature() {
   const [testing, setTesting] = useState(false);
   const [devMode, setDevMode] = useStorage(settings.devMode);
   const [captureFx, setCaptureFx] = useStorage(settings.inspectorCaptureFx);
+  const [screenshotFx, setScreenshotFx] = useStorage(
+    settings.screenshotCaptureFx,
+  );
   // Companion npm package version, resolved from the registry (null = hidden).
   const [mcpVersion, setMcpVersion] = useState<string | null>(null);
   // Easter-egg state: consecutive taps on the version tag (not persisted).
@@ -228,6 +231,26 @@ export function SettingsFeature() {
             </Text>
           </div>
           <Switch checked={captureFx} onChange={(v) => void setCaptureFx(v)} />
+        </div>
+      </section>
+
+      {/* Screenshot focus fx card: the camera-focus performance played in the
+          page before a screenshot is captured (see
+          lib/screenshot/focus-fx.ts). */}
+      <section className="flex-none rounded-xl border border-(--ant-color-border-secondary) bg-(--ant-color-bg-container) overflow-hidden">
+        <div className="flex items-center justify-between gap-2 px-3 py-2.5">
+          <div className="min-w-0">
+            <Text strong className="text-sm block">
+              {t('settings.screenshotCaptureFxTitle')}
+            </Text>
+            <Text type="secondary" className="text-xs!">
+              {t('settings.screenshotCaptureFxDesc')}
+            </Text>
+          </div>
+          <Switch
+            checked={screenshotFx}
+            onChange={(v) => void setScreenshotFx(v)}
+          />
         </div>
       </section>
 

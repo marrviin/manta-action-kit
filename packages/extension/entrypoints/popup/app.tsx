@@ -23,10 +23,7 @@ import type {
   GifRecordingErrorCode,
   GifRecordingState,
 } from "@/lib/gif-recording/types";
-import type {
-  ScreenshotErrorCode,
-  ScreenshotMode,
-} from "@/lib/screenshot/types";
+import type { ScreenshotMode } from "@/lib/screenshot/types";
 import {
   gifRecordingState,
   screenshotMode as screenshotModeItem,
@@ -35,21 +32,6 @@ import {
 } from "@/lib/storage";
 import { useStorage } from "@/hooks/use-storage";
 import { cn, isCapturableUrl } from "@/lib/utils";
-
-/** Map a background "screenshot:<code>" error onto a popup i18n key. */
-type ScreenshotErrorKey =
-  | "popup.screenshotUnsupportedPage"
-  | "popup.screenshotDebuggerConflict"
-  | "popup.screenshotTooLarge"
-  | "popup.screenshotFailed";
-const screenshotErrorKey = (message: string): ScreenshotErrorKey => {
-  if (!message.startsWith("screenshot:")) return "popup.screenshotFailed";
-  const code = message.slice(11).split(" ")[0] as ScreenshotErrorCode;
-  if (code === "unsupported-page") return "popup.screenshotUnsupportedPage";
-  if (code === "debugger-conflict") return "popup.screenshotDebuggerConflict";
-  if (code === "preview-too-large") return "popup.screenshotTooLarge";
-  return "popup.screenshotFailed";
-};
 
 /** Map a background "gif:<code>" error onto a popup i18n key. */
 type GifErrorKey =
@@ -132,9 +114,12 @@ export default function PopupApp({
   };
 
   /**
-   * "Screenshot" entry (visible area / full page). The background captures and
-   * opens a preview tab — copy/download happen there, with the image in front
-   * of the user; nothing is saved automatically. The popup just closes.
+   * "Screenshot" entry (visible area / full page). The background captures,
+   * plays the focus fx and opens a preview tab — copy/download happen there,
+   * with the image in front of the user; nothing is saved automatically. The
+   * popup closes as soon as the request is sent so it never covers the page
+   * during the fx; failures surface as a background system notification
+   * (notifyScreenshotFailed*) since this window is gone by then.
    */
   const runScreenshot = async (mode: ScreenshotMode) => {
     const [tab] = await chrome.tabs.query({
@@ -149,16 +134,9 @@ export default function PopupApp({
       message.warning(t("popup.screenshotUnsupportedPage"));
       return;
     }
-    // Background replies { __error: "screenshot:<code> ..." } on failure
-    // (resolve, not reject — see the shared catch-all in background.ts).
-    const res = await sendMessage("CAPTURE_SCREENSHOT", { mode });
-    if ("__error" in res) {
-      const text = t(screenshotErrorKey((res as { __error: string }).__error));
-      message.warning(
-        isFileUrl(tab.url) ? `${text} ${t("popup.fileAccessHint")}` : text,
-      );
-      return;
-    }
+    void sendMessage("CAPTURE_SCREENSHOT", { mode }).catch(() => {
+      /* the background still runs; failures notify (see background.ts) */
+    });
     window.close();
   };
 

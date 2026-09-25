@@ -1,6 +1,7 @@
 import { API_CALL_EVENT, type CapturedCall } from "@/lib/recording/types";
 import { sendMessage } from "@/lib/messaging";
 import { initInspectorCapture } from "@/lib/inspector/capture";
+import { PLAY_SCREENSHOT_FX, playScreenshotFocusFx } from "@/lib/screenshot/focus-fx";
 
 /**
  * Content script (ISOLATED world).
@@ -46,5 +47,27 @@ export default defineContentScript({
     // Alt+Shift+I. Registered after the hook injection so a failure there
     // (extremely unlikely) doesn't silently disable capture.
     initInspectorCapture((cb) => ctx.onInvalidated(cb));
+
+    // Screenshot focus fx: the background pings this right after it has
+    // captured (the shot is already taken — the fx can never pollute it) and
+    // waits for the reply before opening the preview tab, so the jump reads
+    // as the iris snap's recovery. Classic async-sendResponse pattern
+    // (`return true` keeps the channel open); the inspector listener above
+    // returns undefined for this type, so the two listeners don't fight.
+    browser.runtime.onMessage.addListener(
+      (msg: unknown, _sender, sendResponse: (r: unknown) => void) => {
+        if (
+          !msg ||
+          typeof msg !== "object" ||
+          (msg as { type?: unknown }).type !== PLAY_SCREENSHOT_FX
+        ) {
+          return;
+        }
+        playScreenshotFocusFx({
+          shutterColor: (msg as { color?: string }).color,
+        }).then((played) => sendResponse({ played }));
+        return true;
+      },
+    );
   },
 });

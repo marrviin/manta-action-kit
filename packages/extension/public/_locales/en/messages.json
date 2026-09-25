@@ -53,5 +53,17 @@
   "notifyGifTimeLimitMessage": {
     "message": "The recording was saved automatically and is ready in the preview tab",
     "description": "System notification body when a GIF recording auto-stops at the maximum duration."
+  },
+  "notifyScreenshotFailedTitle": {
+    "message": "Screenshot failed",
+    "description": "System notification title when a screenshot could not be captured (shown because the popup already closed itself)."
+  },
+  "notifyScreenshotConflictMessage": {
+    "message": "Close DevTools on this tab and try again",
+    "description": "System notification body when another debugger (usually DevTools) is attached to the tab."
+  },
+  "notifyScreenshotFailedMessage": {
+    "message": "This page could not be captured as a screenshot",
+    "description": "System notification body for a generic screenshot failure."
   }
 }

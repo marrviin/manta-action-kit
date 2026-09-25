@@ -123,6 +123,27 @@ export const settings = {
   inspectorCaptureFx: storage.defineItem<boolean>("sync:inspectorCaptureFx", {
     fallback: true,
   }),
+
+  /**
+   * Camera-focus animation played in the page before a screenshot is captured
+   * (see lib/screenshot/focus-fx.ts). User-facing preference, hence `sync`.
+   * Read by the background's CAPTURE_SCREENSHOT handler before capturing.
+   */
+  screenshotCaptureFx: storage.defineItem<boolean>(
+    "sync:screenshotCaptureFx",
+    { fallback: true },
+  ),
+
+  /**
+   * Round-robin cursor into focus-fx.ts's SHUTTER_COLORS — the shutter iris
+   * takes the next color each screenshot. `session` area: the sequence only
+   * needs to survive the SW sleeping, not browser restarts. Written/read by
+   * the background (trusted context) when it dispatches PLAY_SCREENSHOT_FX.
+   */
+  screenshotFxShutterIndex: storage.defineItem<number>(
+    "session:screenshotFxShutterIndex",
+    { fallback: 0 },
+  ),
 };
 
 /**
