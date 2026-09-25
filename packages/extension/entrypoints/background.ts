@@ -14,6 +14,7 @@ import {
   updateProxyRuleContent,
 } from "@/lib/gateway/manage-rules";
 import { captureScreenshot } from "@/lib/screenshot/capture";
+import { captureFullPageStitched } from "@/lib/screenshot/stitch";
 import { PLAY_SCREENSHOT_FX, nextShutterColor } from "@/lib/screenshot/focus-fx";
 import {
   ScreenshotError,
@@ -184,7 +185,17 @@ export default defineBackground(() => {
             // Capture FIRST, while the page is still pristine — the shot can
             // never contain the fx overlay, and a failed capture skips the
             // show entirely instead of playing it for nothing.
-            const shot = await captureScreenshot(tab, msg.data.mode);
+            // fullPage prefers scroll-and-stitch (width pinned to the
+            // viewport — no blank-edge inflation — and lazy images load on
+            // the way down); anything that goes wrong falls back to the
+            // DevTools-equivalent CDP single render below.
+            const shot = await (async () => {
+              if (msg.data.mode === "fullPage") {
+                const stitched = await captureFullPageStitched(tab);
+                if (stitched) return stitched;
+              }
+              return captureScreenshot(tab, msg.data.mode);
+            })();
             // Hand the capture to the preview tab via session storage (a
             // full-page data URL is far too large for a query param), then
             // open it. Copy/download happen there — nothing is saved yet.

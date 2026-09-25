@@ -2,6 +2,7 @@ import { API_CALL_EVENT, type CapturedCall } from "@/lib/recording/types";
 import { sendMessage } from "@/lib/messaging";
 import { initInspectorCapture } from "@/lib/inspector/capture";
 import { PLAY_SCREENSHOT_FX, playScreenshotFocusFx } from "@/lib/screenshot/focus-fx";
+import { handleFullpageMessage } from "@/lib/screenshot/stitch-page";
 
 /**
  * Content script (ISOLATED world).
@@ -66,6 +67,22 @@ export default defineContentScript({
         playScreenshotFocusFx({
           shutterColor: (msg as { color?: string }).color,
         }).then((played) => sendResponse({ played }));
+        return true;
+      },
+    );
+
+    // Scroll-and-stitch full-page capture: the background drives the page
+    // through begin/scroll/stitch/end steps (see lib/screenshot/stitch.ts).
+    // Same classic async-sendResponse pattern; non-fullpage messages resolve
+    // to null here, so the two listeners above stay unaffected.
+    browser.runtime.onMessage.addListener(
+      (msg: unknown, _sender, sendResponse: (r: unknown) => void) => {
+        const res = handleFullpageMessage(msg);
+        if (!res) return;
+        res.then(
+          (r) => sendResponse(r),
+          (err) => sendResponse({ __error: String(err) }),
+        );
         return true;
       },
     );
