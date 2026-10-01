@@ -28,6 +28,7 @@ import {
   startGifRecording,
   stopGifRecording,
 } from "@/lib/gif-recording/session";
+import { ensureLayaRuntime } from "@/lib/ai/laya-session";
 import {
   initGatewayConfirm,
   isPendingConfirmation,
@@ -363,6 +364,23 @@ export default defineBackground(() => {
               console.error("[background] gif cleanup failed", err),
             );
             break;
+
+          case "LAYA_ENSURE_RUNTIME":
+            // Create the shared offscreen document on demand (reused with the
+            // GIF recorder — see lib/ai/laya-session.ts). The model itself
+            // loads lazily on the first LAYA_PREDICT.
+            await ensureLayaRuntime();
+            sendResponse({ ok: true });
+            break;
+
+          case "LAYA_PREDICT": {
+            // Relay into the offscreen runtime. The service worker cannot host
+            // the ONNX session itself (no WebGPU, ~30s idle lifetime), so this
+            // is a pure pass-through with document-ensure on the front.
+            await ensureLayaRuntime();
+            sendResponse(await browser.runtime.sendMessage(raw));
+            break;
+          }
 
           case "PING":
             sendResponse({ type: "PONG", at: Date.now() });
