@@ -4,11 +4,12 @@
  *
  *  - the MV3 service worker has no WebGPU and idle-terminates after ~30s, so it
  *    cannot host an ONNX session; this document survives both.
- *  - the side panel dies the moment the user closes it — a 1.6 GB model load
+ *  - the side panel dies the moment the user closes it — a 1.6 GB fp32 model load
  *    must not be repeated (or interrupted) on every panel toggle.
  *
- * The model bundle (encoder.onnx / head.onnx + .data sidecars, tokenizer.json,
- * rl_agent_config.json) ships inside the extension package under
+ * The model bundle (fp16 encoder.onnx + int8 head.onnx, ~800 MB total, plus
+ * tokenizer.json and rl_agent_config.json) ships inside the extension package
+ * under
  * public/models/laya-en, so `loadWebBundle` fetches it from the extension's own
  * origin (chrome-extension://<id>/models/laya-en) — same-origin, no CORS, and
  * the HTTP cache makes repeat loads cheap.
@@ -19,13 +20,17 @@
  */
 import { Agent, type SystemOneResult } from "./index";
 
-/** Base URL of the bundled English checkpoint (folder with the 6 model files). */
-const MODEL_URL = new URL("../../public/models/laya-en/", import.meta.url).href;
+/** Base URL of the bundled English checkpoint (folder with the 6 model files).
+ * WXT copies `public/` to the package root in both dev and build, so the
+ * extension-origin URL (`chrome-extension://<id>/models/laya-en/`) is stable —
+ * unlike `new URL(..., import.meta.url)`, which under the Vite dev server
+ * resolves against `http://localhost:<port>/@fs/...` and 404s. */
+const MODEL_URL = new URL('models/laya-en/', browser.runtime.getURL('/')).href;
 
 /** The loaded agent — created on first use, then reused for every predict. */
 let agent: Agent | null = null;
 
-/** In-flight load, so concurrent first calls share one load (not two 1.6GB reads). */
+/** In-flight load, so concurrent first calls share one load (not two 1.6GB fp32 reads). */
 let loading: Promise<Agent> | null = null;
 
 /** Ensures an Agent exists; concurrent callers await the same load. */
@@ -42,6 +47,11 @@ export function getAgent(): Promise<Agent> {
 /** Whether the model has finished loading at least once (for status display). */
 export function isAgentReady(): boolean {
   return agent !== null;
+}
+
+/** Whether a load is currently in flight (for status display across contexts). */
+export function isAgentLoading(): boolean {
+  return loading !== null;
 }
 
 /**

@@ -177,9 +177,10 @@ function applyNumThreads(ort: any, numThreads?: number): void {
     const raw =
       numThreads ??
       (typeof process !== "undefined" ? Number((process as any).env?.["LAYA_THREADS"]) : NaN);
-    if (Number.isFinite(raw) && (raw as number) > 0 && ort?.env) {
-      ort.env.numThreads = Math.trunc(raw as number);
-    }
+    if (!Number.isFinite(raw) || (raw as number) <= 0 || !ort?.env) return;
+    // The knob lives on env.wasm (env.numThreads does not exist) — setting the
+    // wrong path silently left the runtime at its default.
+    ort.env.wasm.numThreads = Math.trunc(raw as number);
   } catch {
     /* best-effort only */
   }
@@ -586,64 +587,94 @@ export async function createWebProvider(
     /* webpackIgnore: false */ "onnxruntime-web"
   );
   applyNumThreads(ort, opts?.numThreads);
-  // The bundler emits the runtime's .wasm as a hashed asset next to this
-  // chunk (new URL(..., self.location.href) in ort.bundle) — no wasmPaths
-  // override needed; Chrome's MV3 CSP stays satisfied (no remote code).
+  if (opts?.numThreads == null) {
+    // No explicit choice: use half the cores (capped) instead of ort-web's
+    // conservative default — inference on wasm scales with threads.
+    const cores = (globalThis as any).navigator?.hardwareConcurrency ?? 4;
+    ort.env.wasm.numThreads = Math.max(1, Math.min(8, Math.floor(cores / 2)));
+  }
   const base = modelUrl.replace(/\/+$/, "");
   const encUrl = `${base}/encoder.onnx`;
   const headUrl = `${base}/head.onnx`;
-  // (Re-)read through fetchArrayBuffer so repeat reads hit CacheStorage.
-  // Nothing pin-worthy is retained: after each create, buffers are droppable.
-  const readEncoderParts = async (signal?: AbortSignal | null) => {
-    const buf = await fetchArrayBuffer(encUrl, { signal: signal ?? undefined });
-    const sidecar = await fetchSidecar(encUrl);
-    return { buf, extra: sidecar ? { externalData: [sidecar] } : {} };
-  };
-  let encBuf: ArrayBuffer;
-  let encExtra: Record<string, unknown>;
-  try {
-    ({ buf: encBuf, extra: encExtra } = await readEncoderParts(opts?.signal));
-  } catch (e) {
-    if ((e as Error)?.name === "AbortError") throw e;
-    throw new Error(`Incompatible model: 'encoder.onnx' not found (expected ${encUrl}).`);
+  // MV3 CSP (`script-src 'self'`) forbids script imports from blob:, which is
+  // exactly what ort-web falls back to when its wasm-loader .mjs is
+  // cross-origin — and multithreaded wasm ALWAYS preloads cross-origin .mjs
+  // via a blob (dev server) → "Failed to fetch dynamically imported module:
+  // blob:chrome-extension://…". Serve the loader + binary from the extension's
+  // own public/ort/ so the import is same-origin ('self' → allowed) in both
+  // dev and build. Node (tests) has no runtime origin and skips this.
+  const runtimeOrigin =
+    (globalThis as any).browser?.runtime?.getURL ??
+    (globalThis as any).chrome?.runtime?.getURL;
+  if (runtimeOrigin) {
+    ort.env.wasm.wasmPaths = {
+      mjs: new URL("ort/ort-wasm-simd-threaded.jsep.mjs", runtimeOrigin("/")).href,
+    };
   }
-  opts?.onProgress?.(1, 2, "encoder.onnx");
-  let headBuf: ArrayBuffer;
+  // Verification (expectedSha256) needs the raw bytes, so that path buffers the
+  // model and mounts its `.onnx.data` sidecar explicitly. Without it, create
+  // straight from the URL: ort-web fetches the model AND its relative sidecar
+  // into its own heap, so the 1.5GB of fp32 weights never pass through a JS
+  // ArrayBuffer (nor a CacheStorage clone) on top of the session's own copy —
+  // those extra copies OOM-killed the offscreen document.
+  const verify = opts?.expectedSha256 != null;
+  type SessionSource = { source: string | Uint8Array; extra: Record<string, unknown> };
+  const encParts = async (): Promise<SessionSource> => {
+    if (!verify) return { source: encUrl, extra: {} };
+    const buf = await fetchArrayBuffer(encUrl, { signal: opts?.signal ?? undefined });
+    const sidecar = await fetchSidecar(encUrl);
+    return { source: new Uint8Array(buf), extra: sidecar ? { externalData: [sidecar] } : {} };
+  };
+  const headParts = async (): Promise<SessionSource> => {
+    if (!verify) return { source: headUrl, extra: {} };
+    const buf = await fetchArrayBuffer(headUrl, { signal: opts?.signal ?? undefined });
+    const sidecar = await fetchSidecar(headUrl);
+    return { source: new Uint8Array(buf), extra: sidecar ? { externalData: [sidecar] } : {} };
+  };
+  let enc: any;
+  const createEnc = async (eps: string[], basic: boolean) => {
+    const p = await encParts();
+    return ort.InferenceSession.create(p.source, {
+      executionProviders: eps,
+      // "basic" skips the Skip+LayerNorm fusion whose fused Beta shape the
+      // WebGPU kernel rejects; unfused LayerNormalization runs fine on GPU.
+      ...(basic ? { graphOptimizationLevel: "basic" } : {}),
+      ...p.extra,
+    });
+  };
+  let encBackend = "webgpu";
   try {
-    headBuf = await fetchArrayBuffer(headUrl, { signal: opts?.signal ?? undefined });
+    enc = await createEnc(["webgpu", "wasm"], true);
   } catch (e) {
     if ((e as Error)?.name === "AbortError") throw e;
-    throw new Error(`Incompatible model: 'head.onnx' not found (expected ${headUrl}).`);
+    // WebGPU session creation failed (or the artifact 404'd) — retry on WASM.
+    encBackend = "wasm";
+    try {
+      enc = await createEnc(["wasm"], false);
+    } catch {
+      throw new Error(
+        `Incompatible model: 'encoder.onnx' could not be loaded from ${encUrl}: ${String((e as Error)?.message ?? e)}`,
+      );
+    }
+  }
+  console.info(
+    `[laya] encoder session on ${encBackend}, ${ort.env.wasm.numThreads} wasm thread(s)`,
+  );
+  opts?.onProgress?.(1, 2, "encoder.onnx");
+  let head: any;
+  try {
+    const p = await headParts();
+    head = await ort.InferenceSession.create(p.source, {
+      executionProviders: ["wasm"],
+      ...p.extra,
+    });
+  } catch (e) {
+    if ((e as Error)?.name === "AbortError") throw e;
+    throw new Error(
+      `Incompatible model: 'head.onnx' could not be loaded from ${headUrl}: ${String((e as Error)?.message ?? e)}`,
+    );
   }
   opts?.onProgress?.(2, 2, "head.onnx");
-  // Verify before the bytes reach the runtime: a tampered ONNX never becomes a session.
-  if (opts?.expectedSha256) {
-    await expectDigest("encoder.onnx", encBuf, opts.expectedSha256);
-    await expectDigest("head.onnx", headBuf, opts.expectedSha256);
-  }
-  // Split ONNX references its weights relatively ("encoder.onnx.data"); buffered
-  // sessions have no filesystem, so mount the sidecar via externalData.
-  const headSidecar = await fetchSidecar(headUrl);
-  const headExtra = headSidecar ? { externalData: [headSidecar] } : {};
-  let enc: any;
-  try {
-    // "basic" skips the Skip+LayerNorm fusion whose fused Beta shape the
-    // WebGPU kernel rejects; unfused LayerNormalization runs fine on GPU.
-    enc = await ort.InferenceSession.create(new Uint8Array(encBuf), {
-      executionProviders: ["webgpu", "wasm"],
-      graphOptimizationLevel: "basic",
-      ...encExtra,
-    });
-  } catch (e) {
-    enc = await ort.InferenceSession.create(new Uint8Array(encBuf), {
-      executionProviders: ["wasm"],
-      ...encExtra,
-    });
-  }
-  const head = await ort.InferenceSession.create(new Uint8Array(headBuf), {
-    executionProviders: ["wasm"],
-    ...headExtra,
-  });
   // Lazy WASM encoder: some graphs pass WebGPU session creation but hit an
   // unsupported kernel at run time (e.g. SkipLayerNormalization shape gaps).
   // On the first such failure we build a WASM session and stick with it.
@@ -672,17 +703,19 @@ export async function createWebProvider(
             `laya: WebGPU encoder run failed (${String((e as Error)?.message ?? e)}); falling back to WASM.`,
           );
           if (!encWasm) {
-            // Re-read through the cache instead of pinning 1GB+ for the agent's life.
-            let parts;
+            // URL mode re-fetches from the (disk-backed) extension origin;
+            // verify mode re-reads through CacheStorage — either way nothing
+            // is pinned in JS memory for the agent's life.
             try {
-              parts = await readEncoderParts();
+              const p = await encParts();
+              encWasm = await ort.InferenceSession.create(p.source, {
+                executionProviders: ["wasm"],
+                ...p.extra,
+              });
+              console.info("[laya] WebGPU encoder run failed at runtime; switched to WASM session");
             } catch {
               throw e;
             }
-            encWasm = await ort.InferenceSession.create(new Uint8Array(parts.buf), {
-              executionProviders: ["wasm"],
-              ...parts.extra,
-            });
           }
           try {
             return await runEncoderOn(encWasm, b);

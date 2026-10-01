@@ -1,6 +1,11 @@
 packages:
   - 'packages/*'
 
+# protobufjs (transitive dep of onnxruntime-web) ships a postinstall script.
+allowBuilds:
+  onnxruntime-node: true
+  protobufjs: true
+
 onlyBuiltDependencies:
   - esbuild
   - '@parcel/watcher'

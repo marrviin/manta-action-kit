@@ -376,9 +376,30 @@ export default defineBackground(() => {
           case "LAYA_PREDICT": {
             // Relay into the offscreen runtime. The service worker cannot host
             // the ONNX session itself (no WebGPU, ~30s idle lifetime), so this
-            // is a pure pass-through with document-ensure on the front.
+            // is a pure pass-through with document-ensure on the front. While
+            // the prediction runs, the offscreen side pings LAYA_KEEPALIVE to
+            // keep THIS worker alive — a killed SW would drop the pending
+            // sendResponse and the caller would see "message channel closed".
             await ensureLayaRuntime();
             sendResponse(await browser.runtime.sendMessage(raw));
+            break;
+          }
+
+          case "LAYA_KEEPALIVE":
+            // No-op: the receipt alone resets the SW idle timer (see the
+            // LAYA_PREDICT relay above and lib/messaging.ts).
+            sendResponse({ ok: true });
+            break;
+
+          case "LAYA_GET_STATUS": {
+            // Relay, but do NOT ensure the document first: a status probe from
+            // a freshly opened panel must not spawn the runtime. A missing
+            // offscreen document simply means "not loaded".
+            try {
+              sendResponse(await browser.runtime.sendMessage(raw));
+            } catch {
+              sendResponse({ ready: false, loading: false });
+            }
             break;
           }
 

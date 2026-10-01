@@ -344,6 +344,28 @@ export interface ProtocolMap {
       usage?: { input_tokens: number; output_tokens: number };
     };
   };
+  /**
+   * Offscreen -> background: sent every 15s while a LAYA_PREDICT is in flight.
+   * Model load + first predict run for minutes — beyond the MV3 service
+   * worker's ~30s idle kill — so each receipt resets the SW idle timer and
+   * keeps the relay's pending sendResponse alive. Same trick as the gateway
+   * confirm page's GATEWAY_CONFIRM_PING.
+   */
+  LAYA_KEEPALIVE: {
+    request: Record<string, never>;
+    response: { ok: true };
+  };
+  /**
+   * Any UI context -> background: query whether the offscreen runtime already
+   * holds a loaded agent. Lets the settings card restore its `ready` state on
+   * mount (the card's own state dies with the panel; the offscreen agent does
+   * not). When the offscreen document is gone entirely, the background answers
+   * `ready: false` without creating one — status must not spawn the runtime.
+   */
+  LAYA_GET_STATUS: {
+    request: Record<string, never>;
+    response: { ready: boolean; loading: boolean };
+  };
 }
 
 export type MessageType = keyof ProtocolMap;

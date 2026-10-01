@@ -73,5 +73,13 @@ export default defineConfig({
   // Tailwind CSS v4 via its first-party Vite plugin.
   vite: () => ({
     plugins: [tailwindcss()],
+    // onnxruntime-web must not be pre-bundled in dev: its internal dynamic
+    // import of `ort-wasm-simd-threaded.*.mjs` resolves against the pre-bundle
+    // dir, where that sibling asset doesn't exist → "no available backend
+    // found". Excluded, the relative import hits the real files in
+    // node_modules/onnxruntime-web/dist/. (Rollup handles this itself at
+    // build time — the build emits the .wasm as a hashed asset — so this is
+    // dev-server-only.)
+    optimizeDeps: { exclude: ["onnxruntime-web"] },
   }),
 });

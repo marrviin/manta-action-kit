@@ -40,6 +40,6 @@ coverage/
 .cache/
 *.zip
 
-# onnx
-.onnx
-.onnx.data
+# onnx weights — exported locally, too large for git (see lib/ai/runtime.ts)
+*.onnx
+*.onnx.data

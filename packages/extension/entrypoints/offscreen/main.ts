@@ -23,7 +23,7 @@
 import { sendMessage } from '@/lib/messaging';
 import { saveGifHistory } from '@/lib/db';
 import { fileHost, timestamp } from '@/lib/screenshot/capture';
-import { isAgentReady, layaPredict } from '@/lib/ai/runtime';
+import { isAgentLoading, isAgentReady, layaPredict } from '@/lib/ai/runtime';
 
 /**
  * Hard cap on a single recording. The WebM→GIF transcode runs in the preview
@@ -54,17 +54,29 @@ browser.runtime.onMessage.addListener((raw: RuntimeMessage, _sender, sendRespons
             state: unknown;
             questions: Record<string, unknown>;
           };
-          const { result, elapsedMs } = await layaPredict(state, questions);
-          sendResponse({
-            ok: true,
-            elapsedMs,
-            answers: result.answers as unknown as Record<string, unknown>,
-            usage: result.usage,
-          });
+          // Model load + first predict run for minutes — far beyond the MV3
+          // service worker's ~30s idle kill, which would drop the background
+          // relay's pending sendResponse ("message channel closed"). Ping the
+          // SW every 15s while this is in flight (same trick as the gateway
+          // confirm page's GATEWAY_CONFIRM_PING).
+          const keepalive = setInterval(() => {
+            void sendMessage('LAYA_KEEPALIVE', {}).catch(() => {});
+          }, 15_000);
+          try {
+            const { result, elapsedMs } = await layaPredict(state, questions);
+            sendResponse({
+              ok: true,
+              elapsedMs,
+              answers: result.answers as unknown as Record<string, unknown>,
+              usage: result.usage,
+            });
+          } finally {
+            clearInterval(keepalive);
+          }
           break;
         }
         case 'LAYA_GET_STATUS': {
-          sendResponse({ ready: isAgentReady(), loading: false });
+          sendResponse({ ready: isAgentReady(), loading: isAgentLoading() });
           break;
         }
         // ---- GIF recorder (below) ----
