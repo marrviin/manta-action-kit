@@ -247,6 +247,41 @@ export interface ProtocolMap {
     request: { ok: boolean; savedForPreview?: boolean; hitTimeLimit?: boolean };
     response: { ok: boolean };
   };
+
+  /**
+   * Any UI context -> background: make sure the offscreen document hosting the
+   * laya model runtime exists (one per extension). Idempotent — a second call
+   * while the document lives is a no-op. Resolves once the document is there;
+   * the model itself is loaded lazily on the first LAYA_PREDICT.
+   */
+  LAYA_ENSURE_RUNTIME: {
+    request: void;
+    response: { ok: boolean };
+  };
+
+  /**
+   * Any UI context -> background: forward a laya prediction to the offscreen
+   * runtime. The background only relays (it cannot run ONNX itself — the MV3
+   * service worker has no WebGPU and a 30s idle lifetime); the offscreen
+   * document owns the loaded Agent and answers here. `__error` on failure
+   * (model not loaded / runtime missing / predict threw).
+   */
+  LAYA_PREDICT: {
+    request: {
+      /** Free-form state: a string, or an object the runtime serializes. */
+      state: unknown;
+      /** Typed questions keyed by answer id, laya-ts `QuestionDef` shape. */
+      questions: Record<string, unknown>;
+    };
+    response: {
+      ok: boolean;
+      /** Milliseconds the offscreen runtime spent in agent.predict. */
+      elapsedMs?: number;
+      /** laya-ts SystemOneResult.answers, if ok. */
+      answers?: Record<string, unknown>;
+      usage?: { input_tokens: number; output_tokens: number };
+    };
+  };
 }
 
 export type MessageType = keyof ProtocolMap;

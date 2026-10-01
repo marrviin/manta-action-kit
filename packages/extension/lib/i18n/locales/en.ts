@@ -387,6 +387,20 @@ export const en = {
     devModeTitle: "Developer mode",
     devModeDesc: "Internal debugging tools",
     devModeUnlockToast: "Developer mode unlocked",
+    layaTitle: "Laya decision model",
+    layaDesc:
+      "Local System 1 decision engine (~1.6 GB, runs on-device via WebGPU) for typed choice/score/yes-no decisions",
+    layaLoad: "Load model",
+    layaLoaded: "Loaded",
+    layaLoading: "Loading…",
+    layaUnload: "Unload",
+    layaTryIt: "Try it",
+    layaTryItDesc:
+      "Type a message; the model answers the sample questions locally in one pass",
+    layaPlaceholder: "e.g. I was charged twice and want a refund now",
+    layaRun: "Run",
+    layaRunning: "Running…",
+    layaNotLoaded: "Load the model first",
   },
 } as const;
 

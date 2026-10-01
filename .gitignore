@@ -39,3 +39,7 @@ CLAUDE.md
 coverage/
 .cache/
 *.zip
+
+# onnx
+.onnx
+.onnx.data

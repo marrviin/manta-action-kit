@@ -8,6 +8,7 @@ import { SUPPORTED_LOCALES, type Locale } from '@/lib/i18n';
 import { sendMessage } from '@/lib/messaging';
 import { cn } from '@/lib/utils';
 import { McpToolList } from '@/components/mcp/tool-list';
+import { LayaCard } from '@/components/settings/laya-card';
 
 const { Text } = Typography;
 
@@ -213,6 +214,10 @@ export function SettingsFeature() {
           />
         </div>
       </section>
+
+      {/* Laya decision model: load the bundled on-device model and try it on
+          free text (see components/settings/laya-card.tsx). */}
+      <LayaCard />
 
       {/* Connector (MCP) card: header-only by default (status tag + tools
           toggle); expanding reveals the same tool kill-switch list as the

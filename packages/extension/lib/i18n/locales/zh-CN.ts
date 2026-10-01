@@ -354,5 +354,18 @@ export const zhCN: Messages = {
     devModeTitle: "开发者模式",
     devModeDesc: "内部调试工具",
     devModeUnlockToast: "开发者模式已开启",
+    layaTitle: "Laya 决策模型",
+    layaDesc:
+      "本地 System 1 决策引擎（约 1.6 GB，经 WebGPU 在设备端运行），一次前向完成选择/评分/是非判定",
+    layaLoad: "加载模型",
+    layaLoaded: "已加载",
+    layaLoading: "加载中…",
+    layaUnload: "卸载",
+    layaTryIt: "试用",
+    layaTryItDesc: "输入一段文本，模型在本地一次前向回答示例问题",
+    layaPlaceholder: "例如：我被重复扣款了，现在就要退款",
+    layaRun: "运行",
+    layaRunning: "运行中…",
+    layaNotLoaded: "请先加载模型",
   },
 };

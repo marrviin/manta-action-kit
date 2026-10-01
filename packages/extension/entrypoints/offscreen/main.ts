@@ -14,10 +14,16 @@
  * so the background opens the preview tab and closes this document. The
  * WebM→GIF conversion happens in the VISIBLE preview tab (frame callbacks need
  * a composited page — see lib/gif-recording/encode.ts).
+ *
+ * This document ALSO hosts the laya decision-model runtime (see lib/ai/):
+ * same reasons apply — WebGPU and a 1.6 GB ONNX session can neither live in
+ * the SW nor be re-loaded on every side-panel toggle. Model + recorder share
+ * this single offscreen document; Chrome allows only one per extension.
  */
 import { sendMessage } from '@/lib/messaging';
 import { saveGifDraft } from '@/lib/db';
 import { fileHost, timestamp } from '@/lib/screenshot/capture';
+import { isAgentReady, layaPredict } from '@/lib/ai/runtime';
 
 /** Fixed id in the `gifDrafts` store — each recording replaces the last. */
 const GIF_DRAFT_ID = 'latest';
@@ -45,6 +51,26 @@ browser.runtime.onMessage.addListener((raw: RuntimeMessage, _sender, sendRespons
   (async () => {
     try {
       switch (raw?.type) {
+        // ---- laya decision model (lib/ai/runtime.ts) ----
+        case 'LAYA_PREDICT': {
+          const { state, questions } = raw.data as {
+            state: unknown;
+            questions: Record<string, unknown>;
+          };
+          const { result, elapsedMs } = await layaPredict(state, questions);
+          sendResponse({
+            ok: true,
+            elapsedMs,
+            answers: result.answers as unknown as Record<string, unknown>,
+            usage: result.usage,
+          });
+          break;
+        }
+        case 'LAYA_GET_STATUS': {
+          sendResponse({ ready: isAgentReady(), loading: false });
+          break;
+        }
+        // ---- GIF recorder (below) ----
         case 'GIF_OFFSCREEN_START': {
           const { streamId, url } = raw.data as { streamId: string; url: string };
           await startRecording(streamId, url);
