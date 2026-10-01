@@ -47,7 +47,7 @@ single credential.
 2. **Distill** — your agent reads the recording through MCP and distills it
    into a reusable, parameterized **Action** (`{{param}}` templates,
    step-to-step output passing).
-3. **Replay** — `execute_action` or `proxy_fetch` re-fires the flow through a
+3. **Execute** — `execute_action` or `proxy_fetch` re-fires the flow through a
    sandbox gateway. The extension injects your session cookies at forward time;
    the AI only ever sent `method/url/headers/body`.
 
@@ -60,10 +60,12 @@ whole point, and it's enforced at several layers:
   `chrome.cookies` and injects them as a network-layer header. Cookie *values*
   never appear in any tool result, transcript, or log.
 - **Human-in-the-loop gate** — every new target host pops an extension-side
-  confirmation window showing method/URL/body. You approve once per host per
-  run; deny or ignore and the call never goes out. Works on *every* path
-  (agent calls and script-driven calls alike), independent of MCP client
-  behavior.
+  confirmation window showing method/URL/body. For recorded actions
+  (`execute_action`) you approve once per host per run; direct calls
+  (`proxy_fetch`/`proxy_sse`) confirm per request by default. Deny or ignore
+  and the call never goes out. The gate is on by default (you can adjust it in
+  the extension's sandbox settings) and works on *every* path (agent calls and
+  script-driven calls alike), independent of MCP client behavior.
 - **SSRF guard** — loopback, private-network, link-local and cloud-metadata
   addresses (`169.254.169.254` included) are refused *before* any other policy,
   on every path.
@@ -93,6 +95,14 @@ like any other tool:
 | Sandbox proxy | `proxy_fetch` · `proxy_sse` (with your login state) |
 | Ops | `health` · proxy-rule management |
 
+> The full tool table (23 tools, incl. element-capture reads and proxy-rule
+> management) lives in [`packages/mcp/README.md`](packages/mcp/README.md).
+>
+> A **proxy rule** maps a script prefix to a real base URL, so non-MCP scripts
+> can also route calls through the same sandbox gateway (same cookie injection,
+> same confirmation gate). Allow/deny domain lists live only in the extension
+> UI — the agent has no tools for them.
+
 Example of what an action looks like from the agent's side:
 
 > `search_actions("track shipment")` → *track-order-shipment* — params:
@@ -105,12 +115,14 @@ Example of what an action looks like from the agent's side:
 **1. Install the extension** from the
 [Chrome Web Store](https://chromewebstore.google.com/detail/manta-action-kit/pghddhbhbnlcehlmgnnalgaephllkeel).
 
-**2. Copy the install prompt** — open the extension's side panel → *Action*
-tab → *Copy install prompt*. It embeds your personal bridge token
-(`MANTA_TOKEN`).
+**2. Copy the install prompt** — click the extension's toolbar icon and open
+its side panel (via the popup's *Open side panel* entry) → *Action* tab →
+*Copy install prompt*. It embeds your personal bridge token (`MANTA_TOKEN`).
 
-**3. Add the MCP server to your agent.** Paste the prompt into Claude Code /
-Codex / any MCP client — or add this to your MCP config:
+**3. Add the MCP server to your agent.** Requires [Node.js](https://nodejs.org)
+(≥ 18). Paste the prompt into Claude Code / Codex / any MCP client (for Claude
+Code you can also run `claude mcp add` and follow the prompt), or add this to
+your MCP config:
 
 ```json
 {
@@ -128,6 +140,12 @@ Codex / any MCP client — or add this to your MCP config:
 }
 ```
 
+`MANTA_TOKEN` must match the extension (it is the bridge's auth secret);
+`MANTA_WS_PORT` (default 8787) must match the MCP port in the extension's
+settings, and `MANTA_PROXY_PORT` (default 8788) is the local HTTP port of the
+sandbox proxy. All env vars are optional if you keep the defaults. Details and
+troubleshooting: [`packages/mcp/README.md`](packages/mcp/README.md).
+
 **4. Use it.** Record a flow on your site, then ask your agent:
 
 > *"I just recorded the order-tracking flow. Turn it into an action and tell
@@ -135,6 +153,16 @@ Codex / any MCP client — or add this to your MCP config:
 
 The bridge runs 100% on `127.0.0.1` — nothing leaves your machine except the
 API calls you approved.
+
+## Page capture toolkit
+
+Beyond the agent flow, the extension bundles a local page-capture toolkit in
+the side panel's *Page capture* tab: **element capture** (pick any element →
+full computed-style JSON, shadow-DOM aware, copied to your clipboard),
+**screenshots** (visible area / full page), and **GIF recording** of a tab.
+Everything stays local — this is what the `clipboardWrite`, `debugger`,
+`tabCapture`, and `offscreen` permissions are for (see
+[PRIVACY.md](PRIVACY.md)).
 
 ## Development
 
@@ -148,8 +176,11 @@ pnpm zip              # store-ready package
 ```
 
 A pnpm monorepo: `packages/extension` (WXT + React 19 + Ant Design v6 +
-Tailwind v4, Manifest V3) and `packages/mcp`
-([`@manta-action-kit/mcp`](packages/mcp/README.md), Node MCP server). See
+Tailwind v4, Manifest V3), `packages/mcp`
+([`@manta-action-kit/mcp`](packages/mcp/README.md), Node MCP server),
+`packages/protocol` (shared WS-bridge protocol & domain types used by both),
+and `packages/skills` (an agent skill that teaches clients how to drive the
+toolkit). See
 [CONTRIBUTING.md](CONTRIBUTING.md) and
 [CLAUDE.md](CLAUDE.md) for architecture and conventions — including why the
 MV3 service worker dials *out* as a WebSocket client, and why cookie injection

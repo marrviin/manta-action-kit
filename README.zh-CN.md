@@ -52,9 +52,10 @@ agent 说"这个你做不了"。
 - **凭证在信任边界注入** —— 扩展经 `chrome.cookies` 读取 Cookie，在网络层
   注入请求头。Cookie 的**值**不出现在任何工具返回、对话记录或日志里。
 - **人在环闸门** —— 每个新目标 host 都会弹出扩展侧确认窗口（展示
-  method/URL/body），每个 host 每次运行只需确认一次；拒绝或无视，请求就发
-  不出去。**所有路径**（agent 调用与脚本驱动调用）都过这道闸，不依赖 MCP
-  客户端的行为。
+  method/URL/body）。录制的动作（`execute_action`）按 host 每次运行只需确认
+  一次；直接调用（`proxy_fetch`/`proxy_sse`）默认逐请求确认。拒绝或无视，
+  请求就发不出去。闸门默认开启（可在扩展沙箱设置里调整），**所有路径**
+  （agent 调用与脚本驱动调用）都过这道闸，不依赖 MCP 客户端的行为。
 - **SSRF 防护** —— loopback、私网、link-local、云元数据地址（含
   `169.254.169.254`）在任何其他策略**之前**直接拒绝，无一例外。
 - **你说了算的域名策略** —— 拒绝域名直接拦、允许域名静默放行。agent **没有
@@ -80,6 +81,13 @@ agent 像用其他工具一样列出并执行它们：
 | 沙箱代理 | `proxy_fetch` · `proxy_sse`（带你的登录态） |
 | 运维 | `health` · 代理规则管理 |
 
+> 完整工具表（23 个，含元素捕获读取与代理规则管理）见
+> [`packages/mcp/README.md`](packages/mcp/README.md)。
+>
+> **代理规则（proxy rule）**把一个脚本前缀映射到真实 base URL，让非 MCP
+> 的脚本也能走同一条沙箱网关（同样的 Cookie 注入、同样的确认闸门）。
+> 允许/拒绝域名名单只存在于扩展 UI——agent 没有任何工具能碰。
+
 从 agent 视角看一个 Action 是这样的：
 
 > `search_actions("track shipment")` → *track-order-shipment* —— 参数
@@ -93,11 +101,13 @@ agent 像用其他工具一样列出并执行它们：
 [Chrome Web Store](https://chromewebstore.google.com/detail/manta-action-kit/pghddhbhbnlcehlmgnnalgaephllkeel)
 安装。
 
-**2. 复制安装提示词**：打开扩展侧边栏 → *Action* 标签页 → *复制安装提示词*。
-里面嵌着你的专属桥接 token（`MANTA_TOKEN`）。
+**2. 复制安装提示词**：点击扩展工具栏图标，打开侧边栏（popup 里有「打开
+侧边栏」入口）→ *Action* 标签页 → *复制安装提示词*。里面嵌着你的专属桥接
+token（`MANTA_TOKEN`）。
 
-**3. 把 MCP 服务加进你的 agent。** 直接把提示词粘贴给 Claude Code / Codex /
-任意 MCP 客户端，或手动加进 MCP 配置：
+**3. 把 MCP 服务加进你的 agent。** 需要 [Node.js](https://nodejs.org)
+（≥ 18）。直接把提示词粘贴给 Claude Code / Codex / 任意 MCP 客户端（Claude
+Code 也可以跑 `claude mcp add` 按引导添加），或手动加进 MCP 配置：
 
 ```json
 {
@@ -115,6 +125,11 @@ agent 像用其他工具一样列出并执行它们：
 }
 ```
 
+`MANTA_TOKEN` 必须与扩展一致（它是桥接的认证密钥）；`MANTA_WS_PORT`
+（默认 8787）需与扩展设置里的 MCP 端口一致；`MANTA_PROXY_PORT`（默认
+8788）是沙箱代理的本地 HTTP 端口。保持默认值时这些变量都可以省略。详细
+说明与排障见 [`packages/mcp/README.md`](packages/mcp/README.md)。
+
 **4. 用起来。** 在你的网站上录制一段流程，然后对 agent 说：
 
 > *"我刚录了订单物流查询的流程。把它变成一个 action，然后查一下订单
@@ -122,6 +137,14 @@ agent 像用其他工具一样列出并执行它们：
 
 桥接 100% 跑在 `127.0.0.1` 上——除了你批准的 API 调用，没有任何数据离开
 你的机器。
+
+## 页面采集工具箱
+
+除了 agent 流程，扩展还内置一套本地页面采集工具，集中在侧边栏的「页面采集」
+标签页：**元素捕获**（框选任意元素 → 完整计算样式 JSON，支持 shadow DOM，
+写入剪贴板）、**截图**（可见区域 / 整页）和 **GIF 录制**。所有数据不出本机
+——`clipboardWrite`、`debugger`、`tabCapture`、`offscreen` 这几个权限就是为
+它们准备的（见 [PRIVACY.md](PRIVACY.md)）。
 
 ## 本地开发
 
@@ -135,9 +158,11 @@ pnpm zip              # 打包成可上架 zip
 ```
 
 本仓库是 pnpm monorepo：`packages/extension`（WXT + React 19 + Ant Design v6 +
-Tailwind v4，Manifest V3）与 `packages/mcp`
-([`@manta-action-kit/mcp`](packages/mcp/README.md)，Node MCP 服务）。架构与
-约定见 [CONTRIBUTING.md](CONTRIBUTING.md) 与
+Tailwind v4，Manifest V3）、`packages/mcp`
+([`@manta-action-kit/mcp`](packages/mcp/README.md)，Node MCP 服务）、
+`packages/protocol`（两侧共用的 WS 桥接协议与领域类型）和 `packages/skills`
+（教 agent 使用整套工具箱的 skill）。架构与约定见
+[CONTRIBUTING.md](CONTRIBUTING.md) 与
 [CLAUDE.md](CLAUDE.md)——包括为什么 MV3 service worker 要**反方向**当
 WebSocket 客户端、为什么 Cookie 注入走 `declarativeNetRequest` 而不是
 `fetch credentials`。

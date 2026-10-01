@@ -71,6 +71,7 @@
       <a class="lv2" href="#gif-export" data-i18n="docs.tocGifExport">Export</a>
       <a href="#skills" data-i18n="docs.tocSkills">Agent skill</a>
       <a href="#tools" data-i18n="docs.tocTools">MCP tools reference</a>
+      <a href="#limitations" data-i18n="docs.tocLimitations">Limitations &amp; data</a>
       <a class="lv2" href="#tools-rec" data-i18n="docs.tocToolsRec">Recordings</a>
       <a class="lv2" href="#tools-element" data-i18n="docs.tocToolsElement">Element captures</a>
       <a class="lv2" href="#tools-actions" data-i18n="docs.tocToolsAct">Actions</a>
@@ -86,8 +87,8 @@
         <h2 data-i18n="docs.intro.h">Introduction</h2>
         <p data-i18n="docs.intro.p1">
           Manta Action Kit lets AI agents (Claude Code, Codex, Cursor, any MCP client)
-          call your real, logged-in APIs — the ones behind your browser session —
-          without ever seeing your credentials.
+          call your real, logged-in APIs — the ones behind your browser session — while
+          your cookie values stay inside the browser.
         </p>
         <p data-i18n="docs.intro.p2">
           The suite has two parts: the <strong>Chrome extension</strong>, which records
@@ -105,9 +106,9 @@
       <section class="doc-section" id="quickstart">
         <h2 data-i18n="docs.qs.h">Quick start</h2>
         <ol>
-          <li data-i18n="docs.qs.s1"><strong>Install the extension</strong> from the <a href="https://chromewebstore.google.com/detail/manta-action-kit/pghddhbhbnlcehlmgnnalgaephllkeel">Chrome Web Store</a>.</li>
-          <li data-i18n="docs.qs.s2"><strong>Copy the install prompt</strong> — extension side panel → Action tab → Copy install prompt. It embeds your personal bridge token (<code>MANTA_TOKEN</code>).</li>
-          <li data-i18n="docs.qs.s3"><strong>Add the MCP server</strong> to your agent — paste the prompt, or use the config below.</li>
+          <li data-i18n="docs.qs.s1"><strong>Install the extension</strong> from the <a href="https://chromewebstore.google.com/detail/manta-action-kit/pghddhbhbnlcehlmgnnalgaephllkeel">Chrome Web Store</a> (requires Chrome 116+; Firefox is not supported).</li>
+          <li data-i18n="docs.qs.s2"><strong>Copy the install prompt</strong> — click the extension's toolbar icon, open the side panel → Action tab → Copy install prompt. It embeds your personal bridge token (<code>MANTA_TOKEN</code>).</li>
+          <li data-i18n="docs.qs.s3"><strong>Add the MCP server</strong> to your agent (requires <a href="https://nodejs.org">Node.js</a> ≥ 18) — paste the prompt, or use the config below.</li>
           <li data-i18n="docs.qs.s4"><strong>Record a flow</strong> on your site, then ask your agent to turn it into an action and run it.</li>
         </ol>
         <pre>{
@@ -123,6 +124,19 @@
     }
   }
 }</pre>
+        <p data-i18n="docs.qs.envNote">
+          <code>MANTA_TOKEN</code> is <strong>required</strong> — it's the bridge's auth secret;
+          without it the server rejects every client. <code>MANTA_WS_PORT</code> (default
+          <code>8787</code>) must match the MCP port in the extension settings;
+          <code>MANTA_PROXY_PORT</code> (default <code>8788</code>) is the sandbox proxy's local
+          HTTP port. Both ports can be omitted if you keep the defaults.
+        </p>
+        <p class="dim" data-i18n="docs.qs.verNote">
+          Version compatibility: use a published <code>@manta-action-kit/mcp</code> version
+          that matches your extension — the extension's <em>About</em> settings shows both.
+          If tool calls start failing after an extension update, refresh the npm package:
+          <code>npx -y @manta-action-kit/mcp@latest</code>.
+        </p>
       </section>
 
       <section class="doc-section" id="architecture">
@@ -215,7 +229,7 @@ client → auth    { proof = HMAC(token, "manta/auth/" + nonce) }</pre>
           notification reports the captured count when the recording is saved.
         </p>
         <ul>
-          <li data-i18n="docs.rec.li1"><strong>SSE streams</strong> (<code>text/event-stream</code>) are captured incrementally via <code>body.tee()</code> — the page keeps its own stream untouched.</li>
+          <li data-i18n="docs.rec.li1"><strong>SSE streams</strong> (<code>text/event-stream</code>) are captured incrementally via <code>body.tee()</code> — the page keeps its own stream untouched. Draining ends on an idle timeout, so streams with long server-side pauses can be truncated.</li>
           <li data-i18n="docs.rec.li2"><strong>Manage</strong>: rename, delete, and search recordings; while recording, a live pulse + captured-call count follows you across popup and side panel. Individual calls can be deleted from a chain without affecting the rest.</li>
           <li data-i18n="docs.rec.li3"><strong>Agent description</strong>: your agent can write a business-level summary for a recording (<code>set_recording_description</code>); the side panel shows it read-only.</li>
           <li data-i18n="docs.rec.li4"><strong>Filters</strong>: recording filter rules keep the noise out.</li>
@@ -237,7 +251,9 @@ client → auth    { proof = HMAC(token, "manta/auth/" + nonce) }</pre>
           UUIDs and long hashes become <code>:id</code>) and redacts schema examples to
           <code>«redacted»</code> whenever a field name looks secret (password, token,
           authorization, cookie, apikey, csrf, …) or a value looks like a JWT, long hex,
-          base64 blob, or email — so recordings can be shared with your agent safely.
+          base64 blob, or email — so the default agent view is redacted. Redaction is
+          heuristic, not a guarantee: <code>get_call</code> still returns the original
+          request/response, so clean sensitive recordings with filter rules before sharing.
         </p>
       </section>
 
@@ -263,6 +279,11 @@ client → auth    { proof = HMAC(token, "manta/auth/" + nonce) }</pre>
         <p data-i18n="docs.act.p2">
           <code>execute_action</code> runs the flow end to end through the sandbox
           gateway — cookies injected, per-host confirmation, full audit.
+        </p>
+        <p class="dim" data-i18n="docs.act.p2b">
+          Known edges: form-encoded request bodies don't support body overrides, and
+          replays don't carry the browser's automatic <code>Referer</code>/<code>Origin</code>
+          — add header overrides in the action when the target checks them.
         </p>
         <p data-i18n="docs.act.p3">
           The side panel <strong>Action tab</strong> is the browse/manage surface:
@@ -293,7 +314,7 @@ client → auth    { proof = HMAC(token, "manta/auth/" + nonce) }</pre>
         <ol>
           <li data-i18n="docs.gw.li1"><strong>SSRF guard</strong> — loopback, private-network, link-local and cloud-metadata addresses (<code>169.254.169.254</code> included) are refused before any other policy, on every path.</li>
           <li data-i18n="docs.gw.li2"><strong>Domain policy</strong> — your deny-list blocks outright; your allow-list flows silently. The agent has no tools to read or change either list.</li>
-          <li data-i18n="docs.gw.li3"><strong>Human-in-the-loop confirmation</strong> — every new target host pops an extension-side window showing method/URL/body. Approve once per host per run; deny or ignore and the call never goes out. Covers the agent path and the script path alike.</li>
+          <li data-i18n="docs.gw.li3"><strong>Human-in-the-loop confirmation</strong> — every new target host pops an extension-side window showing method/URL/body. Recorded actions (<code>execute_action</code>) confirm once per host per run; direct calls (<code>proxy_fetch</code>/<code>proxy_sse</code>) confirm per request by default. Deny or ignore and the call never goes out. The gate is on by default (adjustable in the sandbox settings) and covers the agent path and the script path alike.</li>
           <li data-i18n="docs.gw.li4"><strong>Inject + forward</strong>, then an <strong>audit log</strong> entry (cookie names logged, values never).</li>
         </ol>
         <p data-i18n="docs.gw.p3">
@@ -404,8 +425,8 @@ GET http://127.0.0.1:8788/gh-api/repos/marrviin/manta-action-kit
 
         <h3 id="shot-modes" data-i18n="docs.shot.modesH">Two modes</h3>
         <ul>
-          <li data-i18n="docs.shot.li1"><strong>Window</strong> (visible area) via <code>captureVisibleTab</code>; <strong>Full page</strong> via a one-shot <code>chrome.debugger</code> + CDP <code>captureBeyondViewport</code> — identical to DevTools' "Capture full size screenshot", single render, no scrolling, DOM untouched. The "being debugged" infobar appears only during capture.</li>
-          <li data-i18n="docs.shot.li2">Pages taller than Chromium's 16384-px capture surface are downscaled to fit (retina sharpness traded for completeness). If DevTools is open on the tab, full-page capture fails with a <code>debugger-conflict</code> hint — close DevTools and retry.</li>
+          <li data-i18n="docs.shot.li1"><strong>Window</strong> (visible area) via <code>captureVisibleTab</code>. <strong>Full page</strong> prefers scroll-and-stitch: the tab scrolls screen by screen while the extension composites the bands — lazy content loads naturally, and <code>position:fixed</code>/<code>sticky</code> elements are temporarily neutralized during capture. When stitching isn't available, it falls back to a one-shot <code>chrome.debugger</code> + CDP <code>captureBeyondViewport</code> (single render, DOM untouched) — the "being debugged" infobar appears only during that fallback.</li>
+          <li data-i18n="docs.shot.li2">Pages taller than Chromium's 16384-px capture surface are downscaled to fit (retina sharpness traded for completeness). If DevTools is open on the tab, the CDP fallback fails with a <code>debugger-conflict</code> hint — close DevTools and retry.</li>
         </ul>
 
         <h3 id="shot-preview" data-i18n="docs.shot.previewH">Preview &amp; export</h3>
@@ -429,13 +450,15 @@ GET http://127.0.0.1:8788/gh-api/repos/marrviin/manta-action-kit
         <p data-i18n="docs.gif.p1">
           <strong>Record GIF</strong> in the popup captures the current tab (offscreen
           recorder, immune to MV3 service-worker sleep) with pause / resume / stop.
+          Recordings auto-stop at 5 minutes — a memory bound, since transcoding holds
+          all frames in memory.
         </p>
 
         <h3 id="gif-export" data-i18n="docs.gif.exportH">Export</h3>
         <p data-i18n="docs.gif.p2">
           Stopping opens the preview tab with a looping player and two exports:
           <strong>Download GIF</strong> (canvas frame sampling, with progress) and
-          <strong>Download MP4</strong> (WebCodecs transcode; falls back to the original
+          <strong>Download MP4</strong> (WebCodecs-based transcode; falls back to the original
           WebM if conversion fails). Recordings are also kept in a history (the last
           10), browsable from the side panel's <em>Page capture</em> tab.
         </p>
@@ -453,7 +476,7 @@ GET http://127.0.0.1:8788/gh-api/repos/marrviin/manta-action-kit
   ~/.claude/skills/manta-action-kit</pre>
         <p data-i18n="docs.skills.p2">
           It includes <code>check-env.mjs</code>, a one-shot authenticated health check
-          for the bridge:
+          for the bridge (requires Node.js ≥ 22 for its native WebSocket):
         </p>
         <pre>MANTA_TOKEN=&lt;from the extension&gt; node check-env.mjs</pre>
       </section>
@@ -537,6 +560,18 @@ GET http://127.0.0.1:8788/gh-api/repos/marrviin/manta-action-kit
             </tbody>
           </table>
         </div>
+      </section>
+
+      <section class="doc-section" id="limitations">
+        <h2 data-i18n="docs.lim.h">Limitations &amp; data lifecycle</h2>
+        <ul>
+          <li data-i18n="docs.lim.li1"><strong>Recording</strong> — fetch/XHR only: WebSocket frames, <code>sendBeacon</code>, page workers and native <code>EventSource</code> are not captured. SSE capture ends on an idle timeout (a few seconds without new bytes; gateway drains cap at ~115s), so long server-side pauses can truncate a stream.</li>
+          <li data-i18n="docs.lim.li2"><strong>Actions</strong> — form-encoded bodies don't support body overrides; replays don't carry the browser's automatic <code>Referer</code>/<code>Origin</code> (compensate with header overrides when the API checks them).</li>
+          <li data-i18n="docs.lim.li3"><strong>GIF recording</strong> — hard 5-minute cap (transcoding holds all frames in memory).</li>
+          <li data-i18n="docs.lim.li4"><strong>Full-page screenshots</strong> — the stitched path temporarily neutralizes <code>fixed</code>/<code>sticky</code> elements; the CDP fallback shows Chrome's "being debugged" infobar.</li>
+          <li data-i18n="docs.lim.li5"><strong>Browser</strong> — Chrome 116+ only; Firefox is not supported (no <code>chrome.debugger</code>).</li>
+          <li data-i18n="docs.lim.li6"><strong>Data lifecycle</strong> — everything lives in the extension's local IndexedDB + <code>chrome.storage</code>: no external servers, no analytics. Uninstalling the extension deletes all of it; recordings, captures and the audit log can also be deleted individually from the side panel, and the audit log is exportable.</li>
+        </ul>
       </section>
 
       <section class="doc-section" id="config">
@@ -626,6 +661,7 @@ pnpm test             # vitest unit suite (security-critical pure modules)</pre>
     "docs.tocGifExport": "导出",
     "docs.tocSkills": "Agent Skill",
     "docs.tocTools": "MCP 工具参考",
+    "docs.tocLimitations": "已知限制与数据",
     "docs.tocToolsRec": "录制",
     "docs.tocToolsElement": "元素捕获",
     "docs.tocToolsAct": "Action",
@@ -636,14 +672,16 @@ pnpm test             # vitest unit suite (security-critical pure modules)</pre>
     "docs.tocDevelopment": "开发",
 
     "docs.intro.h": "简介",
-    "docs.intro.p1": "Manta Action Kit 让 AI agent（Claude Code、Codex、Cursor、任意 MCP 客户端）调用你真实、已登录的 API——那些藏在你浏览器会话背后的接口——而 agent 全程看不到你的凭证。",
+    "docs.intro.p1": "Manta Action Kit 让 AI agent（Claude Code、Codex、Cursor、任意 MCP 客户端）调用你真实、已登录的 API——那些藏在你浏览器会话背后的接口——而 Cookie 值始终留在浏览器里。",
     "docs.intro.p2": "套件由两部分组成：<strong>Chrome 扩展</strong>负责录制 API 调用、捕获页面、把所有数据存在本地、并在网络层注入你的 Cookie；<strong>MCP 服务</strong>（<code>@manta-action-kit/mcp</code>）经本地 WebSocket 把 agent 与扩展桥接起来，暴露 agent 可调用的工具。",
     "docs.intro.p3": "MCP 服务只是一个桥——自身不持有任何数据。请先安装扩展；服务启动后扩展会自动拨入连接。",
 
     "docs.qs.h": "快速开始",
-    "docs.qs.s1": "<strong>安装扩展</strong>：从 <a href=\"https://chromewebstore.google.com/detail/manta-action-kit/pghddhbhbnlcehlmgnnalgaephllkeel\">Chrome Web Store</a> 安装。",
-    "docs.qs.s2": "<strong>复制安装提示词</strong>：扩展侧边栏 → Action 标签页 → 复制安装提示词。其中已内嵌你的个人桥接 token（<code>MANTA_TOKEN</code>）。",
-    "docs.qs.s3": "<strong>把 MCP 服务加进 agent</strong>：直接粘贴提示词，或使用下方配置。",
+    "docs.qs.s1": "<strong>安装扩展</strong>：从 <a href=\"https://chromewebstore.google.com/detail/manta-action-kit/pghddhbhbnlcehlmgnnalgaephllkeel\">Chrome Web Store</a> 安装（需要 Chrome 116+；不支持 Firefox）。",
+    "docs.qs.s2": "<strong>复制安装提示词</strong>：点击扩展工具栏图标打开侧边栏 → Action 标签页 → 复制安装提示词。其中已内嵌你的个人桥接 token（<code>MANTA_TOKEN</code>）。",
+    "docs.qs.s3": "<strong>把 MCP 服务加进 agent</strong>（需要 <a href=\"https://nodejs.org\">Node.js</a> ≥ 18）：直接粘贴提示词，或使用下方配置。",
+    "docs.qs.envNote": "<code>MANTA_TOKEN</code> <strong>必填</strong>——它是桥接的认证密钥；未配置时服务端会拒绝所有客户端。<code>MANTA_WS_PORT</code>（默认 <code>8787</code>）需与扩展设置里的 MCP 端口一致；<code>MANTA_PROXY_PORT</code>（默认 <code>8788</code>）是沙箱代理的本地 HTTP 端口。两个端口保持默认值时可省略。",
+    "docs.qs.verNote": "版本兼容：请使用与扩展版本匹配的 <code>@manta-action-kit/mcp</code>（扩展设置的「关于」里两者都有显示）。扩展更新后若工具调用开始报错，刷新 npm 包：<code>npx -y @manta-action-kit/mcp@latest</code>。",
     "docs.qs.s4": "<strong>录制一个流程</strong>：在你的网站上录一次，然后让 agent 把它变成 action 并执行。",
 
     "docs.arch.h": "架构",
@@ -675,15 +713,15 @@ pnpm test             # vitest unit suite (security-critical pure modules)</pre>
     "docs.rec.h": "接口录制",
     "docs.rec.p0": "<strong>使用场景</strong>：你想让 agent 在你已登录的站点里干活。边录制边把任务做一遍——提交一个表单、建一张工单、翻一页列表——捕获到的 API 调用链就是蓝图，agent 可以据此查看、学习并重放整个流程。",
     "docs.rec.p1": "在弹窗点 <em>开始</em>，正常操作网站，点 <em>结束</em>。MAIN world 注入脚本挂钩页面的 <code>fetch</code>/<code>XHR</code>（无 debugger 横幅），捕获每一条调用——含请求<strong>与</strong>响应——形成可本地查看的调用链，存入 IndexedDB。录制保存后系统通知会报告捕获条数。",
-    "docs.rec.li1": "<strong>SSE 流</strong>（<code>text/event-stream</code>）经 <code>body.tee()</code> 增量捕获——页面自己的流完全不受影响。",
-    "docs.rec.li2": "<strong>管理</strong>：录制可改名、删除、搜索；录制中弹窗与侧边栏同步显示呼吸灯 + 实时捕获计数。可从调用链中删除单条调用，不影响其余调用的等待时间。",
+    "docs.rec.li1": "<strong>SSE 流</strong>（<code>text/event-stream</code>）经 <code>body.tee()</code> 增量捕获——页面自己的流完全不受影响。读取靠空闲超时收尾，服务端长时间停顿的流可能被截断。",
+    "docs.rec.li2": "<strong>管理</strong>：录制可改名、删除、搜索；录制中弹窗与侧边栏同步显示呼吸灯 + 实时捕获计数。可从调用链中删除单条调用，不影响其余调用。",
     "docs.rec.li3": "<strong>Agent 摘要</strong>：你的 agent 可以为录制撰写业务级摘要（<code>set_recording_description</code>），侧边栏只读展示。",
     "docs.rec.li4": "<strong>过滤规则</strong>：录制过滤规则可把噪音挡在外面。",
     "docs.rec.li5": "<strong>不捕获</strong>：WebSocket 帧、<code>sendBeacon</code>、页面 worker、原生 <code>EventSource</code>（基于 fetch 的 SSE 已覆盖）。",
     "docs.rec.depsH": "调用链注解",
     "docs.rec.depsP": "调用链上会标注推断出的数据依赖——金色 <strong>consumes</strong> 标签标记复用了更早响应值的请求字段，蓝色 <strong>produces</strong> 标签标记供值的响应路径。推断是确定性的（不经 LLM）：一个 ≥6 字符的值出现在更早的响应里、又在后续请求中被复用。",
     "docs.rec.redactH": "脱敏接口契约",
-    "docs.rec.redactP": "契约视图按方法 + 归一化路径合并调用（数字 id、UUID、长哈希折叠为 <code>:id</code>），并在字段名疑似敏感（password、token、authorization、cookie、apikey、csrf 等）或值疑似 JWT、长十六进制、base64 大块、邮箱时，把 Schema 示例脱敏为 <code>«redacted»</code>——录制内容可以放心交给 agent。",
+    "docs.rec.redactP": "契约视图按方法 + 归一化路径合并调用（数字 id、UUID、长哈希折叠为 <code>:id</code>），并在字段名疑似敏感（password、token、authorization、cookie、apikey、csrf 等）或值疑似 JWT、长十六进制、base64 大块、邮箱时，把 Schema 示例脱敏为 <code>«redacted»</code>——agent 默认看到的是脱敏视图。脱敏是启发式的、不是保证——<code>get_call</code> 仍返回原始请求/响应，敏感录制请先用过滤规则清理再共享。",
 
     "docs.act.h": "Action",
     "docs.act.p0": "<strong>使用场景</strong>：一切你原本要手工重复的事——每天早上建同一张工单、查一个订单状态、在两个后台之间搬运数据。录一次，把变化的部分参数化（id、关键词、日期），之后交给 agent 按需执行：带着你的登录态、以 API 的速度、零重复点击。",
@@ -692,6 +730,7 @@ pnpm test             # vitest unit suite (security-critical pure modules)</pre>
     "docs.act.li2": "<strong>steps</strong>——有序的 API 调用，每步从录制重新读取请求、再用模板覆写。",
     "docs.act.li3": "<strong>模板</strong>——<code>{{param}}</code> 引用输入，<code>{{steps[N].outputs[X]}}</code> 把上一步提取的输出喂给下一步请求。",
     "docs.act.p2": "<code>execute_action</code> 经沙箱网关端到端执行整个流程——注入 Cookie、按 host 逐个确认、完整审计。",
+    "docs.act.p2b": "已知边界：表单编码的请求体不支持 body 覆写；重放不携带浏览器自动附加的 <code>Referer</code>/<code>Origin</code>——目标接口有校验时，请在 action 里加 header 覆写补偿。",
     "docs.act.p3": "侧边栏 <strong>Action 标签页</strong>是浏览 / 管理入口：搜索动作、查看声明的参数与步骤（类型、覆写数、等待毫秒）、确认后删除，以及<strong>复制安装提示词</strong>按钮。创建与执行始终走 MCP 工具——并经用户确认。",
 
     "docs.gw.h": "沙箱网关",
@@ -700,7 +739,7 @@ pnpm test             # vitest unit suite (security-critical pure modules)</pre>
     "docs.gw.p2": "每条转发调用都按顺序经过这些关卡：",
     "docs.gw.li1": "<strong>SSRF 防护</strong>——环回、私网、链路本地及云元数据地址（含 <code>169.254.169.254</code>）在任何域名策略之前被拒，对所有路径生效。",
     "docs.gw.li2": "<strong>域名策略</strong>——你的拒绝名单直接拦截；你的允许名单静默放行。agent 没有任何工具能读取或修改这两张名单。",
-    "docs.gw.li3": "<strong>人在环确认</strong>——每个新目标域名都会弹出扩展侧确认窗口，展示 method/URL/body。每次运行每域名确认一次；拒绝或不理会，请求就不会发出。agent 路径与脚本路径都过这道闸。",
+    "docs.gw.li3": "<strong>人在环确认</strong>——每个新目标域名都会弹出扩展侧确认窗口，展示 method/URL/body。录制的动作（<code>execute_action</code>）按域名每次运行确认一次；直接调用（<code>proxy_fetch</code>/<code>proxy_sse</code>）默认逐请求确认。拒绝或不理会，请求就不会发出。闸门默认开启（可在沙箱设置里调整），agent 路径与脚本路径都过这道闸。",
     "docs.gw.li4": "<strong>注入 + 转发</strong>，然后写入<strong>审计日志</strong>（只记 Cookie 名，永不记值）。",
     "docs.gw.p3": "扩展设置里还有<strong>按工具的 kill switch</strong> 可关闭任意 MCP 工具；代理规则的 <code>enabled</code> 也由用户掌控——工具只能读取，不能修改。",
     "docs.gw.scriptH": "脚本驱动的网关",
@@ -728,21 +767,21 @@ pnpm test             # vitest unit suite (security-critical pure modules)</pre>
     "docs.shot.h": "截图",
     "docs.shot.p0": "<strong>使用场景</strong>：需要看像素的时候——让 agent 直观看到页面渲染出的样子、给 bug 报告附上视觉证据，或把一份长文档 / 仪表盘整页存档。",
     "docs.shot.modesH": "两种模式",
-    "docs.shot.li1": "<strong>窗口</strong>（可见区域）走 <code>captureVisibleTab</code>；<strong>整页</strong>走一次性 <code>chrome.debugger</code> + CDP <code>captureBeyondViewport</code>——与 DevTools「Capture full size screenshot」完全一致：单次渲染、不滚动、不改 DOM。「正在被调试」横幅只在捕获期间出现。",
-    "docs.shot.li2": "超过 Chromium 16384px 捕获表面上限的页面会降采样以保完整（牺牲视网膜清晰度）。该标签页开着 DevTools 时整页捕获会报 <code>debugger-conflict</code> 提示——关掉 DevTools 重试。",
+    "docs.shot.li1": "<strong>窗口</strong>（可见区域）走 <code>captureVisibleTab</code>。<strong>整页</strong>首选滚动拼接：页面逐屏滚动、扩展逐屏拼接——滚动自然触发懒加载，捕获期间会临时中和 <code>fixed</code>/<code>sticky</code> 元素。拼接不可用时回退一次性 <code>chrome.debugger</code> + CDP <code>captureBeyondViewport</code>（单次渲染、不改 DOM）——「正在被调试」横幅只在该回退路径出现。",
+    "docs.shot.li2": "超过 Chromium 16384px 捕获表面上限的页面会降采样以保完整（牺牲视网膜清晰度）。该标签页开着 DevTools 时，CDP 回退路径会报 <code>debugger-conflict</code> 提示——关掉 DevTools 重试。",
     "docs.shot.previewH": "预览与导出",
     "docs.shot.p3": "<strong>不自动落盘</strong>：截图先开进预览标签页（点击缩放、复制图像、下载），所见即所得，由你决定去留。截图同时保留一份小型历史（最近 20 条），可在侧栏「页面采集」标签页查看。",
 
     "docs.gif.h": "GIF 录屏",
     "docs.gif.p0": "<strong>使用场景</strong>：要展示的是过程而不是状态——复现一个动画 bug、记录一段多步交互操作，或给 agent 和同事一段屏幕上实际发生的「动图」。",
     "docs.gif.recordH": "录制",
-    "docs.gif.p1": "弹窗里的<strong>录制 GIF</strong> 捕获当前标签页（离屏录制器，不受 MV3 service worker 休眠影响），支持暂停 / 继续 / 停止。",
+    "docs.gif.p1": "弹窗里的<strong>录制 GIF</strong> 捕获当前标签页（离屏录制器，不受 MV3 service worker 休眠影响），支持暂停 / 继续 / 停止。录制到 5 分钟会自动停止保存——内存上限所致，转码需在内存里持有全部帧。",
     "docs.gif.exportH": "导出",
-    "docs.gif.p2": "停止后打开预览标签页，循环播放，并提供两种导出：<strong>下载 GIF</strong>（canvas 逐帧采样，带进度）与<strong>下载 MP4</strong>（WebCodecs 转码；转换失败时回退下载原始 WebM）。录制同样保留一份历史（最近 10 条），可在侧栏「页面采集」标签页查看。",
+    "docs.gif.p2": "停止后打开预览标签页，循环播放，并提供两种导出：<strong>下载 GIF</strong>（canvas 逐帧采样，带进度）与<strong>下载 MP4</strong>（基于 WebCodecs 的转码；转换失败时回退下载原始 WebM）。录制同样保留一份历史（最近 10 条），可在侧栏「页面采集」标签页查看。",
 
     "docs.skills.h": "Agent Skill",
     "docs.skills.p1": "仓库自带一个 Claude Code Skill（<code>@manta-action-kit/skills</code>），教你的 agent 使用整套工具——排障、环境检查、录制 / Action 工作流。装进任意项目：",
-    "docs.skills.p2": "其中包含 <code>check-env.mjs</code>，一条命令对桥接做带认证的健康检查：",
+    "docs.skills.p2": "其中包含 <code>check-env.mjs</code>，一条命令对桥接做带认证的健康检查（需要 Node.js ≥ 22，用于原生 WebSocket）：",
 
     "docs.tools.h": "MCP 工具参考",
     "docs.tools.recH": "录制（读取 + 一个写入）",
@@ -758,6 +797,14 @@ pnpm test             # vitest unit suite (security-critical pure modules)</pre>
     "docs.tools.gwNote": "每次 <code>proxy_fetch</code> / <code>proxy_sse</code> / <code>execute_action</code> 调用都会经过扩展<strong>自身</strong>的确认弹窗——该闸门同时覆盖脚本驱动的网关路径，且不依赖 MCP 客户端是否支持原生权限提示。",
     "docs.tools.opsH": "运行时健康检查",
     "docs.tools.opsTable": "<table class=\"tools-table\"><tbody><tr><td><code>health</code></td><td>返回 wsPort、proxyPort、proxyListening、extensionConnected、role。</td></tr><tr><td><code>rebind_proxy</code></td><td>运行时把 HTTP 代理迁移到空闲端口（用于从端口冲突中恢复）。</td></tr></tbody></table>",
+
+    "docs.lim.h": "已知限制与数据生命周期",
+    "docs.lim.li1": "<strong>录制</strong>——只覆盖 fetch/XHR：WebSocket 帧、<code>sendBeacon</code>、页面 worker、原生 <code>EventSource</code> 不捕获。SSE 捕获靠空闲超时收尾（数秒无新字节即结束；网关侧另有 ~115s 硬上限），服务端长时间停顿的流可能被截断。",
+    "docs.lim.li2": "<strong>Action</strong>——表单编码的请求体不支持 body 覆写；重放不携带浏览器自动附加的 <code>Referer</code>/<code>Origin</code>（接口有校验时用 header 覆写补偿）。",
+    "docs.lim.li3": "<strong>GIF 录制</strong>——硬性 5 分钟上限（转码需在内存里持有全部帧）。",
+    "docs.lim.li4": "<strong>整页截图</strong>——拼接路径会临时中和 <code>fixed</code>/<code>sticky</code> 元素；CDP 回退路径会出现 Chrome 的「正在被调试」横幅。",
+    "docs.lim.li5": "<strong>浏览器</strong>——仅支持 Chrome 116+；不支持 Firefox（无 <code>chrome.debugger</code>）。",
+    "docs.lim.li6": "<strong>数据生命周期</strong>——所有数据都在扩展本地 IndexedDB + <code>chrome.storage</code>：无外部服务器、无埋点。卸载扩展即全部删除；录制、采集历史与审计日志也可在侧边栏逐条删除，审计日志可导出。",
 
     "docs.cfg.h": "配置",
     "docs.cfg.li1": "<code>MANTA_WS_PORT</code>（默认 <code>8787</code>）—— WS 桥接端口；必须与扩展设置保持一致。",

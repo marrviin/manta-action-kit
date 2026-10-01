@@ -29,6 +29,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the same comparison. The toolbar copies the diff as a report or JSON, and
   *Back* returns to the preview the comparison was launched from.
 
+### Removed
+
+#### Replay feature (removed after 0.1.0; retroactively documented here)
+
+- The standalone replay feature (`lib/recording/replay.ts`,
+  `lib/recording/replay-runs.ts`, the `components/recording/replay-*` UI and
+  `hooks/use-replay-*` hooks) has been fully removed from the codebase,
+  superseded by parameterized **Actions** (`create_action` / `execute_action`),
+  which replay flows through the sandbox gateway.
+- The `replayRuns` IndexedDB store was deleted in the v9 schema upgrade, along
+  with the `REPLAY_*` message types, `ReplayRun`/`ReplayResult` types, and the
+  `replayProgress` storage item.
+
 #### Page capture history (side panel tab)
 
 - New side panel tab **Page capture** with a bottom segmented bar (Elements /

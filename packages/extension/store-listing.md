@@ -36,6 +36,8 @@ How it works:
 
 Built as an AI Developer Toolkit, bridged to your agent over MCP.
 
+Plus a local page-capture toolkit: element capture (pick any element → full computed-style JSON, copied to your clipboard), visible/full-page screenshots, and GIF recording of a tab — all stored locally.
+
 (Coming Soon: DOM Simplifier, Authentication State Injector, and more!)
 
 ## Permission justification (store dashboard "Privacy practices", item by item)
@@ -54,7 +56,8 @@ Built as an AI Developer Toolkit, bridged to your agent over MCP.
   window). Nothing is collected or transmitted.
 - **sidePanel**: Host the management UI (recordings, audit log, proxy rules).
 - **storage**: Persist settings and reactive UI state.
-- **alarms**: Keep the MCP WebSocket bridge alive across MV3 service-worker sleep.
+- **alarms**: Keep the MCP WebSocket bridge alive across MV3 service-worker
+  sleep, and detect a GIF recording orphaned by service-worker/OS reclamation.
 - **clipboardWrite**: Copy the in-page element-capture result (a JSON snapshot of
   the picked element and its subtree, with source coordinates and styles) to the
   clipboard so you can paste it to your agent. Only written on your explicit

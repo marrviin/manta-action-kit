@@ -36,8 +36,8 @@
       <h1 data-i18n="hero.title">Your AI agent,<br /><span class="accent">your</span> logged-in APIs.</h1>
       <p class="tagline" data-i18n="hero.tagline">
         Give your AI agents secure access to your real, logged-in APIs — without ever
-        handing over your credentials. Cookies stay locked inside your browser; the agent
-        never sees a single credential.
+        handing over your credentials. Cookies stay locked inside your browser and are
+        injected at the network layer; the AI never handles your session.
       </p>
       <div class="hero-badges">
         <span class="badge">Model Context Protocol compatible</span>
@@ -49,7 +49,7 @@
         <a class="btn btn-ghost" href="docs.html" data-i18n="hero.docs">Read the Docs</a>
       </div>
       <p class="hero-note" data-i18n="hero.note">
-        Works with Claude Code · Codex · Cursor · any MCP client — bridge runs 100% on 127.0.0.1
+        Works with Claude Code · Codex · Cursor · any MCP client — the bridge runs 100% locally on your machine
       </p>
     </div>
   </header>
@@ -59,7 +59,7 @@
       <h2 class="section-title" data-i18n="how.title">How it works</h2>
       <p class="section-sub" data-i18n="how.sub">
         Record a real API flow once in your browser, then let your agent replay it or call
-        those endpoints freely — credentials never leave the browser.
+        those endpoints ad hoc — credentials never leave the browser.
       </p>
       <div class="grid grid-3">
         <div class="card">
@@ -77,18 +77,52 @@
           <div class="step" data-i18n="how.step2Label">Step 2 · Distill</div>
           <h3 data-i18n="how.step2Title">Turn it into an Action</h3>
           <p data-i18n="how.step2Body">
-            Your agent reads the recording through MCP and distills it into a reusable,
-            parameterized Action — {{param}} templates with step-to-step output passing.
+            Your agent reads the recording through MCP and distills it into a reusable
+            Action — it keeps the parts that change (an order id, a date) as fillable
+            parameters, so one recording runs for every case.
           </p>
         </div>
         <div class="card">
           <div class="icon">▶</div>
-          <div class="step" data-i18n="how.step3Label">Step 3 · Replay</div>
+          <div class="step" data-i18n="how.step3Label">Step 3 · Execute</div>
           <h3 data-i18n="how.step3Title">Run it on demand</h3>
           <p data-i18n="how.step3Body">
-            execute_action or proxy_fetch re-fires the flow through a sandbox gateway.
-            The extension injects your session cookies at forward time; the AI only ever
-            sent method/url/headers/body.
+            Your agent runs the flow through a sandbox gateway. You get a confirmation
+            window before anything is sent; your browser injects the session cookies at
+            send time — the AI never handles them.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="container">
+      <h2 class="section-title" data-i18n="why.title">Why not just use browser automation?</h2>
+      <p class="section-sub" data-i18n="why.sub">
+        Manta keeps the agent at the API boundary — it sees the contract, never the session.
+      </p>
+      <div class="grid grid-3">
+        <div class="card">
+          <h3 data-i18n="why.c1Title">Browser-automation agents</h3>
+          <p data-i18n="why.c1Body">
+            Browser-use–style tools put the whole page into the model's context — slow,
+            token-hungry, and your logged-in session sits right there in the transcript.
+          </p>
+        </div>
+        <div class="card">
+          <h3 data-i18n="why.c2Title">DevTools-based MCPs</h3>
+          <p data-i18n="why.c2Body">
+            They hand the AI your debugger — page scripts, network traffic, and session
+            all exposed to whatever the model decides to run.
+          </p>
+        </div>
+        <div class="card">
+          <h3 data-i18n="why.c3Title">Manta Action Kit</h3>
+          <p data-i18n="why.c3Body">
+            The agent works from a recorded API contract. Replays go through a sandbox
+            gateway with cookies injected at the network layer — your session never
+            enters the model's context.
           </p>
         </div>
       </div>
@@ -99,7 +133,7 @@
     <div class="container">
       <h2 class="section-title" data-i18n="safe.title">Why it's safe</h2>
       <p class="section-sub" data-i18n="safe.sub">
-        Credentials live in your browser and never travel to the AI — enforced at
+        Cookie values live in your browser and never travel to the AI — enforced at
         several layers, not by promises.
       </p>
       <div class="grid grid-4">
@@ -107,14 +141,15 @@
           <h3 data-i18n="safe.cookieTitle">🔒 Cookie stays in the browser</h3>
           <p data-i18n="safe.cookieBody">
             Cookies are read via chrome.cookies and injected as a network-layer header.
-            Values never appear in any tool result, transcript, or log.
+            Injected values never appear in tool results, transcripts, or the audit log.
           </p>
         </div>
         <div class="card">
           <h3 data-i18n="safe.hitlTitle">✋ Human-in-the-loop gate</h3>
           <p data-i18n="safe.hitlBody">
             Every new target host pops a confirmation window showing method/URL/body.
-            You approve once per host per run; deny or ignore and the call never goes out.
+            Recorded actions confirm once per host per run; direct calls confirm per
+            request by default. Deny or ignore and the call never goes out.
           </p>
         </div>
         <div class="card">
@@ -157,10 +192,49 @@
           </p>
         </div>
       </div>
+      <p class="section-sub" data-i18n="safe.scopeNote">
+        Scope note: this guarantee covers cookie injection — injected cookie values never
+        reach the AI. Recordings themselves store full request/response data, so if a site
+        uses non-cookie credentials (e.g. an Authorization header), clean them with
+        recording filter rules before sharing the recording with your agent.
+      </p>
     </div>
   </section>
 
   <section class="alt">
+    <div class="container">
+      <h2 class="section-title" data-i18n="faq.title">Fair questions, straight answers</h2>
+      <div class="grid grid-3">
+        <div class="card">
+          <h3 data-i18n="faq.q1">“Read and change your data on all websites” — that sounds scary.</h3>
+          <p data-i18n="faq.a1">
+            It's what recording fetch/XHR and injecting cookies on any site you use
+            requires. There's no server on the other end: all data lives in your browser's
+            local storage. And it's MIT-licensed — build it from source instead of
+            installing the store package.
+          </p>
+        </div>
+        <div class="card">
+          <h3 data-i18n="faq.q2">How can I verify cookie values stay private?</h3>
+          <p data-i18n="faq.a2">
+            Injection happens at the network layer inside the extension — the agent only
+            ever sends method/URL/body. The local audit log records cookie names, never
+            values, and is exportable. Every forward shows you a confirmation window first.
+          </p>
+        </div>
+        <div class="card">
+          <h3 data-i18n="faq.q3">What happens to my data if I uninstall?</h3>
+          <p data-i18n="faq.a3">
+            Everything is stored in the extension's local storage — uninstalling the
+            extension removes all of it. Recordings, captures and the audit log can also
+            be deleted individually from the side panel.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
     <div class="container">
       <h2 class="section-title" data-i18n="tools.title">What your agent gets</h2>
       <p class="section-sub" data-i18n="tools.sub">
@@ -211,6 +285,7 @@
             <h3 data-i18n="qs.s1Title">Install the extension</h3>
             <p data-i18n="qs.s1Body">
               Get it from the <a href="https://chromewebstore.google.com/detail/manta-action-kit/pghddhbhbnlcehlmgnnalgaephllkeel">Chrome Web Store</a>.
+              Requires Chrome 116+ (no Firefox support).
             </p>
           </div>
         </div>
@@ -229,7 +304,9 @@
           <div class="step-body">
             <h3 data-i18n="qs.s3Title">Add the MCP server to your agent</h3>
             <p data-i18n="qs.s3Body">
-              Paste the prompt into Claude Code / Codex / any MCP client — or add this to your MCP config:
+              Paste the prompt into Claude Code / Codex / Cursor and follow its
+              instructions — that's the whole setup. Prefer editing config by hand?
+              Add the block below (requires <a href="https://nodejs.org">Node.js</a> ≥ 18):
             </p>
             <pre>{
   "mcpServers": {
@@ -244,6 +321,10 @@
     }
   }
 }</pre>
+            <p data-i18n="qs.tokenNote">
+              <code>MANTA_TOKEN</code> is required — copy it from the install prompt;
+              without it the server rejects every client.
+            </p>
           </div>
         </div>
         <div class="step-item">
@@ -277,29 +358,29 @@
     "nav.changelog": "更新日志",
     "nav.github": "GitHub",
     "hero.title": "让 AI agent，<br /><span class=\"accent\">安全调用</span>你已登录的 API。",
-    "hero.tagline": "给 AI agent 安全访问你真实、已登录 API 的能力——无需交出任何凭证。Cookie 锁在你的浏览器里，agent 一个凭证都看不到。",
+    "hero.tagline": "给 AI agent 安全访问你真实、已登录 API 的能力——无需交出任何凭证。Cookie 锁在你的浏览器里、由扩展在网络层注入；AI 全程不经手你的会话。",
     "hero.badgeLocal": "数据全部本地",
     "hero.badgeMit": "MIT 开源协议",
     "hero.install": "安装 Chrome 扩展",
     "hero.docs": "阅读文档",
-    "hero.note": "支持 Claude Code · Codex · Cursor · 任意 MCP 客户端——桥接 100% 运行在 127.0.0.1",
+    "hero.note": "支持 Claude Code · Codex · Cursor · 任意 MCP 客户端——桥接 100% 运行在你自己的电脑上",
     "how.title": "工作原理",
-    "how.sub": "在浏览器里录制一次真实 API 流程，然后让 agent 自由重放或调用这些接口——凭证永不离开浏览器。",
+    "how.sub": "在浏览器里录制一次真实 API 流程，然后让 agent 重放它，或临时调用其中接口——凭证永不离开浏览器。",
     "how.step1Label": "第 1 步 · 录制",
     "how.step1Title": "捕获调用链",
     "how.step1Body": "在弹窗点「开始」，正常操作网站，点「结束」。扩展捕获每一条 fetch/XHR——含请求与响应、包括 SSE 流——形成可本地查看的调用链。",
     "how.step2Label": "第 2 步 · 蒸馏",
     "how.step2Title": "变成可复用的 Action",
-    "how.step2Body": "你的 agent 通过 MCP 读取录制，将其蒸馏为可参数化、可复用的 Action——{{param}} 模板 + 步骤间 outputs 传递。",
-    "how.step3Label": "第 3 步 · 回放",
+    "how.step2Body": "你的 agent 通过 MCP 读取录制，把它蒸馏成可复用的 Action——自动把每次会变的部分（比如订单号、日期）留成可填的空，换个值就能重跑。",
+    "how.step3Label": "第 3 步 · 执行",
     "how.step3Title": "按需执行",
-    "how.step3Body": "execute_action 或 proxy_fetch 经沙箱网关按序重放。扩展在转发时注入你的会话 Cookie；AI 只发送过 method/url/headers/body。",
+    "how.step3Body": "agent 经沙箱网关按你录的步骤自动执行。任何请求发出前你都会先看到确认窗口；发送瞬间由扩展注入你的会话 Cookie——AI 全程不经手。",
     "safe.title": "为什么安全",
-    "safe.sub": "凭证只存在于你的浏览器、永不流向 AI——这是由多层机制强制保证的，不是口头承诺。",
+    "safe.sub": "Cookie 值只存在于你的浏览器、永不流向 AI——这是由多层机制强制保证的，不是口头承诺。",
     "safe.cookieTitle": "🔒 Cookie 不出浏览器",
-    "safe.cookieBody": "Cookie 经 chrome.cookies 读取、在网络层注入请求头。值不会出现在任何工具结果、对话记录或日志里。",
+    "safe.cookieBody": "Cookie 经 chrome.cookies 读取、在网络层注入请求头。注入的值不会出现在工具结果、对话记录或审计日志里。",
     "safe.hitlTitle": "✋ 人在环确认闸门",
-    "safe.hitlBody": "每个新目标域名都会弹出确认窗口，展示 method/URL/body。每次运行每域名确认一次；拒绝或不理会，请求就不会发出。",
+    "safe.hitlBody": "每个新目标域名都会弹出确认窗口，展示 method/URL/body。录制的动作按域名每次运行确认一次；直接调用默认逐请求确认。拒绝或不理会，请求就不会发出。",
     "safe.ssrfTitle": "🛡 SSRF 防护",
     "safe.ssrfBody": "环回、私网、链路本地及云元数据地址（含 169.254.169.254）在任何域名策略之前被拒，对所有路径生效。",
     "safe.domainTitle": "🌐 域名策略由你掌控",
@@ -312,6 +393,22 @@
     "safe.bridgeBody": "环回 WebSocket 做双向 challenge-response——token 本身从不上线。未认证的对端直接断开。",
     "safe.localTitle": "💾 数据全部本地",
     "safe.localBody": "IndexedDB + chrome.storage。无埋点、无外部服务器、无远程代码。",
+    "safe.scopeNote": "范围说明：这条保证针对 Cookie 注入——注入的 Cookie 值不会到达 AI。但录制本身会原样保存请求头/体，如果站点还用非 Cookie 凭证（如 Authorization 头），请先用录制过滤规则清理，再交给 agent。",
+    "why.title": "为什么不直接用浏览器自动化？",
+    "why.sub": "Manta 让 agent 停在 API 边界——它看到的是契约，不是你的会话。",
+    "why.c1Title": "浏览器自动化类 agent",
+    "why.c1Body": "browser-use 一类的方案要把整个页面塞进模型上下文——慢、费 token，而且你的登录会话就直接躺在对话记录里。",
+    "why.c2Title": "DevTools 类 MCP",
+    "why.c2Body": "它们把调试器交给 AI——页面脚本、网络流量、会话状态，全部暴露给模型的每次决定。",
+    "why.c3Title": "Manta Action Kit",
+    "why.c3Body": "agent 基于录制的 API 契约工作。重放经沙箱网关、Cookie 在网络层注入——你的会话从不进入模型上下文。",
+    "faq.title": "尖锐的问题，直接的回答",
+    "faq.q1": "「读取和更改您在所有网站上的数据」——听起来很吓人？",
+    "faq.a1": "这是在任意站点录制 fetch/XHR、注入 Cookie 所必需的权限。另一端没有任何服务器：所有数据都存在你浏览器的本地存储里。而且整个项目 MIT 开源——你可以从源码自建，不装商店包。",
+    "faq.q2": "怎么验证 Cookie 值确实是私密的？",
+    "faq.a2": "注入发生在扩展内部的网络层——agent 只发送 method/URL/body。本地审计日志只记 Cookie 名、永不记值，且可导出。每次转发前你都会先看到确认窗口。",
+    "faq.q3": "卸载后我的数据怎么办？",
+    "faq.a3": "所有数据都存在扩展的本地存储里——卸载扩展即全部删除。录制、采集历史和审计日志也可以在侧边栏逐条删除。",
     "tools.title": "Agent 能拿到什么",
     "tools.sub": "录制是素材，Action 是产物。agent 像使用普通工具一样列出并执行它们。",
     "tools.thArea": "领域",
@@ -327,13 +424,14 @@
     "tools.row4Desc": "检查桥接连通性、管理沙箱代理",
     "qs.title": "快速开始",
     "qs.s1Title": "安装扩展",
-    "qs.s1Body": "从 <a href=\"https://chromewebstore.google.com/detail/manta-action-kit/pghddhbhbnlcehlmgnnalgaephllkeel\">Chrome Web Store</a> 安装。",
+    "qs.s1Body": "从 <a href=\"https://chromewebstore.google.com/detail/manta-action-kit/pghddhbhbnlcehlmgnnalgaephllkeel\">Chrome Web Store</a> 安装。需要 Chrome 116+（不支持 Firefox）。",
     "qs.s2Title": "复制安装提示词",
     "qs.s2Body": "打开扩展侧边栏 → Action 标签页 → 复制安装提示词。其中已内嵌你的个人桥接 token（MANTA_TOKEN）。",
     "qs.s3Title": "把 MCP 服务加进你的 agent",
-    "qs.s3Body": "把提示词粘贴进 Claude Code / Codex / 任意 MCP 客户端——或把下面配置加进 MCP 配置：",
+    "qs.s3Body": "把提示词直接粘贴给 Claude Code / Codex / Cursor，按它的提示确认即可——这就是全部配置。喜欢手动改配置？把下面内容加进 MCP 配置（需要 <a href=\"https://nodejs.org\">Node.js</a> ≥ 18）：",
     "qs.s4Title": "开始使用",
     "qs.s4Body": "在你的网站上录一个流程，然后对 agent 说：“我刚录了查订单的流程，把它变成 action，然后告诉我订单 A1002 到哪了。”",
+    "qs.tokenNote": "<code>MANTA_TOKEN</code> 为必填——从安装提示词里复制；未配置时服务端会拒绝所有客户端。",
     "footer.docs": "文档",
     "footer.changelog": "更新日志",
     "footer.privacy": "隐私政策",

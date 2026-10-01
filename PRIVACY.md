@@ -29,6 +29,11 @@ we control:**
   fetch/XHR network requests made by the page **only while you are actively
   recording**. It does not track clicks, mouse movement, scrolling, keystrokes,
   or your browsing history.
+- **Website content (page capture)** — when you explicitly capture an element,
+  take a screenshot, or record a GIF from the popup, the extension stores that
+  capture locally: element captures include the picked element's DOM structure,
+  text, and computed styles; screenshots/GIFs are image/video drafts of the tab
+  you chose.
 
 **We do not sell or transfer this data to third parties, do not use it for any
 purpose unrelated to the extension's single purpose, and do not use it for
@@ -42,7 +47,8 @@ transmitted to us or to any third party we control.
 | Data                                                                                                                                                                               | Where it is stored                    | Why                                                                    |
 | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- | ---------------------------------------------------------------------- |
 | **Recorded API calls** — request method, URL, headers, request/response bodies, timing, and (for streaming responses) parsed SSE events                                            | IndexedDB, in your browser profile    | So you can review a recorded business flow and expose it to your agent |
-| **Settings** — enabled toggles, MCP port, sandbox-proxy toggle, UI language/theme                                                                                                  | `chrome.storage` (sync/local/session) | To remember your preferences                                           |
+| **Settings** — enabled toggles, MCP port, gateway confirmation toggle, allow/deny domain lists, UI language/theme                                                                  | `chrome.storage` (sync/local/session) | To remember your preferences                                           |
+| **Element captures** — DOM structure, text, and computed styles of elements you explicitly pick in the page, with shadow-DOM support                                               | IndexedDB                             | So you can preview, diff, and copy the captured element                |
 | **Sandbox-proxy audit log** — for each agent-initiated call: method, URL, status, timing, the **names** of the cookies that were injected, and truncated request/response previews | IndexedDB                             | So you can audit exactly what your agent did                           |
 | **Screenshots & GIF recordings** — page captures you explicitly take from the popup, kept as local image/video drafts until you delete them or copy/download them out | IndexedDB (plus a transient `chrome.storage.session` handoff while opening the preview tab) | So you can preview, copy, or download the capture you just took       |
 
@@ -67,11 +73,17 @@ the AI agent.** This is the core security property of the extension.
 
 You remain in control at all times:
 
-- **Human-in-the-loop confirmation** — every agent-initiated proxy call requires
-  a native approval prompt before it is made; this cannot be bypassed.
+- **Human-in-the-loop confirmation** — by default, every agent-initiated proxy
+  call requires your explicit approval in an **extension-side confirmation
+  window** (independent of any MCP client behavior) before it is made. You can
+  adjust this gate in the extension's sandbox settings; when disabled, calls are
+  auto-allowed and still fully audit-logged.
 - **Per-tool kill switch** — each MCP tool can be disabled.
 - **SSRF guard** — requests to loopback, private, and link-local hosts
   (including cloud metadata endpoints) are refused.
+- **Domain allow/deny lists you own** — denied hosts are blocked outright;
+  allowed hosts pass silently. The agent has no tools to read or change these
+  lists.
 - **Audit log** — every forwarded call is recorded locally (cookie names, not
   values).
 
@@ -110,7 +122,8 @@ The local MCP bridge connects only to a process on the loopback interface
 - `sidePanel` — host the management UI (recordings, audit log, proxy rules).
 - `storage` — persist settings and (via IndexedDB) recordings and the audit log.
 - `alarms` — internal keepalive for the background service worker so the local
-  MCP bridge survives MV3 service-worker sleep.
+  MCP bridge survives MV3 service-worker sleep, plus an orphaned-state check
+  that detects a GIF recording lost to service-worker/OS reclamation.
 - `notifications` — purely informational system notifications: a "recording
   saved" nudge when a recording finishes, and an alert that a sandbox request
   is awaiting your confirmation (clicking it just focuses the confirmation

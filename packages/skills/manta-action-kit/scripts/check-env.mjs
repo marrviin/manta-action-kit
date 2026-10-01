@@ -58,7 +58,7 @@ if (claude.error) {
     report(
       false,
       'manta-action-kit MCP not registered in Claude Code',
-      `run claude mcp add manta-action-kit --scope local -- node ${distEntry}`,
+      `run claude mcp add manta-action-kit --scope local --env MANTA_TOKEN=<token from the extension's install prompt> -- node ${distEntry}`,
     );
   }
 }
