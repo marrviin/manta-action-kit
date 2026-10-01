@@ -65,5 +65,16 @@
   "notifyScreenshotFailedMessage": {
     "message": "This page could not be captured as a screenshot",
     "description": "System notification body for a generic screenshot failure."
+  },
+  "notifyGifConfirmTitle": {
+    "message": "Tab recording confirmation",
+    "description": "System notification title when an agent-requested tab recording awaits confirmation."
+  },
+  "notifyGifConfirmMessage": {
+    "message": "An agent wants to record $HOST$ — click Allow in the popup window",
+    "description": "System notification body with the target host of an agent-requested tab recording.",
+    "placeholders": {
+      "host": { "content": "$1" }
+    }
   }
 }

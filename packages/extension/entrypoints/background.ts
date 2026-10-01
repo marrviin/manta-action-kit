@@ -13,8 +13,7 @@ import {
   addProxyRule,
   updateProxyRuleContent,
 } from "@/lib/gateway/manage-rules";
-import { captureScreenshot } from "@/lib/screenshot/capture";
-import { captureFullPageStitched } from "@/lib/screenshot/stitch";
+import { captureTabScreenshot } from "@/lib/screenshot/capture-flow";
 import { PLAY_SCREENSHOT_FX } from "@/lib/screenshot/focus-fx";
 import {
   ScreenshotError,
@@ -36,6 +35,13 @@ import {
   resizeGatewayConfirmation,
   resolveGatewayConfirmation,
 } from "@/lib/gateway/confirm";
+import {
+  initGifConfirm,
+  isPendingGifConfirmation,
+  resolveGifConfirmation,
+} from "@/lib/gif-confirm";
+import { isCapturableUrl } from "@/lib/utils";
+import { GifRecordingError } from "@/lib/gif-recording/types";
 
 /**
  * Background service worker (Manifest V3).
@@ -95,6 +101,10 @@ export default defineBackground(() => {
 
   // Sandbox confirmation popup: register the window-closed → deny listener.
   initGatewayConfirm();
+
+  // GIF recording confirmation popup (agent-requested tab capture): same
+  // window-closed → deny listener pattern.
+  initGifConfirm();
 
   // GIF orphan-state watch: drops a stuck "recording" state if Chrome kills
   // the offscreen document mid-recording (see lib/gif-recording/session.ts).
@@ -185,24 +195,17 @@ export default defineBackground(() => {
             // Capture FIRST, while the page is still pristine — the shot can
             // never contain the fx overlay, and a failed capture skips the
             // show entirely instead of playing it for nothing.
-            // fullPage prefers scroll-and-stitch (width pinned to the
-            // viewport — no blank-edge inflation — and lazy images load on
-            // the way down); anything that goes wrong falls back to the
-            // DevTools-equivalent CDP single render below. Which path won
-            // matters for the fx below: the stitched sweep already played
+            // captureTabScreenshot: fullPage prefers scroll-and-stitch (width
+            // pinned to the viewport — no blank-edge inflation — and lazy
+            // images load on the way down); anything that goes wrong falls
+            // back to the DevTools-equivalent CDP single render. Which path
+            // won matters for the fx below: the stitched sweep already played
             // the same camera (focus intro + shutter outro), so a second
-            // iris here would be a duplicate flourish.
-            let stitched = false;
-            const shot = await (async () => {
-              if (msg.data.mode === "fullPage") {
-                const result = await captureFullPageStitched(tab);
-                if (result) {
-                  stitched = true;
-                  return result;
-                }
-              }
-              return captureScreenshot(tab, msg.data.mode);
-            })();
+            // iris here would be a duplicate flourish. Shared with the agent
+            // RPC (capture_screenshot), which calls it without any of the
+            // surrounding fx/preview choreography.
+            const shot = await captureTabScreenshot(tab, msg.data.mode);
+            const stitched = shot.stitched;
             // Hand the capture to the preview tab via session storage (a
             // full-page data URL is far too large for a query param), then
             // open it. Copy/download happen there — nothing is saved yet.
@@ -293,19 +296,49 @@ export default defineBackground(() => {
             // on large pages. Here we only consume the id and open the
             // element preview at it (comparisons are launched from there via
             // the history dropdown).
-            const { captureId } = msg.data;
-            await chrome.tabs.create({
-              url: browser.runtime.getURL(
-                `/preview.html?mode=element&id=${captureId}`,
-              ),
-            });
+            const { captureId, preview } = msg.data;
+            // Agent-driven captures (preview === false) stay silent: the RPC
+            // result already carries the data, so no preview tab opens.
+            if (preview !== false) {
+              await chrome.tabs.create({
+                url: browser.runtime.getURL(
+                  `/preview.html?mode=element&id=${captureId}`,
+                ),
+              });
+            }
             sendResponse({ ok: true });
             break;
           }
 
           case "START_GIF_RECORDING":
-            sendResponse(await startGifRecording(msg.data.streamId));
+            // streamId from the popup (popup-minted, no opts) or from the GIF
+            // confirm window (agent-requested, with tabId/url/silent).
+            sendResponse(
+              await startGifRecording(msg.data.streamId, {
+                tabId: msg.data.tabId,
+                url: msg.data.url,
+                silent: msg.data.silent,
+              }),
+            );
             break;
+
+          case "GIF_CONFIRM_DECISION": {
+            const settled = resolveGifConfirmation(
+              msg.data.id,
+              msg.data.approved,
+              msg.data.streamId,
+              msg.data.error,
+            );
+            sendResponse({ ok: settled });
+            break;
+          }
+
+          case "GIF_CONFIRM_PING": {
+            // Keepalive: this inbound message resets the SW idle timer; the
+            // ok flag tells the page whether its request is still live.
+            sendResponse({ ok: isPendingGifConfirmation(msg.data.id) });
+            break;
+          }
 
           case "STOP_GIF_RECORDING":
             sendResponse(await stopGifRecording());

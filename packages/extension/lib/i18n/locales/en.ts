@@ -381,6 +381,43 @@ export const en = {
     rebind_proxyLabel: "Proxy port self-heal",
     rebind_proxyDesc:
       "On a port conflict, automatically move the local proxy to a free port and sync it to the extension (built-in capability, not affected by the switches)",
+    capture_screenshotLabel: "Capture screenshot",
+    capture_screenshotDesc:
+      "Screenshot the active tab (visible area or full page via scroll-and-stitch); returns a downscaled image to the agent and saves the original to the screenshot history",
+    capture_elementLabel: "Capture element",
+    capture_elementDesc:
+      "Serialize a page element to a structured description (tag/attrs/text/computed styles) by selector, screen point, or box — without user interaction; returns a lean tree, full detail via get_element_capture",
+    start_gif_recordingLabel: "Start GIF recording",
+    start_gif_recordingDesc:
+      "Ask the user (via a confirmation window) to allow recording the active tab; blocking until approved, denied, or timed out",
+    stop_gif_recordingLabel: "Stop GIF recording",
+    stop_gif_recordingDesc:
+      "Stop the running tab recording and save the WebM draft; returns the draft id",
+    pause_gif_recordingLabel: "Pause GIF recording",
+    pause_gif_recordingDesc: "Pause the running tab recording",
+    resume_gif_recordingLabel: "Resume GIF recording",
+    resume_gif_recordingDesc: "Resume a paused tab recording",
+    get_gif_recording_statusLabel: "Get GIF recording status",
+    get_gif_recording_statusDesc:
+      "Get the current recording state (recording/paused) and the last recording's result",
+    list_gif_historyLabel: "List GIF recordings",
+    list_gif_historyDesc:
+      "Get the recorded WebM drafts (id, filename, created time) — conversion to GIF happens in the extension's preview tab",
+  },
+  // Confirmation window for agent-requested GIF recordings (lib/gif-confirm.ts).
+  // The Allow click doubles as the user gesture Chrome requires to mint the
+  // tabCapture stream id, so the copy stresses what will be recorded.
+  gifConfirm: {
+    title: "Allow tab recording?",
+    desc: "An agent wants to record {{host}} with this extension's GIF recorder.",
+    sourceAgent: "Requested by agent",
+    countdown: "Expires in {{s}}s",
+    captureBarHint:
+      "Chrome will show a recording bar on the tab while recording. Max 5 minutes.",
+    expired: "This request has expired — ask the agent to start again.",
+    deny: "Deny",
+    allow: "Allow",
+    decisionFailed: "Failed to record your decision: {{error}}",
   },
   settings: {
     title: "Settings",

@@ -352,6 +352,40 @@ export const zhCN: Messages = {
     rebind_proxyLabel: "代理端口自愈",
     rebind_proxyDesc:
       "端口冲突时自动将本地代理迁移至空闲端口并同步给插件（服务内置能力，不受开关控制）",
+    capture_screenshotLabel: "捕获截图",
+    capture_screenshotDesc:
+      "截取活动标签页（可见区域或滚动拼接整页）；返回给 Agent 一张降采样压缩图，原图存入截图历史",
+    capture_elementLabel: "捕获元素",
+    capture_elementDesc:
+      "通过选择器、屏幕坐标或框选区域把页面元素序列化为结构化描述（标签/属性/文本/计算样式），无需用户交互；返回瘦身树，全量细节经 get_element_capture 获取",
+    start_gif_recordingLabel: "开始 GIF 录制",
+    start_gif_recordingDesc:
+      "通过确认窗口请求用户允许录制活动标签页；阻塞至批准、拒绝或超时",
+    stop_gif_recordingLabel: "停止 GIF 录制",
+    stop_gif_recordingDesc: "停止进行中的标签页录制并保存 WebM 草稿；返回草稿 id",
+    pause_gif_recordingLabel: "暂停 GIF 录制",
+    pause_gif_recordingDesc: "暂停进行中的标签页录制",
+    resume_gif_recordingLabel: "恢复 GIF 录制",
+    resume_gif_recordingDesc: "恢复已暂停的标签页录制",
+    get_gif_recording_statusLabel: "查询 GIF 录制状态",
+    get_gif_recording_statusDesc:
+      "查询当前录制状态（录制中/已暂停）及上一次录制的结果",
+    list_gif_historyLabel: "列出 GIF 录制",
+    list_gif_historyDesc:
+      "获取已录制的 WebM 草稿（id、文件名、创建时间）——转码为 GIF 在扩展预览页进行",
+  },
+  // Agent 请求的 GIF 录制确认窗（lib/gif-confirm.ts）。允许点击同时是 Chrome
+  // 铸造 tabCapture stream id 所需的用户手势，文案需讲清将要录制什么。
+  gifConfirm: {
+    title: "允许录制此标签页？",
+    desc: "一个 Agent 请求用本插件的 GIF 录制器录制 {{host}}。",
+    sourceAgent: "Agent 发起",
+    countdown: "{{s}} 秒后过期",
+    captureBarHint: "录制期间 Chrome 会在标签页上显示录制条。单次最长 5 分钟。",
+    expired: "此请求已过期——请让 Agent 重新发起。",
+    deny: "拒绝",
+    allow: "允许",
+    decisionFailed: "记录决定失败：{{error}}",
   },
   settings: {
     title: "设置",

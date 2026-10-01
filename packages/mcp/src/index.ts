@@ -6,14 +6,17 @@
  * over stdio. Data lives in the extension's IndexedDB, so every tool forwards to
  * the extension via the local WebSocket bridge (see bridge.ts).
  *
- * This milestone: read-only access to recordings, plus a cookie-injecting gateway.
- *   - list_recordings     : all recordings' metadata
- *   - get_recording       : one recording + its full call chain
- *   - get_flow            : a recording's ordered steps + inferred field dependencies
- *   - get_endpoints       : a recording's deduped endpoints + redacted request/response schemas
- *   - get_call            : a single API call by id
- *   - proxy_fetch         : forward a call through the extension with cookies injected
- *   - proxy_sse           : forward an SSE call and drain its events
+ * Tool inventory (full parameter docs live in the zod schemas below, and in
+ * packages/mcp/README.md):
+ *   - recordings        : list/get/search_recordings, get_call/flow/endpoints,
+ *                         set_recording_description
+ *   - element captures  : list/get/diff_element_captures (read-only)
+ *   - actions           : list/get/search/create/update/delete/execute_action
+ *   - sandbox gateway   : proxy_fetch/proxy_sse, list/add/update_proxy_rule
+ *   - capture           : capture_screenshot, capture_element (live serialization
+ *                         from the active tab), start/stop/pause/resume/
+ *                         get_gif_recording_status, list_gif_history
+ *   - ops               : health, rebind_proxy (in-process, not kill-switchable)
  *
  * Config:
  *   MANTA_WS_PORT — local bridge port (must match the extension setting).
@@ -126,6 +129,24 @@ const server = new McpServer({
 function jsonContent(data: unknown) {
   return {
     content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }],
+  };
+}
+
+/**
+ * Wrap a captured image as MCP content: the metadata as JSON text plus the
+ * image itself as an image content block (base64, no data: prefix). Most MCP
+ * clients render the image block, and multimodal models can read it directly.
+ */
+function imageContent(
+  meta: Record<string, unknown>,
+  imageBase64: string,
+  mimeType: string,
+) {
+  return {
+    content: [
+      { type: "text" as const, text: JSON.stringify(meta, null, 2) },
+      { type: "image" as const, data: imageBase64, mimeType },
+    ],
   };
 }
 
@@ -1001,6 +1022,257 @@ server.registerTool(
         130000,
       )) as RpcResults["execute_action"];
       return jsonContent(res.run);
+    } catch (err) {
+      return errorContent(err);
+    }
+  },
+);
+
+server.registerTool(
+  "capture_screenshot",
+  {
+    title: "Capture a screenshot",
+    description:
+      "Screenshot the active tab of the user's Chrome window. mode=visible captures the " +
+      "current viewport; mode=fullPage scrolls and stitches the whole page (30s+ on long " +
+      "pages; width is pinned to the viewport). Returns the image itself (downscaled to a " +
+      "1568px JPEG when the raw PNG is large) plus metadata — the full-resolution original " +
+      "is saved to the extension's screenshot history and can be reopened by the user from " +
+      "the side panel's capture tab. Runs silently: no preview tab, no animation, no " +
+      "notification. Caveats: pages that block automation or are not capturable (chrome://, " +
+      "Web Store) fail; if DevTools is attached to the tab the capture reports " +
+      "screenshot:debugger-conflict — ask the user to close DevTools; on the CDP fallback " +
+      "path Chrome's 'being debugged' infobar may appear in the shot and in any tab recording. " +
+      "file:// tabs fail unless the user enabled 'Allow access to file URLs' for the extension.",
+    inputSchema: {
+      mode: z
+        .enum(["visible", "fullPage"])
+        .describe(
+          "visible = current viewport; fullPage = entire scrollable page (slower).",
+        ),
+    },
+  },
+  async ({ mode }) => {
+    try {
+      // fullPage can scroll-and-stitch for tens of seconds on long pages —
+      // same generous budget as execute_action.
+      const res = (await call(
+        "capture_screenshot",
+        { mode },
+        130000,
+      )) as RpcResults["capture_screenshot"];
+      const { imageBase64, mimeType, ...meta } = res;
+      return imageContent(meta, imageBase64, mimeType);
+    } catch (err) {
+      return errorContent(err);
+    }
+  },
+);
+
+server.registerTool(
+  "capture_element",
+  {
+    title: "Capture a page element",
+    description:
+      "Serialize a page element from the active tab into a structured description (tag, " +
+      "attributes, text, computed styles) — no user interaction needed. Exactly one of: " +
+      "selector (CSS; default = first match + its visible subtree, click-pick semantics; " +
+      "all=true = every match as a forest of single elements), point ({x,y} screen coords, " +
+      "shadow-DOM aware hit test), or box ({x,y,w,h} — all elements intersecting the " +
+      "rectangle). maxElements caps the response (default 100). The response is a LEAN tree " +
+      "(full per-node style maps stripped to stay within token budget); for the complete " +
+      "payload with fullStyles pass the returned captureId to get_element_capture. Fails on " +
+      "pages that cannot be injected (chrome://, Web Store) or with no matching element.",
+    inputSchema: {
+      selector: z
+        .string()
+        .optional()
+        .describe("CSS selector for the element to capture."),
+      point: z
+        .object({ x: z.number(), y: z.number() })
+        .optional()
+        .describe(
+          "Viewport coordinates to hit-test (innermost element wins, pierces shadow DOM).",
+        ),
+      box: z
+        .object({
+          x: z.number(),
+          y: z.number(),
+          w: z.number(),
+          h: z.number(),
+        })
+        .optional()
+        .describe("Viewport rectangle; captures every visible element intersecting it."),
+      all: z
+        .boolean()
+        .optional()
+        .describe(
+          "With selector: capture EVERY match as separate elements instead of the first match's subtree.",
+        ),
+      maxElements: z
+        .number()
+        .int()
+        .min(1)
+        .max(1000)
+        .optional()
+        .describe("Element budget (default 100)."),
+    },
+  },
+  async ({ selector, point, box, all, maxElements }) => {
+    try {
+      const res = (await call(
+        "capture_element",
+        { selector, point, box, all, maxElements },
+        30000,
+      )) as RpcResults["capture_element"];
+      return jsonContent(res);
+    } catch (err) {
+      return errorContent(err);
+    }
+  },
+);
+
+server.registerTool(
+  "start_gif_recording",
+  {
+    title: "Start a tab GIF recording",
+    description:
+      "Start recording the active tab (or tabId) for GIF export. ⚠️ HUMAN IN THE LOOP: " +
+      "a confirmation popup opens in the browser and this call BLOCKS until the user clicks " +
+      "Allow (up to ~2 minutes) — a denied/closed/expired popup fails the call. Chrome shows " +
+      "a recording bar on the tab while capturing. Recordings auto-stop at the 5-minute " +
+      "limit. The WebM draft is saved on stop; afterwards poll get_gif_recording_status. " +
+      "Note: screenshots (capture_screenshot fullPage CDP fallback) of a recording tab put " +
+      "the debugger infobar into the recording. file:// tabs fail stream minting unless the " +
+      "user enabled 'Allow access to file URLs' — the error surfaces as start-failed.",
+    inputSchema: {
+      tabId: z
+        .number()
+        .int()
+        .optional()
+        .describe("Target tab id. Omit to record the currently active tab."),
+    },
+  },
+  async ({ tabId }) => {
+    try {
+      // Blocks on the human confirm window (up to 120s) — generous budget.
+      const res = (await call(
+        "start_gif_recording",
+        { tabId },
+        130000,
+      )) as RpcResults["start_gif_recording"];
+      return jsonContent(res);
+    } catch (err) {
+      return errorContent(err);
+    }
+  },
+);
+
+server.registerTool(
+  "stop_gif_recording",
+  {
+    title: "Stop the tab GIF recording",
+    description:
+      "Stop the running tab recording and finalize the WebM draft. Returns {ok, draftId?, " +
+      "hitTimeLimit?}; draftId may be briefly absent if the save has not landed yet — call " +
+      "get_gif_recording_status and read lastResult.draftId in that case.",
+    inputSchema: {},
+  },
+  async () => {
+    try {
+      const res = (await call(
+        "stop_gif_recording",
+        undefined,
+      )) as RpcResults["stop_gif_recording"];
+      return jsonContent(res);
+    } catch (err) {
+      return errorContent(err);
+    }
+  },
+);
+
+server.registerTool(
+  "pause_gif_recording",
+  {
+    title: "Pause the tab GIF recording",
+    description: "Pause the running tab recording (frames are not captured while paused).",
+    inputSchema: {},
+  },
+  async () => {
+    try {
+      const res = (await call(
+        "pause_gif_recording",
+        undefined,
+      )) as RpcResults["pause_gif_recording"];
+      return jsonContent(res);
+    } catch (err) {
+      return errorContent(err);
+    }
+  },
+);
+
+server.registerTool(
+  "resume_gif_recording",
+  {
+    title: "Resume the tab GIF recording",
+    description: "Resume a paused tab recording.",
+    inputSchema: {},
+  },
+  async () => {
+    try {
+      const res = (await call(
+        "resume_gif_recording",
+        undefined,
+      )) as RpcResults["resume_gif_recording"];
+      return jsonContent(res);
+    } catch (err) {
+      return errorContent(err);
+    }
+  },
+);
+
+server.registerTool(
+  "get_gif_recording_status",
+  {
+    title: "Get tab recording status",
+    description:
+      "Report the current tab-recording state ({status: 'recording'|'paused', startedAt, " +
+      "tabId} or null) plus lastResult — how the PREVIOUS recording ended ({ok, draftId?, " +
+      "hitTimeLimit?, endedAt}), useful after a time-limit auto-stop or a stop whose draftId " +
+      "had not landed yet.",
+    inputSchema: {},
+  },
+  async () => {
+    try {
+      const res = (await call(
+        "get_gif_recording_status",
+        undefined,
+      )) as RpcResults["get_gif_recording_status"];
+      return jsonContent(res);
+    } catch (err) {
+      return errorContent(err);
+    }
+  },
+);
+
+server.registerTool(
+  "list_gif_history",
+  {
+    title: "List tab recordings",
+    description:
+      "List the recorded WebM drafts (id, filename, createdAt; metadata only). These are " +
+      "PRE-TRANSCODE drafts: WebM→GIF conversion (and MP4 export) runs inside the extension's " +
+      "preview tab and cannot be triggered remotely — tell the user to open the recording " +
+      "from the side panel's capture tab to transcode/download it.",
+    inputSchema: {},
+  },
+  async () => {
+    try {
+      const res = (await call(
+        "list_gif_history",
+        undefined,
+      )) as RpcResults["list_gif_history"];
+      return jsonContent(res.drafts);
     } catch (err) {
       return errorContent(err);
     }

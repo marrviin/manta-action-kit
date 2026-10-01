@@ -1,4 +1,4 @@
-# manta-action-kit-mcp
+# @manta-action-kit/mcp
 
 **English** | [Chinese](#chinese)
 
@@ -9,7 +9,9 @@ ever seeing the user's credentials.
 
 ## Requirements
 
-This server is only a bridge — it has no data of its own. It requires the
+- **Node.js ≥ 18** to run the server (via `npx`). The companion skill's
+  `check-env.mjs` script additionally needs **Node ≥ 22** (native WebSocket).
+- This server is only a bridge — it has no data of its own. It requires the
 **Manta Action Kit** Chrome extension, which records the API calls, stores them
 in IndexedDB, and injects the cookies. Install it first; the extension dials in
 automatically once this server is running:
@@ -37,6 +39,9 @@ agent ──stdio (MCP)──▶ manta-action-kit-mcp ──WS server ws://127.0
   with backoff) and answers RPC calls from its IndexedDB.
 - Each agent tool call is forwarded as an `rpc` frame and correlated to its
   `rpc-result` by `id`.
+- The frame protocol and domain types shared by the extension and this server
+  live in `packages/protocol` (`@manta-action-kit/protocol`); this package
+  re-exports them from `src/protocol.ts`.
 
 ### Handshake authentication
 
@@ -99,6 +104,19 @@ Every MCP process starts identically (via `npx`) and races for the WS bridge por
 | `delete_action`  | Delete an action by id (requires user confirmation).                                            |
 | `execute_action` | Run an action end to end through the gateway (cookies injected, per-host user confirmation).    |
 
+### Page capture (agent-driven, against the active tab)
+
+| Tool                     | Description                                                                                          |
+| ------------------------ | ---------------------------------------------------------------------------------------------------- |
+| `capture_screenshot`     | Screenshot the active tab (`visible` or `fullPage` scroll-and-stitch). Returns a downscaled image + metadata; the original is saved to the extension's screenshot history. Silent (no preview tab / notification). |
+| `capture_element`        | Serialize a page element (selector / screen point / box, shadow-DOM aware) into a lean structured tree without user interaction; full fidelity via `get_element_capture(captureId)`. |
+| `start_gif_recording`    | Start recording a tab. ⚠️ Blocks up to ~2 min on a human confirmation popup (Allow = the user gesture Chrome requires for tab capture); deny/timeout fails the call. Auto-stops at 5 min. |
+| `stop_gif_recording`     | Stop the recording and finalize the WebM draft (`draftId`; if briefly absent, read `lastResult.draftId` from the status tool). |
+| `pause_gif_recording`    | Pause the running recording.                                                                         |
+| `resume_gif_recording`   | Resume a paused recording.                                                                           |
+| `get_gif_recording_status` | Current recording state + how the last recording ended (`lastResult`).                              |
+| `list_gif_history`       | Recorded WebM drafts (metadata only). Pre-transcode: WebM→GIF conversion happens in the extension's preview tab and cannot be triggered remotely. |
+
 ### Proxy rules (script gateway)
 
 | Tool                | Description                                                                |
@@ -130,8 +148,18 @@ Every MCP process starts identically (via `npx`) and races for the WS bridge por
 
 ## Build & run
 
+From the repo root (recommended — it also builds the `@manta-action-kit/protocol`
+dependency first, which this package imports):
+
 ```bash
-pnpm --filter @manta-action-kit/mcp build   # tsc -> dist/
+pnpm build:mcp    # build @manta-action-kit/protocol, then tsc -> packages/mcp/dist/
+pnpm start:mcp    # node packages/mcp/dist/index.js
+```
+
+Alternatively, from a fully built workspace:
+
+```bash
+pnpm --filter @manta-action-kit/mcp build   # tsc -> dist/ (requires @manta-action-kit/protocol to be built)
 pnpm --filter @manta-action-kit/mcp start   # node dist/index.js
 ```
 
@@ -185,7 +213,7 @@ data; otherwise they return an error telling you what to check.
 
 <a name="chinese"></a>
 
-# manta-action-kit-mcp (中文文档)
+# @manta-action-kit/mcp（中文文档）
 
 [English](#manta-action-kit-mcp) | **中文**
 
@@ -195,7 +223,9 @@ API 调用作为 MCP 工具暴露给 AI Agent，并提供一个注入 Cookie 的
 
 ## 前置要求
 
-本服务只是一个桥——自身不持有任何数据。它依赖 **Manta Action Kit** Chrome 扩展：
+- **Node.js ≥ 18**（通过 `npx` 运行）。配套 skill 的 `check-env.mjs` 脚本还需要
+  **Node ≥ 22**（原生 WebSocket）。
+- 本服务只是一个桥——自身不持有任何数据。它依赖 **Manta Action Kit** Chrome 扩展：
 接口录制、IndexedDB 存储与 Cookie 注入都由扩展完成。请先安装扩展；本服务启动后
 扩展会自动拨入连接：
 
@@ -220,6 +250,8 @@ agent ──stdio (MCP)──▶ manta-action-kit-mcp ──WS 服务 ws://127.0
   IndexedDB 中响应 RPC 调用。
 - 每一次 Agent 的工具调用都会被转发为一个 `rpc` 帧，并通过 `id` 与对应的
   `rpc-result` 进行关联。
+- 扩展与本服务共用的帧协议与领域类型位于 `packages/protocol`
+  （`@manta-action-kit/protocol`）；本包的 `src/protocol.ts` 是对它的 re-export。
 
 ### 握手认证
 
@@ -278,6 +310,19 @@ agent ──stdio (MCP)──▶ manta-action-kit-mcp ──WS 服务 ws://127.0
 | `delete_action`  | 按 id 删除动作（需用户确认）。                                                 |
 | `execute_action` | 经网关端到端执行一个动作（注入 Cookie，按目标 host 逐个用户确认）。             |
 
+### 页面采集（Agent 驱动，作用于活动标签页）
+
+| 工具                       | 说明                                                                                                    |
+| -------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `capture_screenshot`       | 截取活动标签页（`visible` 或 `fullPage` 滚动拼接）。返回降采样压缩图 + 元数据；原图存入扩展截图历史。静默（不弹预览页、不发通知）。 |
+| `capture_element`          | 把页面元素序列化为瘦身结构化树（选择器 / 屏幕坐标 / 框选，支持 shadow DOM），无需用户交互；全量细节经 `get_element_capture(captureId)` 获取。 |
+| `start_gif_recording`      | 开始录制标签页。⚠️ 阻塞最多约 2 分钟等待人工确认弹窗（「允许」点击即 Chrome 抓取标签页所需的用户手势）；拒绝/超时即失败。单次 5 分钟自动停止。 |
+| `stop_gif_recording`       | 停止录制并落盘 WebM 草稿（返回 `draftId`；若短暂缺失，用状态工具读 `lastResult.draftId`）。              |
+| `pause_gif_recording`      | 暂停进行中的录制。                                                                                      |
+| `resume_gif_recording`     | 恢复已暂停的录制。                                                                                      |
+| `get_gif_recording_status` | 当前录制状态 + 上一次录制如何结束（`lastResult`）。                                                      |
+| `list_gif_history`         | 已录制的 WebM 草稿（仅元数据）。为转码前产物：WebM→GIF 转换在扩展预览页进行，无法远程触发。             |
+
 ### 代理规则（脚本网关）
 
 | 工具                | 说明                                                              |
@@ -308,8 +353,17 @@ agent ──stdio (MCP)──▶ manta-action-kit-mcp ──WS 服务 ws://127.0
 
 ## 构建与运行
 
+在仓库根目录运行（推荐——会先构建本包依赖的 `@manta-action-kit/protocol`）：
+
 ```bash
-pnpm --filter @manta-action-kit/mcp build   # tsc -> dist/
+pnpm build:mcp    # 先构建 @manta-action-kit/protocol，再 tsc -> packages/mcp/dist/
+pnpm start:mcp    # node packages/mcp/dist/index.js
+```
+
+也可以在工作区完整构建后，进包单独运行：
+
+```bash
+pnpm --filter @manta-action-kit/mcp build   # tsc -> dist/（需 @manta-action-kit/protocol 已构建）
 pnpm --filter @manta-action-kit/mcp start   # node dist/index.js
 ```
 

@@ -16,7 +16,7 @@ import type { RpcMethod } from "./mcp/protocol";
 import type { Locale } from "./i18n";
 import { detectLocale } from "./i18n/detect";
 import type { ScreenshotMode, ScreenshotPreview } from "./screenshot/types";
-import type { GifRecordingState } from "./gif-recording/types";
+import type { GifLastResult, GifRecordingState } from "./gif-recording/types";
 
 export const settings = {
   /**
@@ -269,6 +269,21 @@ export const screenshotPreview = storage.defineItem<ScreenshotPreview | null>(
  */
 export const gifRecordingState = storage.defineItem<GifRecordingState | null>(
   "session:gifRecordingState",
+  {
+    fallback: null,
+  },
+);
+
+/**
+ * Outcome of the most recent recording end (auto-stop / tab closed / stop from
+ * any surface). Storage, not module scope: the service worker sleeps during a
+ * recording, and a `get_gif_recording_status` RPC arriving after the 5-minute
+ * auto-stop (whose DONE report fired while it slept) must still be able to
+ * read the result. Session area — a browser restart clears it with the
+ * recording itself.
+ */
+export const gifLastResult = storage.defineItem<GifLastResult | null>(
+  "session:gifLastResult",
   {
     fallback: null,
   },

@@ -65,5 +65,16 @@
   "notifyScreenshotFailedMessage": {
     "message": "当前页面无法完成截图",
     "description": "System notification body for a generic screenshot failure."
+  },
+  "notifyGifConfirmTitle": {
+    "message": "标签页录制确认",
+    "description": "System notification title when an agent-requested tab recording awaits confirmation."
+  },
+  "notifyGifConfirmMessage": {
+    "message": "一个 Agent 请求录制 $HOST$ ——请在弹窗中点击允许",
+    "description": "System notification body with the target host of an agent-requested tab recording.",
+    "placeholders": {
+      "host": { "content": "$1" }
+    }
   }
 }

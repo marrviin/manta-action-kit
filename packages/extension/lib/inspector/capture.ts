@@ -38,6 +38,9 @@ import { settings } from "@/lib/storage";
 /** Message type that toggles capture mode (popup -> content script, per-tab). */
 export const TOGGLE_INSPECTOR_CAPTURE = "TOGGLE_INSPECTOR_CAPTURE";
 
+/** Message type for the programmatic (agent) capture (background -> content script). */
+export const AGENT_CAPTURE_ELEMENTS = "AGENT_CAPTURE_ELEMENTS";
+
 /** Source-locator attributes injected into built React output (compiler step). */
 const ATTR_PATH = "data-inspector-relative-path";
 const ATTR_LINE = "data-inspector-line";
@@ -1002,7 +1005,11 @@ function runCapture(elements: ElementDescription[], box: Box | null) {
     // inspector-bridge iframe (see handoffToBridge below), which then pings the
     // background to open the preview tab. A failure here must never disturb the
     // capture itself — it only toasts (the clipboard copy already succeeded).
-    await handoffToBridge(payload);
+    // The toast lives at this call site (not inside handoffToBridge) because
+    // the programmatic capture path resolves the same result into its RPC
+    // reply instead of showing in-page UI.
+    const handoff = await handoffToBridge(payload);
+    if (!handoff.ok) toast(L.previewFailed);
     // The preview tab is open (the "jump away"): let the full-white freeze
     // linger a moment, then release it. Also self-releases on scroll / page
     // hide / a 15s cap, so it can never stick on the page.
@@ -1022,13 +1029,21 @@ function runCapture(elements: ElementDescription[], box: Box | null) {
  *    the bridge writes the record itself and pings the background
  *    (INSPECTOR_CAPTURE_PREVIEW_READY) to open the preview tab.
  *
- * Strictly fire-and-forget: resolves (never rejects) once the chain is
- * settled, and toasts `L.previewFailed` on failure or on a 15s timeout (e.g.
- * the bridge failed to load), so the user is never left guessing.
+ * Strictly resolves (never rejects) once the chain is settled — `ok:false`
+ * with an `error` on any failure or the 15s timeout (e.g. the bridge failed
+ * to load). Showing that failure is the caller's job: runCapture toasts it,
+ * the programmatic capture returns it in its message reply.
  */
+interface BridgeHandoffResult {
+  ok: boolean;
+  captureId?: string;
+  error?: string;
+}
+
 async function handoffToBridge(
   payload: InspectorCapturePayload,
-): Promise<void> {
+  opts?: { preview?: boolean },
+): Promise<BridgeHandoffResult> {
   // Mint a one-shot token first: the bridge is embeddable by any web page,
   // so it cannot trust postMessage alone. A token minted over
   // runtime.sendMessage (page scripts can't send those) and verified by the
@@ -1040,43 +1055,173 @@ async function handoffToBridge(
     console.warn("[inspector-capture] bridge token mint failed", err);
   }
   if (!token) {
-    toast(L.previewFailed);
-    return;
+    return { ok: false, error: "bridge token mint failed" };
   }
   const bridgeUrl = browser.runtime.getURL("/inspector-bridge.html");
-  return new Promise<void>((resolve) => {
+  return new Promise<BridgeHandoffResult>((resolve) => {
     const iframe = document.createElement("iframe");
     iframe.setAttribute(UI_MARKER, "1");
     iframe.src = bridgeUrl;
     iframe.style.cssText =
       "position:fixed;top:0;left:0;width:0;height:0;border:0;visibility:hidden;";
     let settled = false;
-    const finish = (ok: boolean) => {
+    const finish = (result: BridgeHandoffResult) => {
       if (settled) return;
       settled = true;
       window.clearTimeout(timer);
       window.removeEventListener("message", onMessage);
       iframe.remove();
-      if (!ok) toast(L.previewFailed);
-      resolve();
+      resolve(result);
     };
-    const timer = window.setTimeout(() => finish(false), 15_000);
+    const timer = window.setTimeout(
+      () => finish({ ok: false, error: "bridge handoff timed out" }),
+      15_000,
+    );
     const onMessage = (e: MessageEvent) => {
       if (e.source !== iframe.contentWindow) return;
-      const msg = e.data as { type?: string; ok?: boolean };
+      const msg = e.data as {
+        type?: string;
+        ok?: boolean;
+        error?: string;
+        captureId?: string;
+      };
       if (msg?.type === "inspector-bridge-ready") {
         // targetOrigin = the bridge's own origin; nothing else can read it.
         iframe.contentWindow?.postMessage(
-          { type: "inspector-bridge-save", payload, token },
+          { type: "inspector-bridge-save", payload, token, preview: opts?.preview !== false },
           bridgeUrl,
         );
       } else if (msg?.type === "inspector-bridge-saved") {
-        finish(msg.ok === true);
+        finish({
+          ok: msg.ok === true,
+          captureId: msg.captureId,
+          error: msg.ok === true ? undefined : (msg.error ?? "bridge save failed"),
+        });
       }
     };
     window.addEventListener("message", onMessage);
     document.documentElement.appendChild(iframe);
   });
+}
+
+// ---------- programmatic (agent) capture ----------
+
+export interface AgentCaptureRequest {
+  selector?: string;
+  point?: { x: number; y: number };
+  box?: { x: number; y: number; w: number; h: number };
+  all?: boolean;
+  maxElements?: number;
+}
+
+/**
+ * Programmatic element capture for the agent RPC (`capture_element`): same
+ * serialization and persistence as a manual capture, but the selection is
+ * data-driven — no overlay, no mouse events, no clipboard copy, no fx, no
+ * toasts. Exactly one of selector / point / box:
+ *
+ *  - `selector`: `document.querySelector` → describeSubtree (the click-pick
+ *    semantic: the element plus its visible subtree). With `all`, every
+ *    visible match becomes one sibling forest (the box-select semantic).
+ *  - `point`: elementAt(x, y) — shadow-DOM aware for free.
+ *  - `box`: collectIntersecting → nestAsForest.
+ *
+ * Persistence reuses handoffToBridge (content scripts only see the PAGE's
+ * IndexedDB) with preview disabled, so the flow stays silent end to end.
+ */
+export async function captureElementsProgrammatic(
+  req: AgentCaptureRequest,
+): Promise<{
+  ok: boolean;
+  captureId?: string;
+  elementCount?: number;
+  page?: { url: string; title: string };
+  capturedAt?: string;
+  error?: string;
+}> {
+  const modes = [req.selector, req.point, req.box].filter(
+    (v) => v !== undefined && v !== null && v !== "",
+  );
+  if (modes.length !== 1) {
+    return {
+      ok: false,
+      error: "exactly one of selector / point / box is required",
+    };
+  }
+  const budget = {
+    left: Math.min(Math.max(req.maxElements ?? 100, 1), MAX_ELEMENTS),
+  };
+
+  let elements: ElementDescription[] = [];
+  let box: Box | null = null;
+  try {
+    if (req.box) {
+      box = {
+        left: req.box.x,
+        top: req.box.y,
+        right: req.box.x + req.box.w,
+        bottom: req.box.y + req.box.h,
+        x: req.box.x,
+        y: req.box.y,
+        width: req.box.w,
+        height: req.box.h,
+      };
+      const hits = collectIntersecting(box);
+      elements = nestAsForest(hits);
+    } else if (req.point) {
+      const el = elementAt(req.point.x, req.point.y);
+      if (!el) return { ok: false, error: "no element at the given point" };
+      const desc = describeSubtree(el, budget);
+      if (!desc) return { ok: false, error: "element could not be described" };
+      elements = [desc];
+    } else {
+      const selector = req.selector as string;
+      if (req.all) {
+        const hits = [...document.querySelectorAll(selector)].filter(
+          (el) =>
+            !el.hasAttribute(UI_MARKER) && isVisible(el),
+        );
+        if (!hits.length) {
+          return { ok: false, error: `no visible match for "${selector}"` };
+        }
+        elements = nestAsForest(hits);
+      } else {
+        const el = document.querySelector(selector);
+        if (!el) return { ok: false, error: `no match for "${selector}"` };
+        const desc = describeSubtree(el, budget);
+        if (!desc) {
+          return { ok: false, error: "element could not be described" };
+        }
+        elements = [desc];
+      }
+    }
+  } catch (err) {
+    // querySelector with a malformed selector throws SyntaxError — surface it
+    // instead of crashing the content-script listener.
+    return { ok: false, error: String(err) };
+  }
+
+  if (!elements.length) return { ok: false, error: "capture produced no elements" };
+
+  const payload: InspectorCapturePayload = {
+    type: "inspector-capture",
+    page: { url: location.href, title: document.title },
+    capturedAt: new Date().toISOString(),
+    selection: box
+      ? { x: box.x, y: box.y, w: box.width, h: box.height }
+      : "click",
+    elementCount: countNodes(elements),
+    elements,
+  };
+  const handoff = await handoffToBridge(payload, { preview: false });
+  if (!handoff.ok) return { ok: false, error: handoff.error };
+  return {
+    ok: true,
+    captureId: handoff.captureId,
+    elementCount: payload.elementCount,
+    page: payload.page,
+    capturedAt: payload.capturedAt,
+  };
 }
 
 async function copyText(text: string): Promise<boolean> {
@@ -1261,6 +1406,18 @@ export function initInspectorCapture(
       if (active) deactivate();
       else activate();
       return { ok: true, active };
+    }
+    // Agent-driven programmatic capture (capture_element RPC). Returning the
+    // promise is enough for the polyfilled runtime.onMessage to resolve the
+    // tabs.sendMessage reply once it settles.
+    if (
+      msg &&
+      typeof msg === "object" &&
+      (msg as { type?: unknown }).type === AGENT_CAPTURE_ELEMENTS
+    ) {
+      return captureElementsProgrammatic(
+        (msg as { data?: AgentCaptureRequest }).data ?? {},
+      );
     }
   });
 }

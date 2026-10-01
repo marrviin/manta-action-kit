@@ -146,10 +146,39 @@ export interface ProtocolMap {
    * can exceed its ~64MB structured-clone cap; the postMessage hop to the
    * bridge has no such limit). The background opens the element preview tab
    * at that id; comparisons are launched from there via the history dropdown.
+   * `preview: false` (agent-driven captures) skips the preview tab — the RPC
+   * result already carries the data.
    */
   INSPECTOR_CAPTURE_PREVIEW_READY: {
-    request: { captureId: string };
+    request: { captureId: string; preview?: boolean };
     response: { ok: boolean };
+  };
+
+  /**
+   * Background (agent RPC `capture_element`) -> content script: programmatic
+   * element capture — no overlay, no mouse events, no clipboard. Exactly one
+   * of selector / point / box (see lib/inspector/capture.ts's
+   * captureElementsProgrammatic). The content script persists via the same
+   * token-mint + bridge-iframe path as a manual capture (content scripts only
+   * see the PAGE's IndexedDB) and returns the resulting history id; `preview:
+   * false` keeps the whole flow silent.
+   */
+  AGENT_CAPTURE_ELEMENTS: {
+    request: {
+      selector?: string;
+      point?: { x: number; y: number };
+      box?: { x: number; y: number; w: number; h: number };
+      all?: boolean;
+      maxElements?: number;
+    };
+    response: {
+      ok: boolean;
+      captureId?: string;
+      elementCount?: number;
+      page?: { url: string; title: string };
+      capturedAt?: string;
+      error?: string;
+    };
   };
 
   /**
@@ -181,9 +210,35 @@ export interface ProtocolMap {
    * Popup -> background: start recording the active tab as a GIF. The popup
    * obtains the tabCapture stream ID here (it needs the user gesture), the
    * background hands it to the offscreen document which owns the recorder.
+   * `tabId`/`url` come from the agent-confirm flow (which already resolved the
+   * target tab before asking); `silent` marks agent-driven recordings (no
+   * preview tab, no success notification).
    */
   START_GIF_RECORDING: {
-    request: { streamId: string };
+    request: { streamId: string; tabId?: number; url?: string; silent?: boolean };
+    response: { ok: boolean };
+  };
+
+  /**
+   * GIF confirm window -> background: the user's Allow/Deny decision on the
+   * agent-requested recording. The Allow click is the user gesture that minted
+   * `streamId` (chrome.tabCapture.getMediaStreamId inside the extension page) —
+   * the background forwards it to startGifRecording. `error` carries the mint
+   * failure when approved but getMediaStreamId threw.
+   */
+  GIF_CONFIRM_DECISION: {
+    request: { id: string; approved: boolean; streamId?: string; error?: string };
+    response: { ok: boolean };
+  };
+
+  /**
+   * GIF confirm window -> background: keepalive while the user decides. Each
+   * inbound message resets the MV3 service worker's idle timer so the pending
+   * confirmation promise survives (same mechanism as GATEWAY_CONFIRM_PING);
+   * `ok:false` tells the window its request is gone (expired).
+   */
+  GIF_CONFIRM_PING: {
+    request: { id: string };
     response: { ok: boolean };
   };
 

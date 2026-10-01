@@ -385,7 +385,15 @@ export type RpcMethod =
   | 'create_action'
   | 'update_action'
   | 'delete_action'
-  | 'execute_action';
+  | 'execute_action'
+  | 'capture_screenshot'
+  | 'capture_element'
+  | 'start_gif_recording'
+  | 'stop_gif_recording'
+  | 'pause_gif_recording'
+  | 'resume_gif_recording'
+  | 'get_gif_recording_status'
+  | 'list_gif_history';
 
 /** Param/result shapes per method — single source of truth for both sides. */
 export interface RpcMap {
@@ -462,6 +470,120 @@ export interface RpcMap {
   diff_element_captures: {
     params: { a: string; b: string };
     result: { report: string; identical: boolean };
+  };
+  /**
+   * Agent-facing: screenshot the ACTIVE tab without any user gesture.
+   * `visible` = viewport via captureVisibleTab; `fullPage` = scroll-and-stitch
+   * with a DevTools-equivalent CDP single-render fallback (can take 30s+).
+   * The full-resolution original is persisted to the extension's screenshot
+   * history (the user re-opens it from there); the agent receives a
+   * downscaled/compressed copy as raw base64 (no `data:` prefix — ready for an
+   * MCP image content block).
+   */
+  capture_screenshot: {
+    params: { mode: 'visible' | 'fullPage' };
+    result: {
+      /** screenshotHistory record id (the full-resolution original lives there). */
+      historyId: string;
+      filename: string;
+      createdAt: number;
+      /** base64 WITHOUT the `data:` prefix — ready for an MCP image content block. */
+      imageBase64: string;
+      mimeType: 'image/png' | 'image/jpeg';
+      /** Serialized size of the original capture (the dataUrl length). */
+      originalBytes: number;
+      /** What the agent actually received (post-compression). */
+      agentBytes: number;
+      downscaled: boolean;
+      /** true when the scroll-and-stitch path produced the shot. */
+      fullPageStitched: boolean;
+    };
+  };
+  /**
+   * Agent-facing: programmatic element capture on the active tab — no overlay,
+   * no mouse events, no clipboard. Exactly one of `selector` / `point` / `box`:
+   *  - `selector` (default): first match + its visible subtree (click-pick
+   *    semantic); `all: true` = every match as a sibling forest (box semantic).
+   *  - `point`: shadow-DOM-aware element at the viewport coordinates.
+   *  - `box`: every element intersecting the viewport rect, nested as a forest.
+   * The response is a LEAN tree (fullStyles/pseudo/textFull stripped to stay
+   * token-bounded); get_element_capture(captureId) fetches the full-fidelity
+   * snapshot.
+   */
+  capture_element: {
+    params: {
+      selector?: string;
+      /** Viewport px. */
+      point?: { x: number; y: number };
+      /** Viewport px. */
+      box?: { x: number; y: number; w: number; h: number };
+      all?: boolean;
+      /** Capture budget; default 100, hard cap 1000 (the manual flow's cap). */
+      maxElements?: number;
+    };
+    result: {
+      captureId: string;
+      page: { url: string; title: string };
+      capturedAt: string;
+      elementCount: number;
+      elements: ElementDescription[];
+    };
+  };
+  /**
+   * Agent-facing: start recording the active tab (or `tabId`) as a video.
+   * BLOCKS up to ~2 minutes: an always-on-top extension window asks the USER
+   * to click Allow — that click is the user gesture Chrome requires to mint
+   * the tabCapture streamId. Declined / timed-out confirmation fails the call.
+   * Chrome shows its capture bar on the recorded tab; max 5 minutes per
+   * recording (auto-stop). The recording runs silently: no preview tab, no
+   * success notification. Poll get_gif_recording_status afterwards.
+   */
+  start_gif_recording: {
+    params: { tabId?: number };
+    result: { ok: true; tabId: number; startedAt: number };
+  };
+  /**
+   * Agent-facing: stop the in-flight recording. `draftId` is present when the
+   * save completed within the handler's short wait; otherwise poll
+   * get_gif_recording_status and read lastResult.draftId.
+   */
+  stop_gif_recording: {
+    params: void;
+    result: { ok: true; draftId?: string; hitTimeLimit?: boolean };
+  };
+  /** Agent-facing: pause the in-flight recording (paused spans are excluded from the timeline). */
+  pause_gif_recording: { params: void; result: { ok: true } };
+  /** Agent-facing: resume a paused recording. */
+  resume_gif_recording: { params: void; result: { ok: true } };
+  /**
+   * Agent-facing: current recording phase + the result of the most recent
+   * recording end (auto-stop / tab closed / manual stop from any surface).
+   */
+  get_gif_recording_status: {
+    params: void;
+    result: {
+      recording: {
+        status: 'recording' | 'paused';
+        startedAt: number;
+        tabId: number;
+      } | null;
+      lastResult?: {
+        ok: boolean;
+        draftId?: string;
+        hitTimeLimit?: boolean;
+        endedAt: number;
+      };
+    };
+  };
+  /**
+   * Agent-facing: metadata of the saved recordings (newest first, 10-cap).
+   * These are PRE-transcode WebM drafts — the WebM→GIF conversion runs in the
+   * extension's preview page and cannot be triggered remotely; surface the
+   * filename/id to the user for conversion/download.
+   */
+  list_gif_history: {
+    params: void;
+    result: { drafts: { id: string; filename: string; createdAt: number }[] };
   };
   /**
    * Forward one API call through the extension with the user's cookies injected.
@@ -733,12 +855,12 @@ export type ToolName = RpcMethod | 'health' | 'rebind_proxy';
 export interface ToolInfo {
   method: ToolName;
   /**
-   * Display grouping. `read`/`gateway`/`action` are business tools
+   * Display grouping. `read`/`gateway`/`action`/`capture` are business tools
    * (extension-side, togglable). `ops` are MCP-process-side ops/self-heal
    * tools: shown with a switch for consistency, but the switch is disabled
    * (always on) because the kill switch does not reach them.
    */
-  group: 'read' | 'gateway' | 'action' | 'ops';
+  group: 'read' | 'gateway' | 'action' | 'capture' | 'ops';
   sensitive: boolean;
 }
 
@@ -773,6 +895,14 @@ export const TOOL_REGISTRY: ToolInfo[] = [
   { method: 'update_action', group: 'action', sensitive: true },
   { method: 'delete_action', group: 'action', sensitive: true },
   { method: 'execute_action', group: 'action', sensitive: true },
+  { method: 'capture_screenshot', group: 'capture', sensitive: true },
+  { method: 'capture_element', group: 'capture', sensitive: true },
+  { method: 'start_gif_recording', group: 'capture', sensitive: true },
+  { method: 'stop_gif_recording', group: 'capture', sensitive: false },
+  { method: 'pause_gif_recording', group: 'capture', sensitive: false },
+  { method: 'resume_gif_recording', group: 'capture', sensitive: false },
+  { method: 'get_gif_recording_status', group: 'capture', sensitive: false },
+  { method: 'list_gif_history', group: 'capture', sensitive: false },
   { method: 'health', group: 'ops', sensitive: false },
   { method: 'rebind_proxy', group: 'ops', sensitive: false },
 ];

@@ -10,14 +10,19 @@ import {
   listActions,
   listActionsByRecording,
   listGatewayProxyRules,
+  listGifHistory,
   listInspectorCaptures,
   listRecordings,
+  saveScreenshotHistory,
   upsertAction,
   deleteAction,
   getAction,
   updateRecordingDescription,
 } from "@/lib/db";
 import { diffPayloads, formatDiffReport } from "@/lib/inspector/diff";
+import { leanInspectorPayload } from "@/lib/inspector/lean";
+import { AGENT_CAPTURE_ELEMENTS } from "@/lib/inspector/capture";
+import type { AgentCaptureRequest } from "@/lib/inspector/capture";
 import { runGatewayFetch, runGatewaySse } from "@/lib/gateway/run";
 import { resolveProxyRule } from "@/lib/gateway/proxy-rule";
 import {
@@ -34,6 +39,16 @@ import {
 import type { GatewayRequest } from "@/lib/gateway/types";
 import { runAction } from "@/lib/action/replay";
 import {
+  pauseGifRecording,
+  resumeGifRecording,
+  startGifRecording,
+  stopGifRecording,
+} from "@/lib/gif-recording/session";
+import { requestGifConfirmation } from "@/lib/gif-confirm";
+import { GifRecordingError } from "@/lib/gif-recording/types";
+import { gifLastResult, gifRecordingState } from "@/lib/storage";
+import { isCapturableUrl } from "@/lib/utils";
+import {
   ACTION_MAX_STEPS,
   ACTION_MAX_WAIT_MS,
   type Action,
@@ -42,6 +57,36 @@ import {
   type ActionSummary,
 } from "@/lib/action/types";
 import { isToolEnabled, type RpcMap, type RpcMethod } from "./protocol";
+import { captureTabScreenshot, shotFilename } from "@/lib/screenshot/capture-flow";
+import { ScreenshotError } from "@/lib/screenshot/types";
+import { prepareAgentImage } from "@/lib/screenshot/agent-image";
+import type { ScreenshotMode } from "@/lib/screenshot/types";
+
+/**
+ * Send the programmatic capture request to a tab's content script. The
+ * content script persists via its bridge-iframe path and replies with the
+ * history id; a thrown error here means there is no listener (chrome:// and
+ * other non-injectable pages).
+ */
+function sendAgentCapture(
+  tabId: number,
+  req: AgentCaptureRequest,
+): Promise<{
+  ok: boolean;
+  captureId?: string;
+  elementCount?: number;
+  error?: string;
+}> {
+  return chrome.tabs.sendMessage(tabId, {
+    type: AGENT_CAPTURE_ELEMENTS,
+    data: req,
+  }) as Promise<{
+    ok: boolean;
+    captureId?: string;
+    elementCount?: number;
+    error?: string;
+  }>;
+}
 
 /**
  * Project an Action into its lightweight summary for list/search results
@@ -158,6 +203,165 @@ export async function handleRpc<M extends RpcMethod>(
       const diff = diffPayloads(pa, pb);
       // Text report (not JSON): agent-friendly, mirrors the diff view's cards.
       return { report: formatDiffReport(pa, pb, diff), identical: diff.identical } as RpcMap[M]["result"];
+    }
+
+    case "capture_screenshot": {
+      const { mode } = params as RpcMap["capture_screenshot"]["params"];
+      if (mode !== "visible" && mode !== "fullPage") {
+        throw new Error(
+          'capture_screenshot: "mode" must be "visible" or "fullPage"',
+        );
+      }
+      // Same tab resolution as the manual CAPTURE_SCREENSHOT handler: the
+      // agent screenshots what the user is looking at (the active tab).
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab?.id) throw new ScreenshotError("unsupported-page", "no active tab");
+      // Silent by construction: the manual flow's fx / preview tab /
+      // notifications all live in the message handler, not the capture libs.
+      const shot = await captureTabScreenshot(tab, mode as ScreenshotMode);
+      // The full-resolution original goes to history (the user previews it
+      // from the capture tab); the agent receives a compressed copy below.
+      // The session-storage preview gate (SCREENSHOT_PREVIEW_MAX_BYTES) does
+      // NOT apply here — it guards a storage quota, not the IDB history or
+      // the compressed agent copy.
+      let historyId: string;
+      const filename = shotFilename(tab.url ?? "");
+      try {
+        historyId = await saveScreenshotHistory(shot.dataUrl, filename);
+      } catch (err) {
+        throw new ScreenshotError("capture-failed", `history save failed: ${String(err)}`);
+      }
+      const img = await prepareAgentImage(shot.dataUrl);
+      return {
+        historyId,
+        filename,
+        createdAt: Date.now(),
+        originalBytes: shot.dataUrl.length,
+        ...img,
+        fullPageStitched: shot.stitched,
+      } as RpcMap[M]["result"];
+    }
+
+    case "capture_element": {
+      const req = params as RpcMap["capture_element"]["params"];
+      const provided = [req?.selector, req?.point, req?.box].filter(
+        (v) => v !== undefined && v !== null && v !== "",
+      );
+      if (provided.length !== 1) {
+        throw new Error(
+          'capture_element: provide exactly one of "selector", "point", or "box"',
+        );
+      }
+      // Same tab resolution as capture_screenshot: the active tab.
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab?.id) throw new Error("capture_element: no active tab");
+      let reply: Awaited<ReturnType<typeof sendAgentCapture>> | undefined;
+      try {
+        reply = await sendAgentCapture(tab.id, req);
+      } catch {
+        throw new Error(
+          `capture_element: no content script on this tab (unsupported page?) — ${tab.url ?? ""}`,
+        );
+      }
+      if (!reply?.ok || !reply.captureId) {
+        throw new Error(`capture_element failed: ${reply?.error ?? "unknown error"}`);
+      }
+      // Read the stored record back and strip the preview-only bulk
+      // (fullStyles/pseudo/textFull — 20-100MB on big pages) so the response
+      // stays token-bounded; get_element_capture(captureId) returns the full
+      // fidelity snapshot on demand.
+      const stored = await getInspectorCapture(reply.captureId);
+      if (!stored) {
+        throw new Error(
+          "capture_element: capture was persisted but could not be read back",
+        );
+      }
+      const lean = leanInspectorPayload(stored);
+      return {
+        captureId: reply.captureId,
+        page: lean.page,
+        capturedAt: lean.capturedAt,
+        elementCount: lean.elementCount,
+        elements: lean.elements,
+      } as RpcMap[M]["result"];
+    }
+
+    case "start_gif_recording": {
+      const { tabId } = params as RpcMap["start_gif_recording"]["params"];
+      const tab =
+        tabId != null
+          ? await chrome.tabs.get(tabId).catch(() => undefined)
+          : (await chrome.tabs.query({ active: true, currentWindow: true }))[0];
+      if (!tab?.id) throw new GifRecordingError("unsupported-page", "no such tab");
+      if (!isCapturableUrl(tab.url)) {
+        throw new GifRecordingError("unsupported-page", tab.url ?? "");
+      }
+      // The confirm window's Allow click IS the user gesture Chrome requires
+      // to mint the tabCapture streamId (see lib/gif-confirm.ts). Blocks up
+      // to the 120s fail-closed timeout; declined/timed-out → start failed.
+      const decision = await requestGifConfirmation({
+        tabId: tab.id,
+        title: tab.title ?? "",
+        url: tab.url ?? "",
+      });
+      if (!decision.approved || !decision.streamId) {
+        throw new GifRecordingError(
+          "start-failed",
+          decision.error ?? "user declined or confirmation timed out",
+        );
+      }
+      await startGifRecording(decision.streamId, {
+        tabId: tab.id,
+        url: tab.url,
+        silent: true,
+      });
+      return { ok: true, tabId: tab.id, startedAt: Date.now() } as RpcMap[M]["result"];
+    }
+
+    case "stop_gif_recording": {
+      const startedAt = Date.now();
+      await stopGifRecording();
+      // The offscreen DONE report (which carries draftId) lands right after
+      // the stop ack; wait briefly so the agent gets the draftId in this
+      // reply instead of having to poll. handleGifOffscreenDone writes
+      // gifLastResult (storage, not module scope — the SW sleeps during a
+      // recording) before clearing the state.
+      for (let i = 0; i < 75; i++) {
+        const last = await gifLastResult.getValue();
+        if (last && last.endedAt >= startedAt) {
+          return {
+            ok: true,
+            ...(last.draftId ? { draftId: last.draftId } : {}),
+            ...(last.hitTimeLimit ? { hitTimeLimit: true } : {}),
+          } as RpcMap[M]["result"];
+        }
+        await new Promise((r) => setTimeout(r, 200));
+      }
+      // Still not settled (rare) — the agent re-polls
+      // get_gif_recording_status and reads lastResult.draftId.
+      return { ok: true } as RpcMap[M]["result"];
+    }
+
+    case "pause_gif_recording": {
+      await pauseGifRecording();
+      return { ok: true } as RpcMap[M]["result"];
+    }
+
+    case "resume_gif_recording": {
+      await resumeGifRecording();
+      return { ok: true } as RpcMap[M]["result"];
+    }
+
+    case "get_gif_recording_status": {
+      const recording = await gifRecordingState.getValue();
+      const lastResult = (await gifLastResult.getValue()) ?? undefined;
+      return { recording, lastResult } as RpcMap[M]["result"];
+    }
+
+    case "list_gif_history": {
+      // Metadata projection only — the WebM blob stays in IndexedDB.
+      const drafts = await listGifHistory();
+      return { drafts } as RpcMap[M]["result"];
     }
 
     case "get_call": {

@@ -19,8 +19,13 @@ import type { InspectorCapturePayload } from "@/lib/inspector/types";
 const READY = "inspector-bridge-ready";
 const SAVED = "inspector-bridge-saved";
 
-function reply(ok: boolean, error?: string) {
-  parent.postMessage({ type: SAVED, ok, error }, document.referrer || "*");
+function reply(ok: boolean, error?: string, captureId?: string) {
+  // `captureId` rides along for the agent-driven flow (which needs the
+  // history id in its RPC reply); the manual flow ignores the extra field.
+  parent.postMessage(
+    { type: SAVED, ok, error, captureId },
+    document.referrer || "*",
+  );
 }
 
 window.addEventListener("message", async (e: MessageEvent) => {
@@ -29,6 +34,7 @@ window.addEventListener("message", async (e: MessageEvent) => {
     type?: string;
     payload?: InspectorCapturePayload;
     token?: string;
+    preview?: boolean;
   };
   if (msg?.type !== "inspector-bridge-save" || !msg.payload || !msg.token)
     return;
@@ -52,10 +58,14 @@ window.addEventListener("message", async (e: MessageEvent) => {
     //    preview/diff tabs can address the record via URL params.
     const captureId = await saveInspectorHistoryCapture(payload);
     // 2. Tell the background the data is on disk (with its id); it opens the
-    //    element preview at it. Its `ok` covers the whole chain, so the
-    //    content script toasts once on it.
-    await sendMessage("INSPECTOR_CAPTURE_PREVIEW_READY", { captureId });
-    reply(true);
+    //    element preview at it — unless the caller opted out (agent captures
+    //    are silent: the RPC result already carries the data). Its `ok` covers
+    //    the whole chain, so the content script toasts once on it.
+    await sendMessage("INSPECTOR_CAPTURE_PREVIEW_READY", {
+      captureId,
+      preview: msg.preview !== false,
+    });
+    reply(true, undefined, captureId);
   } catch (err) {
     console.error("[inspector-bridge] handoff failed", err);
     reply(false, String(err));

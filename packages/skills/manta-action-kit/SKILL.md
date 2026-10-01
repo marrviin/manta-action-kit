@@ -1,6 +1,6 @@
 ---
 name: manta-action-kit
-description: Usage guide for the manta-action-kit suite (Chrome extension + MCP server): environment checks and initialization, extension/MCP/connection troubleshooting, recording APIs, and action management — creating actions from recordings, searching and executing actions, cookie-injecting proxy forwarding. Use when the user says "manta", "check recordings", "view call chains", "create an action / turn a recording into an action", "execute an action / run that action", "search actions / what actions are available", "call the API with my login state", "proxy_fetch", "show element captures / compare element captures", "check environment", "initialize environment", "can't connect", etc.
+description: Usage guide for the manta-action-kit suite (Chrome extension + MCP server): environment checks and initialization, extension/MCP/connection troubleshooting, recording APIs, and action management — creating actions from recordings, searching and executing actions, cookie-injecting proxy forwarding, and agent-driven page capture (screenshots, element serialization, GIF tab recording). Use when the user says "manta", "check recordings", "view call chains", "create an action / turn a recording into an action", "execute an action / run that action", "search actions / what actions are available", "call the API with my login state", "proxy_fetch", "show element captures / compare element captures", "screenshot this page / capture this element", "record my screen / record a GIF", "check environment", "initialize environment", "can't connect", etc.
 ---
 
 # manta-action-kit Suite Usage Guide
@@ -14,16 +14,28 @@ The suite consists of two parts; see the repo root `CLAUDE.md` for how they coll
 - **MCP server** (`packages/mcp`, stdio): provides the tools in this file. Tool names carry the
   prefix `mcp__manta-action-kit__`. **"manta" is the user-facing short alias** for it.
 
+> **Path note.** `packages/...` paths below are relative to the manta-action-kit repo root — they
+> apply when working inside that repo. If this skill was installed into another project, locate the
+> repo checkout first; if there is none, the MCP server should run from the published package
+> (`npx @manta-action-kit/mcp`) and the build steps don't apply. `check-env.mjs` itself resolves its
+> own paths — invoke it by absolute path from any cwd.
+
 ## 1. Environment Check (run in order when the user says "check environment / initialize / can't connect / troubleshoot")
 
-**Run the bundled script first (one command covers all checks, printing ✅/❌ per item with fix suggestions):**
+**Run the bundled script first (one command covers all checks, printing ✅/❌ per item with fix
+suggestions; requires Node ≥ 22 — older Node skips the connection checks):**
 
 ```bash
-MANTA_TOKEN=<from the MCP config env> node packages/skills/manta-action-kit/scripts/check-env.mjs
+MANTA_TOKEN=<from the MCP config env> node <path-to>/packages/skills/manta-action-kit/scripts/check-env.mjs
 ```
 
-The script needs `MANTA_TOKEN` (the handshake secret in the MCP config env — read it from the
-config you installed) and performs a full authenticated probe.
+The script needs `MANTA_TOKEN` (the handshake secret in the MCP config env — see below) and
+performs a full authenticated probe.
+
+**How to get `MANTA_TOKEN`:** run `claude mcp get manta-action-kit` (its output shows the server's
+`env` block), or read your MCP client's config file. If you can't retrieve it, ask the user to
+re-copy the install prompt from the extension (Action tab → *Copy install prompt*) — the token is
+embedded there.
 
 The script covers steps 1–3 below (including an end-to-end probe as a peer, distinguishing "bridge
 up but extension not connected" from "full chain works"). Exit code 0 = all pass. **For any ❌ item,
@@ -39,7 +51,8 @@ claude mcp list 2>/dev/null | grep manta-action-kit
 ```
 
 - ✅ Pass: output contains `✔ Connected`.
-- ❌ That line missing → register it (from the repo root):
+- ❌ That line missing → register it (from the repo root; outside the repo, replace the `node ...`
+  path with `npx -y @manta-action-kit/mcp`):
 
   ```bash
   pnpm build:mcp   # make sure dist exists first, see step 2
@@ -159,6 +172,31 @@ Consuming a capture to recreate UI: build semantic HTML and clean CSS rules from
 the moment; treat it as ground truth for *what it should look like*, not as the stylesheet to ship.
 Pay attention to custom properties and pseudo-element rules, which are emitted in a `<style>` block.
 
+### Page capture (agent-driven: screenshots / live element serialization / GIF recording)
+
+These tools act on the **active tab** of the user's Chrome window and run silently (no preview tab,
+no success notifications — outcomes come back in the tool result). `chrome://` pages and similar
+cannot be captured or injected.
+
+| User says                                                       | Tool                     | Notes                                                                        |
+| --------------------------------------------------------------- | ------------------------ | ---------------------------------------------------------------------------- |
+| "screenshot this page / full-page screenshot"                   | `capture_screenshot`     | `visible` or `fullPage` (scroll-and-stitch); returns a downscaled image + `historyId` |
+| "grab this element from the page / serialize the nav bar"       | `capture_element`        | selector / `point` / `box` (exactly one); returns a lean tree — full detail via `get_element_capture(captureId)` |
+| "record my screen as a GIF / record this tab"                   | `start_gif_recording`    | ⚠️ Blocks up to ~2 min on a confirmation popup the USER must Allow (that click is Chrome's required gesture for tab capture); 5-min auto-stop |
+| "stop the recording"                                            | `stop_gif_recording`     | Returns the WebM `draftId` (if briefly absent, read `lastResult.draftId` from the status tool) |
+| "pause / resume the recording"                                  | `pause_gif_recording` / `resume_gif_recording` | —                                                            |
+| "is it recording?"                                              | `get_gif_recording_status` | Current state + how the last recording ended (`lastResult`)                |
+| "list my recordings"                                            | `list_gif_history`       | WebM drafts (metadata only)                                                  |
+
+Notes:
+
+- `capture_screenshot` fails with `screenshot:debugger-conflict` if DevTools is attached to the tab —
+  tell the user to close DevTools. On a recording tab, the CDP fallback may leave Chrome's
+  "being debugged" infobar inside the shot.
+- GIF drafts are **pre-transcode WebM**: WebM→GIF/MP4 conversion runs inside the extension's preview
+  tab and cannot be triggered remotely — after `stop_gif_recording`, tell the user to open the draft
+  from the side panel's capture tab to transcode/download it.
+
 ### Direct forwarding (ad-hoc / one-off calls)
 
 | User says                                                   | Tool          | Notes                                                                  |
@@ -210,6 +248,7 @@ About `create_action` / `execute_action`:
 
 - Architecture, design trade-offs, and the message protocol: see root `CLAUDE.md` (features 1/2/3).
 - MCP source: `packages/mcp/src/` (`index.ts` tool definitions, `bridge.ts` WS bridge and error
-  messages, `protocol.ts` frame protocol and port constants 8787/8788).
+  messages). Frame protocol and port constants 8787/8788 live in `packages/protocol/src/`
+  (`@manta-action-kit/protocol`); `packages/mcp/src/protocol.ts` is just a re-export.
 - Extension source: `packages/extension/` (`lib/gateway/` gateway, `lib/action/` action types and
   replay engine, `lib/mcp/handlers.ts` per-tool toggles, `components/action/` action tab UI).

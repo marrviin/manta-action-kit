@@ -16,8 +16,8 @@
  * stop request from the popup wakes the SW again.
  */
 import { sendMessage } from '@/lib/messaging';
-import { gifRecordingState } from '@/lib/storage';
-import { GifRecordingError } from './types';
+import { gifLastResult, gifRecordingState } from '@/lib/storage';
+import { GifRecordingError, type GifLastResult } from './types';
 
 /**
  * Periodic reconcile alarm, active only while a recording is in progress. If
@@ -81,12 +81,22 @@ async function ensureOffscreenDocument(): Promise<void> {
 }
 
 /** Validate + forward the streamId to offscreen, then record the state. */
-export async function startGifRecording(streamId: string): Promise<{ ok: boolean }> {
+export async function startGifRecording(
+  streamId: string,
+  opts?: { tabId?: number; url?: string; silent?: boolean },
+): Promise<{ ok: boolean }> {
   const current = await gifRecordingState.getValue();
   if (current) {
     throw new GifRecordingError('start-failed', 'a recording is already in progress');
   }
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  // The agent-confirm flow already resolved its target tab before asking; the
+  // popup path (no opts) keeps deriving the tab from the active window.
+  let tab: chrome.tabs.Tab | undefined;
+  if (opts?.tabId != null) {
+    tab = { id: opts.tabId, url: opts.url ?? '' } as chrome.tabs.Tab;
+  } else {
+    [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  }
   // Reserve the state BEFORE creating the document. Writing it only after the
   // offscreen ack left a long unguarded window (createDocument + getUserMedia):
   // a double-click's second call read `current === null` too and its
@@ -97,6 +107,7 @@ export async function startGifRecording(streamId: string): Promise<{ ok: boolean
     status: 'recording',
     startedAt: Date.now(),
     tabId: tab?.id ?? -1,
+    ...(opts?.silent ? { silent: true } : {}),
   });
   try {
     await ensureOffscreenDocument();
@@ -164,9 +175,23 @@ export async function handleGifOffscreenDone(result: {
   draftId?: string;
   hitTimeLimit?: boolean;
 }): Promise<void> {
+  const finished = await gifRecordingState.getValue();
+  const silent = finished?.silent === true;
+  // Record the outcome BEFORE clearing the state: get_gif_recording_status
+  // reads this after the fact (the 5-min auto-stop's DONE report lands while
+  // the SW may be asleep — storage keeps it discoverable).
+  const lastResult: GifLastResult = { ...result, endedAt: Date.now() };
+  await gifLastResult.setValue(lastResult);
   await gifRecordingState.setValue(null);
   void chrome.alarms.clear(STATE_WATCH_ALARM); // recording over either way
   if (result.ok && result.savedForPreview) {
+    if (silent) {
+      // Agent-driven recording: no preview tab, no success/time-limit
+      // notification — the rpc caller and get_gif_recording_status already
+      // carry the outcome. Teardown only.
+      await chrome.offscreen.closeDocument().catch(() => {});
+      return;
+    }
     // Same handoff pattern as screenshots: open the preview tab, THEN tear the
     // offscreen document down (the draft already sits in IndexedDB, addressed
     // by id so any history record can be re-opened later).
@@ -198,5 +223,8 @@ export async function handleGifOffscreenDone(result: {
   }
   // The document has nothing left to do either way — teardown is best-effort.
   await chrome.offscreen.closeDocument().catch(() => {});
+  // Failure notifications survive the silent mode: an auto-finalized failure
+  // (track ended, handler crash) has no rpc caller left waiting — the
+  // notification is the only surfacing.
   await notifyGifFailed();
 }

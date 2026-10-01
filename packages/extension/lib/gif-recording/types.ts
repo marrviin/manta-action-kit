@@ -21,6 +21,22 @@ export interface GifRecordingState {
   status: GifRecordingStatus;
   startedAt: number;
   tabId: number;
+  /**
+   * Agent-driven recording (capture RPC): the completion path stays silent —
+   * no preview tab, no success/time-limit notification (the rpc result and
+   * get_gif_recording_status carry the outcome instead). Failure notifications
+   * are kept: an auto-finalized failure has no rpc caller left to tell.
+   */
+  silent?: boolean;
+}
+
+/** Outcome of the most recent recording end, for get_gif_recording_status. */
+export interface GifLastResult {
+  ok: boolean;
+  draftId?: string;
+  savedForPreview?: boolean;
+  hitTimeLimit?: boolean;
+  endedAt: number;
 }
 
 /**
