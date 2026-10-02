@@ -27,7 +27,7 @@
  * No third-party dependency — the native IndexedDB API is enough for our access
  * patterns (bulk insert on save, read-by-recording on detail, delete cascade).
  */
-import type { ApiCall, Recording } from "./recording/types";
+import type { ApiCall, CallRelevance, Recording } from "./recording/types";
 import type { GatewayLog, GatewayProxyRule } from "./gateway/types";
 import type { Action } from "./action/types";
 import type { GifDraft, GifDraftMeta } from "./gif-recording/types";
@@ -327,6 +327,73 @@ export async function deleteRecording(id: string): Promise<void> {
     for (const cid of callIds) callStore.delete(cid);
     const actionStore = t.objectStore(STORE_ACTIONS);
     for (const aid of actionIds) actionStore.delete(aid);
+  });
+}
+
+/**
+ * Stamp one recording's relevance-analysis lifecycle status (analyzing /
+ * done / failed). Persisted so a reopened detail view shows the truth, not
+ * just what it happened to catch via broadcast.
+ */
+export async function setRecordingRelevanceStatus(
+  recordingId: string,
+  status: NonNullable<Recording["relevanceStatus"]>,
+): Promise<void> {
+  const db = await openDb();
+  await new Promise<void>((resolve, reject) => {
+    const t = tx(db, [STORE_RECORDINGS], "readwrite");
+    t.oncomplete = () => resolve();
+    t.onerror = () => reject(t.error);
+    t.onabort = () => reject(t.error);
+    const rec = t.objectStore(STORE_RECORDINGS).get(recordingId);
+    rec.onsuccess = () => {
+      const recording = rec.result as Recording | undefined;
+      if (recording) {
+        recording.relevanceStatus = status;
+        recording.relevanceStatusAt = Date.now();
+        t.objectStore(STORE_RECORDINGS).put(recording);
+      }
+    };
+  });
+}
+
+/**
+ * Persist the laya relevance marks for many calls of one recording in a single
+ * transaction, and stamp the recording's relevanceAnalyzedAt. Calls not listed
+ * in `entries` are left untouched (defensive: a concurrent delete must not be
+ * resurrected by re-putting stale objects).
+ */
+export async function updateCallRelevances(
+  recordingId: string,
+  entries: Array<{ callId: string; relevance: CallRelevance }>,
+): Promise<void> {
+  const db = await openDb();
+  await new Promise<void>((resolve, reject) => {
+    const t = tx(db, [STORE_RECORDINGS, STORE_CALLS], "readwrite");
+    t.oncomplete = () => resolve();
+    t.onerror = () => reject(t.error);
+    t.onabort = () => reject(t.error);
+    const callStore = t.objectStore(STORE_CALLS);
+    for (const { callId, relevance } of entries) {
+      const req = callStore.get(callId);
+      req.onsuccess = () => {
+        const call = req.result as ApiCall | undefined;
+        if (call && call.recordingId === recordingId) {
+          call.relevance = relevance;
+          callStore.put(call);
+        }
+      };
+    }
+    const rec = t.objectStore(STORE_RECORDINGS).get(recordingId);
+    rec.onsuccess = () => {
+      const recording = rec.result as Recording | undefined;
+      if (recording) {
+        recording.relevanceAnalyzedAt = Date.now();
+        recording.relevanceStatus = "done";
+        recording.relevanceStatusAt = Date.now();
+        t.objectStore(STORE_RECORDINGS).put(recording);
+      }
+    };
   });
 }
 

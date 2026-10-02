@@ -16,6 +16,7 @@
  * stop request from the popup wakes the SW again.
  */
 import { sendMessage } from '@/lib/messaging';
+import { closeLayaOffscreenDocument } from '@/lib/ai/laya-session';
 import { gifLastResult, gifRecordingState } from '@/lib/storage';
 import { GifRecordingError, type GifLastResult } from './types';
 
@@ -189,7 +190,7 @@ export async function handleGifOffscreenDone(result: {
       // Agent-driven recording: no preview tab, no success/time-limit
       // notification — the rpc caller and get_gif_recording_status already
       // carry the outcome. Teardown only.
-      await chrome.offscreen.closeDocument().catch(() => {});
+      await closeLayaOffscreenDocument();
       return;
     }
     // Same handoff pattern as screenshots: open the preview tab, THEN tear the
@@ -218,11 +219,11 @@ export async function handleGifOffscreenDone(result: {
         })
         .catch((err) => console.error('[gif-recording] notification failed', err));
     }
-    await chrome.offscreen.closeDocument().catch(() => {});
+    await closeLayaOffscreenDocument();
     return;
   }
   // The document has nothing left to do either way — teardown is best-effort.
-  await chrome.offscreen.closeDocument().catch(() => {});
+  await closeLayaOffscreenDocument();
   // Failure notifications survive the silent mode: an auto-finalized failure
   // (track ended, handler crash) has no rpc caller left waiting — the
   // notification is the only surfacing.

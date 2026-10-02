@@ -13,6 +13,21 @@ export type HeaderMap = Record<string, string>;
 export type CallSource = 'fetch' | 'xhr' | 'eventsource';
 
 /**
+ * laya 判定的一个调用与录制链路的相关性。停止录制后自动分析（lib/ai/relevance-run.ts），
+ * 结果直接落在 ApiCall 上；旧记录无此字段视为未分析。
+ */
+export interface CallRelevance {
+  /** 相关 / 疑似无关 / 不确定（模型置信度不足）。deps 锚点调用恒为 relevant。 */
+  verdict: 'relevant' | 'irrelevant' | 'uncertain';
+  /** 模型 answer_confidence (0..1)；deps 锚点强制 relevant 时为 1。 */
+  confidence: number;
+  /** role choice 的结果（如 "telemetry"），给出"为什么无关"的可读理由。 */
+  role?: string;
+  /** epoch ms，本轮分析时间。 */
+  analyzedAt: number;
+}
+
+/**
  * One captured API call — request input + response output + timing.
  * This is the payload emitted by the injected hook and stored in IndexedDB.
  */
@@ -48,6 +63,8 @@ export interface ApiCall {
   errored: boolean;
   /** Error message when errored. */
   errorText?: string;
+  /** laya 自动相关性分析结果；无此字段 = 未分析。 */
+  relevance?: CallRelevance;
 }
 
 /**
@@ -204,6 +221,16 @@ export interface Recording {
   description?: string;
   /** epoch ms when `description` was last written by an agent (for staleness hints). */
   descriptionUpdatedAt?: number;
+  /** epoch ms when the laya relevance analysis last ran (absent = never analyzed). */
+  relevanceAnalyzedAt?: number;
+  /**
+   * Lifecycle of the laya relevance analysis, so the detail view can show a
+   * live status (incl. on reopen — persisted, not just broadcast). Absent =
+   * never ran. `relevanceStatusAt` is the epoch ms of the last transition; a
+   * stale `analyzing` (SW died mid-run) is detected by its age.
+   */
+  relevanceStatus?: 'analyzing' | 'done' | 'failed';
+  relevanceStatusAt?: number;
 }
 
 /**

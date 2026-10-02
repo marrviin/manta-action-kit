@@ -175,6 +175,26 @@ describe('handleGifOffscreenDone', () => {
     expect(createdNotifications).toHaveLength(0);
   });
 
+  it('teardown closes the shared offscreen document when the laya runtime is idle', async () => {
+    stateData.current = { status: 'recording', startedAt: 1, tabId: 7, silent: true };
+    offscreenOpen = true;
+    sendMessageMock.mockImplementation(async (type: string) =>
+      type === 'LAYA_GET_STATUS' ? { ready: false, loading: false } : { ok: true },
+    );
+    await handleGifOffscreenDone({ ok: true, draftId: 'd5', savedForPreview: true });
+    expect(offscreenOpen).toBe(false);
+  });
+
+  it('teardown keeps the shared offscreen document while the laya model is loaded', async () => {
+    stateData.current = { status: 'recording', startedAt: 1, tabId: 7, silent: true };
+    offscreenOpen = true;
+    sendMessageMock.mockImplementation(async (type: string) =>
+      type === 'LAYA_GET_STATUS' ? { ready: true, loading: false } : { ok: true },
+    );
+    await handleGifOffscreenDone({ ok: true, draftId: 'd6', savedForPreview: true });
+    expect(offscreenOpen).toBe(true);
+  });
+
   it('non-silent success opens the preview tab addressed by draftId', async () => {
     stateData.current = { status: 'recording', startedAt: 1, tabId: 7 };
     await handleGifOffscreenDone({ ok: true, draftId: 'd4', savedForPreview: true });

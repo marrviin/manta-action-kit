@@ -76,5 +76,13 @@
     "placeholders": {
       "host": { "content": "$1" }
     }
+  },
+  "notifyRelevanceFailedTitle": {
+    "message": "相关性分析失败",
+    "description": "System notification title when the laya relevance analysis for a recording could not run."
+  },
+  "notifyRelevanceFailedMessage": {
+    "message": "本地模型无法分析这条录制——请稍后在模型设置中重试",
+    "description": "System notification body for a failed relevance analysis."
   }
 }

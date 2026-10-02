@@ -1,30 +1,19 @@
 /**
- * Laya decision-model card for the settings page (demo scope for now).
+ * Laya decision-model card for the settings page.
  *
- * Two parts:
- *  1. Model card — loads the bundled ~800 MB laya checkpoint into the offscreen
- *     runtime (fp16 encoder on WebGPU, int8 head on WASM). "Download" here means loading the
- *     model files that ship with the extension package into the runtime; no
- *     network is involved. Unload drops the session to free the memory.
- *  2. Try-it — a free-text state fed through the official triage questions
- *     (intent / urgency / frustration / refund / churn), answers rendered with
- *     their calibrated probabilities. Everything runs on-device.
+ * Loads the bundled ~800 MB checkpoint into the offscreen runtime (fp16
+ * encoder on WebGPU, int8 head on WASM). "Load" here means loading the model
+ * files that ship with the extension package into the runtime; no network is
+ * involved. Real consumers of the model (e.g. the recording-relevance marks)
+ * trigger loads lazily on their first predict — this card is the manual
+ * control + status display.
  */
 import { useEffect, useRef, useState } from 'react';
-import { Button, Input, Tag, Typography } from 'antd';
+import { Button, Tag, Typography } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { sendMessage } from '@/lib/messaging';
-import { triageQuestions } from '@/lib/ai/presets';
-import type {
-  ChoiceAnswer,
-  NoulAnswer,
-  ScoreAnswer,
-} from '@/lib/ai/agent';
 
 const { Text } = Typography;
-
-/** One answer row as returned by the offscreen runtime (JSON over messaging). */
-export type LayaAnswer = ChoiceAnswer | ScoreAnswer | NoulAnswer;
 
 /** Warmup call that forces the lazy model load (the result is discarded). */
 const WARMUP = {
@@ -32,22 +21,27 @@ const WARMUP = {
   questions: { ping: { type: 'noul', instructions: 'Is this a warmup call?' } },
 } as const;
 
-export function LayaCard() {
-  const { t } = useTranslation();
-  // Model status: idle → loading (first load takes a few seconds: ~800 MB
-  // from the package into a WebGPU session) → ready.
-  const [status, setStatus] = useState<'idle' | 'loading' | 'ready'>('idle');
-  const [text, setText] = useState('');
-  const [running, setRunning] = useState(false);
-  const [answers, setAnswers] = useState<Record<string, LayaAnswer> | null>(null);
-  const [elapsedMs, setElapsedMs] = useState<number | null>(null);
+type LayaStatus = 'idle' | 'loading' | 'ready';
+
+/** True while a load initiated by any hook instance is in flight. */
+let loadStarted = false;
+
+/**
+ * Model status + load. The card's own state dies with the panel, but the
+ * offscreen agent does not (WORKERS-reason offscreen documents have no Chrome
+ * lifetime limit) — the mount effect restores the real state: `ready`
+ * directly; a load already in flight → poll; gone → load automatically, so
+ * opening the panel never requires a click.
+ */
+function useLayaModel() {
+  const [status, setStatus] = useState<LayaStatus>('idle');
   const [error, setError] = useState<string | null>(null);
 
   // Load = ensure the offscreen document exists, then run a trivial predict
   // (the runtime loads the model on first call). The prediction result is
-  // discarded; only the load outcome matters. Shared by the load button and
-  // the mount-time auto-restore below.
-  const runLoad = async (): Promise<boolean> => {
+  // discarded; only the load outcome matters.
+  const load = async (): Promise<boolean> => {
+    loadStarted = true;
     setStatus('loading');
     setError(null);
     try {
@@ -58,85 +52,112 @@ export function LayaCard() {
     } catch (err) {
       setStatus('idle');
       setError(err instanceof Error ? err.message : String(err));
+      loadStarted = false; // a failed load must be retryable
       return false;
     }
   };
   // A ref keeps the mount effect below dependency-free while always calling
   // the latest closure.
-  const loadRef = useRef(runLoad);
-  loadRef.current = runLoad;
+  const loadRef = useRef(load);
+  loadRef.current = load;
 
-  // The card's own status dies with the panel, but the offscreen agent does
-  // not (WORKERS-reason offscreen documents have no Chrome lifetime limit).
-  // Restore the real state on mount: `ready` directly; a load already in
-  // flight → poll; gone → load automatically, so reopening the panel never
-  // requires a click.
   useEffect(() => {
     let timer: ReturnType<typeof setInterval> | null = null;
+    let mode: 'fast' | 'slow' = 'fast';
     const stop = () => {
       if (timer) clearInterval(timer);
+      timer = null;
+    };
+    // Fast (1s) while a load converges; slow (5s) once ready, so a runtime
+    // that died (offscreen document killed by Chrome, extension reload)
+    // flips the card honestly instead of showing a stale 已加载.
+    const setMode = (m: 'fast' | 'slow') => {
+      if (mode === m && timer) return;
+      mode = m;
+      stop();
+      timer = setInterval(tick, m === 'fast' ? 1000 : 5000);
+    };
+    // Two consecutive not-ready observations are required before concluding
+    // the load died / the runtime vanished: between the offscreen document
+    // being created and the model load actually starting there is a short
+    // window that reports idle too (the doc may also still be booting its
+    // listener). The counter only resets when a probe reports real activity —
+    // resetting it on every probe would make two strikes unreachable and
+    // strand the card on 加载中 forever once the document died mid-load (its
+    // probes then answer {ready:false, loading:false} via the background
+    // fallback).
+    let idleTicks = 0;
+    // Bounded self-heal: when the runtime is concluded gone, restart the load
+    // automatically instead of waiting for a click. Bounded so a genuinely
+    // broken runtime doesn't retry forever; re-armed after any ready.
+    let autoRetries = 0;
+    const concludeIdle = () => {
+      setStatus('idle');
+      loadStarted = false; // retryable
+      setMode('slow'); // keep watching in case a lazy load starts
+      if (autoRetries < 2) {
+        autoRetries += 1;
+        void loadRef.current();
+      }
+    };
+    const tick = () => {
+      void sendMessage('LAYA_GET_STATUS', {})
+        .then((s) => {
+          if (s.ready) {
+            idleTicks = 0;
+            autoRetries = 0;
+            setStatus('ready');
+            setMode('slow');
+            return;
+          }
+          if (s.loading) {
+            // A load in flight (this card's warmup, or a lazy consumer such
+            // as the relevance analysis) — track it until it converges.
+            idleTicks = 0;
+            setStatus('loading');
+            setMode('fast');
+            return;
+          }
+          idleTicks += 1;
+          if (idleTicks >= 2) concludeIdle();
+        })
+        .catch(() => {
+          // Probe failed (offscreen document gone / SW hiccup): same
+          // two-strike rule as above. Two consecutive failures mean the
+          // runtime is unreachable — any displayed state (including a
+          // `loading` whose document just died) is stale, so fall back to
+          // idle; concludeIdle re-triggers the load.
+          idleTicks += 1;
+          if (idleTicks >= 2) concludeIdle();
+        });
     };
     (async () => {
       try {
         const s = await sendMessage('LAYA_GET_STATUS', {});
         if (s.ready) {
           setStatus('ready');
+          setMode('slow');
           return;
         }
-        if (s.loading) {
-          setStatus('loading');
-          timer = setInterval(() => {
-            void sendMessage('LAYA_GET_STATUS', {})
-              .then((s) => {
-                if (s.ready) {
-                  setStatus('ready');
-                  stop();
-                } else if (!s.loading) {
-                  // The in-flight load failed elsewhere — fall back to idle.
-                  setStatus('idle');
-                  stop();
-                }
-              })
-              .catch(() => stop());
-          }, 1000);
-          return;
-        }
+        setStatus('loading');
+        if (!loadStarted) void loadRef.current();
+        setMode('fast');
       } catch {
         // Runtime unreachable — leave idle; the load button is the fallback.
-        return;
+        setStatus('idle');
+        setMode('slow');
       }
-      // Not ready and nothing in flight → load without waiting for a click.
-      void loadRef.current();
     })();
     return stop;
   }, []);
 
-  const onLoad = () => void runLoad();
+  return { status, error, load: () => void loadRef.current() };
+}
 
-  const onRun = async () => {
-    if (!text.trim() || status !== 'ready') return;
-    setRunning(true);
-    setError(null);
-    setAnswers(null);
-    try {
-      const res = await sendMessage('LAYA_PREDICT', {
-        state: { body: text.trim() },
-        questions: triageQuestions(),
-      });
-      if (!res.ok) {
-        const raw = res as typeof res & { __error?: string };
-        throw new Error(
-          raw.__error ? `laya: predict failed: ${raw.__error}` : 'laya: predict failed',
-        );
-      }
-      setAnswers(res.answers as Record<string, LayaAnswer>);
-      setElapsedMs(res.elapsedMs ?? null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setRunning(false);
-    }
-  };
+/** The model card: status + load button. */
+export function LayaCard() {
+  const { t } = useTranslation();
+  const { status, error, load } = useLayaModel();
 
   return (
     <section className="flex-none rounded-xl border border-(--ant-color-border-secondary) bg-(--ant-color-bg-container) overflow-hidden">
@@ -161,92 +182,18 @@ export function LayaCard() {
           size="small"
           loading={status === 'loading'}
           disabled={status === 'ready'}
-          onClick={() => void onLoad()}
+          onClick={load}
         >
           {status === 'loading' ? t('settings.layaLoading') : t('settings.layaLoad')}
         </Button>
       </div>
-
-      {/* Try-it: input + run (only meaningful once the model is loaded) */}
-      {status === 'ready' && (
-        <div className="px-3 py-2.5 border-t border-(--ant-color-border-secondary) flex flex-col gap-2">
-          <Text type="secondary" className="text-xs!">
-            {t('settings.layaTryItDesc')}
+      {error && status !== 'ready' && (
+        <div className="px-3 pb-2.5">
+          <Text type="danger" className="text-xs!">
+            {error}
           </Text>
-          <div className="flex gap-2">
-            <Input.TextArea
-              rows={2}
-              value={text}
-              placeholder={t('settings.layaPlaceholder')}
-              onChange={(e) => setText(e.target.value)}
-              onPressEnter={(e) => {
-                if (!e.shiftKey) {
-                  e.preventDefault();
-                  void onRun();
-                }
-              }}
-            />
-            <Button
-              type="primary"
-              loading={running}
-              disabled={!text.trim()}
-              onClick={() => void onRun()}
-            >
-              {running ? t('settings.layaRunning') : t('settings.layaRun')}
-            </Button>
-          </div>
-
-          {error && (
-            <Text type="danger" className="text-xs!">
-              {error}
-            </Text>
-          )}
-
-          {answers && (
-            <div className="flex flex-col gap-1.5" data-testid="laya-answers">
-              {Object.entries(answers).map(([qid, a]) => (
-                <AnswerRow key={qid} qid={qid} answer={a} />
-              ))}
-              {elapsedMs !== null && (
-                <Text type="secondary" className="text-xs!">
-                  {elapsedMs} ms · on-device
-                </Text>
-              )}
-            </div>
-          )}
         </div>
       )}
     </section>
-  );
-}
-
-/** Human labels for the triage question ids (matches lib/ai/presets.ts). */
-const TRIAGE_LABELS: Record<string, string> = {
-  intent: 'Intent',
-  is_urgent: 'Urgent',
-  frustration: 'Frustration',
-  refund_requested: 'Refund asked',
-  churn_risk: 'Churn risk',
-};
-
-/** One question → answer line: label, value, calibrated confidence. */
-function AnswerRow({ qid, answer }: { qid: string; answer: LayaAnswer }) {
-  const label = TRIAGE_LABELS[qid] ?? qid;
-  return (
-    <div className="flex items-center gap-2 text-xs">
-      <Text type="secondary" className="w-24 shrink-0">
-        {label}
-      </Text>
-      <Text strong className="shrink-0">
-        {answer.type === 'choice'
-          ? answer.choice
-          : answer.type === 'score'
-            ? `${answer.score} · ${answer.legend[String(answer.score)] ?? ''}`
-            : `${answer.noul >= 0.5 ? 'yes' : 'no'} ${(answer.noul * 100).toFixed(0)}%`}
-      </Text>
-      <Text type="secondary" className="ml-auto shrink-0">
-        conf {(answer.confidence * 100).toFixed(0)}%
-      </Text>
-    </div>
   );
 }

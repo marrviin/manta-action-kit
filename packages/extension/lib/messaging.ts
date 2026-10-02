@@ -44,6 +44,39 @@ export interface ProtocolMap {
     response: { ok: boolean; count: number };
   };
 
+  /**
+   * Background -> UI (fire-and-forget broadcast): the laya relevance analysis
+   * for a recording finished writing marks into IndexedDB. The detail view
+   * listens for this and re-reads its calls.
+   */
+  RECORDING_RELEVANCE_UPDATED: {
+    request: { recordingId: string };
+    response: { ok: boolean };
+  };
+
+  /**
+   * Background -> UI (broadcast): the relevance analysis entered a new
+   * lifecycle phase (analyzing / done / failed). Lets an open detail view show
+   * a live status instead of a silent run. The same state is persisted on the
+   * Recording (relevanceStatus) for views opened later.
+   */
+  RECORDING_RELEVANCE_STATUS: {
+    request: { recordingId: string; status: 'analyzing' | 'done' | 'failed' };
+    response: { ok: boolean };
+  };
+
+  /**
+   * UI -> background: (re-)run the laya relevance analysis for one recording —
+   * the auto pass at STOP_RECORDING only covers that moment, so the detail view
+   * offers a manual retry (recordings saved before the feature, failed loads,
+   * OOM). Fire-and-forget on the background side; completion arrives via
+   * RECORDING_RELEVANCE_UPDATED.
+   */
+  RUN_RECORDING_RELEVANCE: {
+    request: { recordingId: string };
+    response: { started: boolean };
+  };
+
   /** Side panel -> background: read the gateway audit log (newest first). */
   LIST_GATEWAY_LOGS: {
     request: void;
@@ -342,6 +375,26 @@ export interface ProtocolMap {
       /** laya-ts SystemOneResult.answers, if ok. */
       answers?: Record<string, unknown>;
       usage?: { input_tokens: number; output_tokens: number };
+    };
+  };
+  /**
+   * Background -> offscreen (relayed like LAYA_PREDICT): classify a batch of
+   * states in shared forward passes (Agent.predictBatch). `results[i]` aligns
+   * with `states[i]`. Used by the recording-relevance analysis.
+   */
+  LAYA_PREDICT_BATCH: {
+    request: {
+      /** One state per item to classify (same shape rules as LAYA_PREDICT.state). */
+      states: unknown[];
+      /** Typed questions keyed by answer id, shared by every state. */
+      questions: Record<string, unknown>;
+    };
+    response: {
+      ok: boolean;
+      /** Per-state answers, if ok; aligned with `states` by index. */
+      results?: Array<Record<string, unknown>>;
+      /** Milliseconds the offscreen runtime spent in agent.predictBatch. */
+      elapsedMs?: number;
     };
   };
   /**

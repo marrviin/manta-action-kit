@@ -181,3 +181,36 @@ export function routerQuestions(): Record<string, unknown> {
     },
   };
 }
+
+/**
+ * Questions for the recording-relevance analysis (lib/ai/relevance.ts): given a
+ * recorded API chain and one call from it, decide whether the call is part of
+ * the user's main flow or just background noise. English-only — the bundled
+ * checkpoint is laya-en. Criteria teach the CONCEPT with common signals (never
+ * a blocklist), so the judgment generalizes to unseen sites.
+ */
+export function relevanceQuestions(): Record<string, unknown> {
+  return {
+    is_noise: {
+      type: "noul",
+      instructions:
+        "Within the recorded API chain in `chain`, is `request` background noise rather than a call needed for the user's main flow?",
+      criteria: {
+        true: "background noise: the page works the same without it — error/usage reporting, analytics, monitoring, polling/keepalive, bootstrap or static fetches. Tells: dedicated reporting host, tiny/empty response to a POST, same method+path repeated, opaque log bodies.",
+        false: "main flow: creates, reads or mutates the user's data, or establishes the session those calls need.",
+      },
+    },
+    role: {
+      type: "choice",
+      instructions: "What role does `request` play within the chain in `chain`?",
+      criteria: {
+        business_data: "carries or mutates the user's actual data (lists, records, orders, content)",
+        auth_session: "login, token refresh, session or permission checks",
+        telemetry: "site reporting OUT about itself: error reports, analytics, metrics, perf logs — dedicated host, tiny/empty responses, repeated fire-and-forget POSTs",
+        polling_heartbeat: "repeated status polling or keepalive pings",
+        preflight_static: "CORS preflight, config/bootstrap or static-ish resources",
+        other: "none of the other options fits",
+      },
+    },
+  };
+}

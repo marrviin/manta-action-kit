@@ -81,6 +81,47 @@ function FlowAnnotations({
   );
 }
 
+/** i18n key per model-assigned relevance role. */
+const ROLE_LABEL_KEYS = {
+  business_data: "detail.roleBusinessData",
+  auth_session: "detail.roleAuthSession",
+  telemetry: "detail.roleTelemetry",
+  polling_heartbeat: "detail.rolePollingHeartbeat",
+  preflight_static: "detail.rolePreflightStatic",
+  other: "detail.roleOther",
+} as const;
+
+type RoleLabelKey = keyof typeof ROLE_LABEL_KEYS;
+
+function roleLabelKey(role: string): RoleLabelKey | null {
+  return role in ROLE_LABEL_KEYS ? (role as RoleLabelKey) : null;
+}
+
+/** The "likely irrelevant" / "possibly irrelevant" badge for an analyzed call. */
+function RelevanceTag({ call }: { call: ApiCall }) {
+  const { t } = useTranslation();
+  const relevance = call.relevance;
+  if (!relevance || relevance.verdict === "relevant") return null;
+  const role = relevance.role ? roleLabelKey(relevance.role) : null;
+  const tooltip = t("detail.relevanceTooltip", {
+    value: `${Math.round(relevance.confidence * 100)}%`,
+  });
+  return (
+    <Tooltip
+      title={role ? `${tooltip} · ${t(ROLE_LABEL_KEYS[role])}` : tooltip}
+    >
+      <Tag
+        color={relevance.verdict === "irrelevant" ? "default" : "warning"}
+        className="m-0! px-1.5! text-[10px]! leading-4! font-normal!"
+      >
+        {relevance.verdict === "irrelevant"
+          ? t("detail.relevanceIrrelevant")
+          : t("detail.relevanceUncertain")}
+      </Tag>
+    </Tooltip>
+  );
+}
+
 /**
  * One node in the call chain (used inside an antd Timeline item). Reuses
  * UnifiedListItem so it matches the gateway audit-log rows:
@@ -109,12 +150,18 @@ export function CallNode({ call, deps = [], onDelete }: Props) {
     });
   };
 
+  const irrelevant = call.relevance?.verdict === "irrelevant";
+
   return (
     <UnifiedListItem
       // pt-0! drops the shared list-item top padding so the title row sits
       // flush with the Timeline dot (the rail/dot stay unmoved); px-0! /
       // border-0! remove the shared list separators inside the chain.
-      className="pt-0! px-0! border-0!"
+      // Irrelevant calls dim instead of shouting — the mark is advisory.
+      className={cn(
+        "pt-0! px-0! border-0!",
+        irrelevant && "opacity-60",
+      )}
       expandable
       expanded={expanded}
       onToggleExpand={() => setExpanded((v) => !v)}
@@ -137,6 +184,7 @@ export function CallNode({ call, deps = [], onDelete }: Props) {
       }
       status={
         <>
+          <RelevanceTag call={call} />
           <MethodBadge method={call.method} />
           <StatusBadge status={call.status} />
         </>

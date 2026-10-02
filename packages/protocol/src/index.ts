@@ -89,12 +89,29 @@ export interface FieldDependency {
   origin: 'inferred' | 'confirmed' | 'manual';
 }
 
+/**
+ * The laya model's per-call relevance mark (present only after the recording
+ * has been analyzed). 'irrelevant' steps are background noise (telemetry,
+ * polling, preflight) an agent can skip when distilling an action.
+ */
+export interface CallRelevanceMark {
+  verdict: 'relevant' | 'irrelevant' | 'uncertain';
+  /** Model answer_confidence (0..1); 1 for data-flow-anchored calls. */
+  confidence: number;
+  /** Model-assigned role, e.g. 'telemetry' | 'auth_session' | 'business_data'. */
+  role?: string;
+  /** epoch ms of the analysis. */
+  analyzedAt: number;
+}
+
 /** A lightweight call summary in a flow (no headers/bodies). */
 export interface FlowStep {
   seq: number;
   method: string;
   url: string;
   status: number;
+  /** Present only when the recording's relevance analysis has run. */
+  relevance?: CallRelevanceMark;
 }
 
 /** A recording's flow view: ordered steps + the dependencies linking them. */

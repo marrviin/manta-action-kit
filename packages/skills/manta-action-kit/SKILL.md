@@ -148,6 +148,14 @@ only for ad-hoc, one-off single calls.
 | "show API contracts / deduplicated endpoints"                  | `get_endpoints`   | Deduplicated endpoints + sanitized schemas (must read before create_action)  |
 | "show a single call"                                           | `get_call`        | Fetch a single API call by id                                                |
 
+**Relevance marks**: after a recording is saved, the extension auto-runs a local
+model pass that marks each call's `relevance` (`relevant` / `irrelevant` /
+`uncertain`, with a `role` like `telemetry`). When `get_flow` steps or `get_call`
+carry `relevance.verdict === 'irrelevant'`, that call is background noise
+(analytics, polling, preflight) — skip it when analyzing the flow or distilling
+an action. No `relevance` field means the recording has not been analyzed; treat
+every call as potentially relevant then.
+
 ### Element captures (UI reference / visual diffing)
 
 The user can capture any on-page element from the extension popup (click or box-select; Alt+Shift+I

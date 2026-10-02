@@ -76,5 +76,13 @@
     "placeholders": {
       "host": { "content": "$1" }
     }
+  },
+  "notifyRelevanceFailedTitle": {
+    "message": "Relevance analysis failed",
+    "description": "System notification title when the laya relevance analysis for a recording could not run."
+  },
+  "notifyRelevanceFailedMessage": {
+    "message": "The local model could not analyze this recording — open the model settings and try again later",
+    "description": "System notification body for a failed relevance analysis."
   }
 }

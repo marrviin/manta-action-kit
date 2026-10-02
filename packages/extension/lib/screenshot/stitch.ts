@@ -1,5 +1,5 @@
 import { fileHost, timestamp } from "./capture";
-import { settings } from "@/lib/storage";
+import { readCaptureFx } from "@/lib/storage";
 import {
   FULLPAGE_BEGIN,
   FULLPAGE_END,
@@ -84,7 +84,7 @@ export async function captureFullPageStitched(
     console.info("[screenshot] fullpage: scroll-stitch capture starting");
     // Camera fx obeys the same kill switch as the single-shot iris fx; when
     // off, the fx messages are skipped entirely (no overlay, no round trips).
-    const fxEnabled = await settings.screenshotCaptureFx.getValue();
+    const fxEnabled = await readCaptureFx();
     // Focus intro up first, so it is already on while BEGIN's warm pass
     // sweeps the page. Fire-and-forget: fx failures never block capture.
     if (fxEnabled) {

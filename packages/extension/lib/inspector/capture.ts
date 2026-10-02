@@ -33,7 +33,7 @@ import {
   playCaptureFx,
   releaseCaptureFxHold,
 } from "./capture-fx";
-import { settings } from "@/lib/storage";
+import { readCaptureFx } from "@/lib/storage";
 
 /** Message type that toggles capture mode (popup -> content script, per-tab). */
 export const TOGGLE_INSPECTOR_CAPTURE = "TOGGLE_INSPECTOR_CAPTURE";
@@ -188,7 +188,8 @@ const L = navigator.language.startsWith("zh")
     };
 
 /**
- * Cached copy of `settings.inspectorCaptureFx`, refreshed on each activate().
+ * Cached copy of the capture-fx master switch (settings.captureFx), refreshed
+ * on each activate().
  * Defaults to true so a failed storage read never silently disables the fx.
  */
 let fxEnabled = true;
@@ -1350,8 +1351,7 @@ function activate() {
   active = true;
   // Refresh the fx toggle once per activation; by mouseup it has settled.
   // A failed read keeps the previous (default true) value.
-  settings.inspectorCaptureFx
-    .getValue()
+  readCaptureFx()
     .then((v) => (fxEnabled = v))
     .catch(() => {});
   ui = buildUi();

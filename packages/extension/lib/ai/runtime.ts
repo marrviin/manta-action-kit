@@ -37,9 +37,16 @@ let loading: Promise<Agent> | null = null;
 export function getAgent(): Promise<Agent> {
   if (agent) return Promise.resolve(agent);
   if (!loading) {
-    loading = Agent.load(MODEL_URL).finally(() => {
-      loading = null; // a failed load must be retryable
-    });
+    loading = Agent.load(MODEL_URL)
+      .then((loaded) => {
+        // Cache the loaded agent — without this, isAgentReady() stays false
+        // forever and every single predict reloads the ~800 MB bundle.
+        agent = loaded;
+        return loaded;
+      })
+      .finally(() => {
+        loading = null; // a failed load must be retryable
+      });
   }
   return loading;
 }
@@ -59,14 +66,62 @@ export function isAgentLoading(): boolean {
  * long-running state). Returns the raw laya-ts result plus a wall-clock
  * elapsedMs measured around agent.predict only (excludes model load).
  */
+/**
+ * Serialize predictions: two concurrent OrtRuns (e.g. the settings card's
+ * warmup racing the relevance analysis) would multiply peak GPU/wasm memory in
+ * the offscreen document — the process OOMs long before either finishes.
+ */
+let predictChain: Promise<unknown> = Promise.resolve();
+function enqueuePredict<T>(fn: () => Promise<T>): Promise<T> {
+  const run = predictChain.then(fn, fn);
+  predictChain = run.catch(() => {});
+  return run.catch((err) => {
+    // An OrtRun OOM can leave the session corrupt — drop it so the next
+    // predict reloads a fresh model instead of failing forever.
+    if (String((err as Error)?.message ?? err).includes('bad_alloc')) unloadAgent();
+    throw err;
+  });
+}
+
+/**
+ * States per shared forward pass. predictBatch packs ALL states into one pass
+ * by default — every state carries the chain summary, so a whole recording in
+ * one batch is a batch-size × maxLen memory spike that OOMs OrtRun
+ * (std::bad_alloc). Small chunks keep the spike bounded; results still align
+ * with `states` by index.
+ */
+const PREDICT_BATCH_SIZE = 8;
+
 export async function layaPredict(
   state: unknown,
   questions: Record<string, unknown>,
 ): Promise<{ result: SystemOneResult; elapsedMs: number }> {
-  const a = await getAgent();
-  const t0 = performance.now();
-  const result = await a.predict(state, questions as never);
-  return { result, elapsedMs: Math.round(performance.now() - t0) };
+  return enqueuePredict(async () => {
+    const a = await getAgent();
+    const t0 = performance.now();
+    const result = await a.predict(state, questions as never);
+    return { result, elapsedMs: Math.round(performance.now() - t0) };
+  });
+}
+
+/**
+ * Run one prediction per state, packed into shared forward passes
+ * (Agent.predictBatch, chunked by PREDICT_BATCH_SIZE). Results align with
+ * `states` by index. Used by the recording-relevance analysis, which
+ * classifies every captured call in one go.
+ */
+export async function layaPredictBatch(
+  states: unknown[],
+  questions: Record<string, unknown>,
+): Promise<{ results: SystemOneResult[]; elapsedMs: number }> {
+  return enqueuePredict(async () => {
+    const a = await getAgent();
+    const t0 = performance.now();
+    const results = await a.predictBatch(states, questions as never, {
+      batchSize: PREDICT_BATCH_SIZE,
+    });
+    return { results, elapsedMs: Math.round(performance.now() - t0) };
+  });
 }
 
 /** Drop the loaded model (frees the WASM/WebGPU memory). Next call reloads. */

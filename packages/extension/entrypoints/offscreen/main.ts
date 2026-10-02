@@ -23,7 +23,7 @@
 import { sendMessage } from '@/lib/messaging';
 import { saveGifHistory } from '@/lib/db';
 import { fileHost, timestamp } from '@/lib/screenshot/capture';
-import { isAgentLoading, isAgentReady, layaPredict } from '@/lib/ai/runtime';
+import { isAgentLoading, isAgentReady, layaPredict, layaPredictBatch } from '@/lib/ai/runtime';
 
 /**
  * Hard cap on a single recording. The WebM→GIF transcode runs in the preview
@@ -44,6 +44,24 @@ let limitTimer: ReturnType<typeof setTimeout> | null = null;
 
 type RuntimeMessage = { type?: string; data?: unknown };
 
+/**
+ * Run a (possibly minutes-long) predict while pinging the SW every 15s — model
+ * load + first predict run for minutes — far beyond the MV3 service worker's
+ * ~30s idle kill, which would drop the background relay's pending sendResponse
+ * ("message channel closed"). Same trick as the gateway confirm page's
+ * GATEWAY_CONFIRM_PING.
+ */
+async function withKeepalive<T>(fn: () => Promise<T>): Promise<T> {
+  const keepalive = setInterval(() => {
+    void sendMessage('LAYA_KEEPALIVE', {}).catch(() => {});
+  }, 15_000);
+  try {
+    return await fn();
+  } finally {
+    clearInterval(keepalive);
+  }
+}
+
 browser.runtime.onMessage.addListener((raw: RuntimeMessage, _sender, sendResponse) => {
   (async () => {
     try {
@@ -54,24 +72,39 @@ browser.runtime.onMessage.addListener((raw: RuntimeMessage, _sender, sendRespons
             state: unknown;
             questions: Record<string, unknown>;
           };
-          // Model load + first predict run for minutes — far beyond the MV3
-          // service worker's ~30s idle kill, which would drop the background
-          // relay's pending sendResponse ("message channel closed"). Ping the
-          // SW every 15s while this is in flight (same trick as the gateway
-          // confirm page's GATEWAY_CONFIRM_PING).
-          const keepalive = setInterval(() => {
-            void sendMessage('LAYA_KEEPALIVE', {}).catch(() => {});
-          }, 15_000);
           try {
-            const { result, elapsedMs } = await layaPredict(state, questions);
+            const { result, elapsedMs } = await withKeepalive(() =>
+              layaPredict(state, questions),
+            );
             sendResponse({
               ok: true,
               elapsedMs,
               answers: result.answers as unknown as Record<string, unknown>,
               usage: result.usage,
             });
-          } finally {
-            clearInterval(keepalive);
+          } catch (err) {
+            sendResponse({ ok: false, __error: err instanceof Error ? err.message : String(err) });
+          }
+          break;
+        }
+        case 'LAYA_PREDICT_BATCH': {
+          const { states, questions } = raw.data as {
+            states: unknown[];
+            questions: Record<string, unknown>;
+          };
+          try {
+            const { results, elapsedMs } = await withKeepalive(() =>
+              layaPredictBatch(states, questions),
+            );
+            sendResponse({
+              ok: true,
+              elapsedMs,
+              results: results.map(
+                (r) => r.answers as unknown as Record<string, unknown>,
+              ),
+            });
+          } catch (err) {
+            sendResponse({ ok: false, __error: err instanceof Error ? err.message : String(err) });
           }
           break;
         }

@@ -115,25 +115,35 @@ export const settings = {
   }),
 
   /**
-   * Fun UFO capture animation played after an element capture is confirmed,
-   * before the preview tab opens (see lib/inspector/capture-fx.ts). User-facing
-   * preference, hence `sync` — unlike `local:devMode`, which is a per-machine
-   * debug flag. Read by the content script on each capture activation.
+   * Master switch for the in-page capture animations (element-capture UFO fx,
+   * screenshot camera-focus fx, and any future ones). User-facing preference,
+   * hence `sync`. Read via {@link readCaptureFx}, which also migrates the two
+   * legacy per-feature switches this item replaced.
    */
-  inspectorCaptureFx: storage.defineItem<boolean>("sync:inspectorCaptureFx", {
-    fallback: true,
-  }),
-
-  /**
-   * Camera-focus animation played in the page before a screenshot is captured
-   * (see lib/screenshot/focus-fx.ts). User-facing preference, hence `sync`.
-   * Read by the background's CAPTURE_SCREENSHOT handler before capturing.
-   */
-  screenshotCaptureFx: storage.defineItem<boolean>(
-    "sync:screenshotCaptureFx",
-    { fallback: true },
-  ),
+  captureFx: storage.defineItem<boolean>("sync:captureFx", { fallback: true }),
 };
+
+/**
+ * Read the capture-fx master switch, merging the two legacy per-feature
+ * switches (`sync:inspectorCaptureFx` / `sync:screenshotCaptureFx`) into it on
+ * first read: previously-off stays off (either one), then the legacy keys are
+ * removed. Self-heals — the merged value is written back so this runs once.
+ */
+export async function readCaptureFx(): Promise<boolean> {
+  const current = await storage.getItem<boolean>("sync:captureFx");
+  if (current !== null) return current;
+  const [inspector, screenshot] = await Promise.all([
+    storage.getItem<boolean>("sync:inspectorCaptureFx"),
+    storage.getItem<boolean>("sync:screenshotCaptureFx"),
+  ]);
+  const merged = inspector !== false && screenshot !== false;
+  await storage.setItem("sync:captureFx", merged);
+  await Promise.all([
+    storage.removeItem("sync:inspectorCaptureFx"),
+    storage.removeItem("sync:screenshotCaptureFx"),
+  ]);
+  return merged;
+}
 
 /**
  * Live recording state. Stored in the `session` area so it survives the MV3

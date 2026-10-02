@@ -61,10 +61,7 @@ export function SettingsFeature() {
   const [toolsOpen, setToolsOpen] = useState(false);
   const [testing, setTesting] = useState(false);
   const [devMode, setDevMode] = useStorage(settings.devMode);
-  const [captureFx, setCaptureFx] = useStorage(settings.inspectorCaptureFx);
-  const [screenshotFx, setScreenshotFx] = useStorage(
-    settings.screenshotCaptureFx,
-  );
+  const [captureFx, setCaptureFx] = useStorage(settings.captureFx);
   // Companion npm package version, resolved from the registry (null = hidden).
   const [mcpVersion, setMcpVersion] = useState<string | null>(null);
   // Easter-egg state: consecutive taps on the version tag (not persisted).
@@ -219,43 +216,23 @@ export function SettingsFeature() {
         </div>
       </section>
 
-      {/* Capture animation card: the UFO fx played in the page after an
-          element capture is confirmed (see lib/inspector/capture-fx.ts). */}
+      {/* Capture fx card: the in-page animations (element-capture UFO,
+          screenshot camera-focus, and future ones) behind one master switch. */}
       <section className="flex-none rounded-xl border border-(--ant-color-border-secondary) bg-(--ant-color-bg-container) overflow-hidden">
         <div className="flex items-center justify-between gap-2 px-3 py-2.5">
           <div className="min-w-0">
             <Text strong className="text-sm block">
-              {t('settings.inspectorCaptureFxTitle')}
+              {t('settings.captureFxTitle')}
             </Text>
             <Text type="secondary" className="text-xs!">
-              {t('settings.inspectorCaptureFxDesc')}
+              {t('settings.captureFxDesc')}
             </Text>
           </div>
           <Switch checked={captureFx} onChange={(v) => void setCaptureFx(v)} />
         </div>
       </section>
-
-      {/* Screenshot focus fx card: the camera-focus performance played in the
-          page before a screenshot is captured (see
-          lib/screenshot/focus-fx.ts). */}
-      <section className="flex-none rounded-xl border border-(--ant-color-border-secondary) bg-(--ant-color-bg-container) overflow-hidden">
-        <div className="flex items-center justify-between gap-2 px-3 py-2.5">
-          <div className="min-w-0">
-            <Text strong className="text-sm block">
-              {t('settings.screenshotCaptureFxTitle')}
-            </Text>
-            <Text type="secondary" className="text-xs!">
-              {t('settings.screenshotCaptureFxDesc')}
-            </Text>
-          </div>
-          <Switch
-            checked={screenshotFx}
-            onChange={(v) => void setScreenshotFx(v)}
-          />
-        </div>
-      </section>
-      {/* Laya decision model: load the bundled on-device model and try it on
-          free text (see components/settings/laya-card.tsx). */}
+      {/* Laya decision model: status + load (the try-it playground lives in
+          the developer-mode card below). */}
       <LayaCard />
 
       {/* Connector (MCP) card: header-only by default (status tag + tools

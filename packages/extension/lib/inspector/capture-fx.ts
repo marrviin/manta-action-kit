@@ -47,7 +47,7 @@ export interface CaptureFxRect {
 export interface CaptureFxOptions {
   /** Selection rect in viewport coordinates; null/empty skips the fx. */
   rect: CaptureFxRect | null;
-  /** Master switch (settings.inspectorCaptureFx), read by the caller. */
+  /** Master switch (settings.captureFx), read by the caller. */
   enabled: boolean;
 }
 

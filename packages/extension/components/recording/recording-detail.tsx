@@ -1,14 +1,18 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { App, Button, Empty, Spin, Timeline, Typography } from "antd";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { App, Button, Dropdown, Empty, Spin, Timeline, Tooltip, Typography } from "antd";
+import type { MenuProps } from "antd";
 import {
   CaretDownOutlined,
   CaretUpOutlined,
+  FilterOutlined,
   LeftOutlined,
+  ReloadOutlined,
 } from "@ant-design/icons";
 import { useTranslation } from "react-i18next";
 import { CallNode } from "./call-node";
 import { EndpointsPanel } from "./endpoints-panel";
 import { BottomTabBar } from "@/components/common/bottom-tab-bar";
+import { sendMessage } from "@/lib/messaging";
 import { deleteCall, getCalls, getRecording } from "@/lib/db";
 import { cn, formatGap } from "@/lib/utils";
 import type {
@@ -20,6 +24,9 @@ import type {
 const { Text, Paragraph } = Typography;
 
 type DetailTab = "result" | "endpoints";
+
+/** Relevance dropdown filter: everything, or exactly one verdict. */
+type RelevanceFilter = "all" | "relevant" | "uncertain" | "irrelevant";
 
 interface Props {
   recordingId: string;
@@ -40,14 +47,22 @@ export function RecordingDetail({ recordingId, onBack, initialTab }: Props) {
   const [calls, setCalls] = useState<ApiCall[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<DetailTab>(initialTab ?? "result");
+  // Live lifecycle of the relevance analysis (persisted on the Recording and
+  // broadcast on every transition). Undefined = never ran.
+  const [relStatus, setRelStatus] = useState<Recording["relevanceStatus"]>(
+    undefined,
+  );
+  const [relStatusAt, setRelStatusAt] = useState<number | undefined>(undefined);
 
-  useEffect(() => {
+  const reload = useCallback(() => {
     let active = true;
     Promise.all([getRecording(recordingId), getCalls(recordingId)]).then(
       ([rec, cs]) => {
         if (!active) return;
         setRecording(rec ?? null);
         setCalls(cs);
+        setRelStatus(rec?.relevanceStatus);
+        setRelStatusAt(rec?.relevanceStatusAt);
         setLoading(false);
       },
     );
@@ -55,6 +70,29 @@ export function RecordingDetail({ recordingId, onBack, initialTab }: Props) {
       active = false;
     };
   }, [recordingId]);
+
+  useEffect(() => reload(), [reload]);
+
+  // The background broadcasts every analysis phase transition (and a final
+  // update when marks land), possibly while the user is already reading this
+  // detail view. No reply is expected (another listener or none answers).
+  useEffect(() => {
+    const onMessage = (
+      raw:
+        | { type?: string; data?: { recordingId?: string; status?: Recording["relevanceStatus"] } }
+        | undefined,
+    ) => {
+      if (raw?.data?.recordingId !== recordingId) return;
+      if (raw.type === "RECORDING_RELEVANCE_STATUS") {
+        setRelStatus(raw.data.status);
+        setRelStatusAt(Date.now());
+      } else if (raw.type === "RECORDING_RELEVANCE_UPDATED") {
+        reload();
+      }
+    };
+    browser.runtime.onMessage.addListener(onMessage);
+    return () => browser.runtime.onMessage.removeListener(onMessage);
+  }, [recordingId, reload]);
 
   const handleDelete = async (call: ApiCall) => {
     try {
@@ -104,9 +142,12 @@ export function RecordingDetail({ recordingId, onBack, initialTab }: Props) {
       <div className="flex-1 min-h-0 flex flex-col">
         {tab === "result" && (
           <ResultPanel
+            recordingId={recordingId}
             calls={calls}
             deps={recording.deps}
             description={recording.description}
+            relStatus={relStatus}
+            relStatusAt={relStatusAt}
             onDeleteCall={handleDelete}
           />
         )}
@@ -178,19 +219,67 @@ function DescriptionCard({ description }: { description: string }) {
   );
 }
 
+/** After this long in `analyzing` without a transition, the run is presumed
+ * dead (SW killed mid-analysis) and the UI falls back to the failed state. */
+const ANALYZING_STALE_MS = 3 * 60_000;
+
 /** The recorded call chain (pure recorded view). */
 function ResultPanel({
+  recordingId,
   calls,
   deps,
   description,
+  relStatus,
+  relStatusAt,
   onDeleteCall,
 }: {
+  recordingId: string;
   calls: ApiCall[];
   deps?: FieldDependency[];
   description?: string;
+  relStatus?: Recording["relevanceStatus"];
+  relStatusAt?: number;
   onDeleteCall: (call: ApiCall) => void;
 }) {
   const { t } = useTranslation();
+  // A persisted `analyzing` older than the stale window is a dead run.
+  const analyzing =
+    relStatus === "analyzing" &&
+    Date.now() - (relStatusAt ?? 0) < ANALYZING_STALE_MS;
+  const failed = relStatus === "failed" || (relStatus === "analyzing" && !analyzing);
+
+  // Relevance filter (dropdown on the filter icon button): all / one verdict.
+  const [filter, setFilter] = useState<RelevanceFilter>("all");
+  const countOf = (v: RelevanceFilter) =>
+    v === "all" ? calls.length : calls.filter((c) => c.relevance?.verdict === v).length;
+  const shown = filter === "all" ? calls : calls.filter((c) => c.relevance?.verdict === filter);
+
+  // Manual (re-)run of the relevance analysis: covers recordings saved before
+  // this feature, failed model loads, and OOM retries. The real completion
+  // signals through RECORDING_RELEVANCE_STATUS / _UPDATED (listener above).
+  const rerunRelevance = async () => {
+    await sendMessage("RUN_RECORDING_RELEVANCE", { recordingId }).catch(() => {});
+  };
+
+  const filterMenu: MenuProps = {
+    selectable: true,
+    selectedKeys: [filter],
+    onClick: ({ key }) => setFilter(key as RelevanceFilter),
+    items: (
+      ["all", "relevant", "uncertain", "irrelevant"] as const
+    ).map((v) => ({
+      key: v,
+      label: `${t(
+        v === "all"
+          ? "detail.filterAll"
+          : v === "relevant"
+            ? "detail.filterRelevant"
+            : v === "uncertain"
+              ? "detail.filterUncertain"
+              : "detail.filterIrrelevant",
+      )} (${countOf(v)})`,
+    })),
+  };
 
   return (
     <div className="flex-1 min-h-0 flex flex-col">
@@ -202,35 +291,89 @@ function ResultPanel({
           </div>
         ) : (
           <div>
-            <Text type="secondary" className="block mb-3 text-sm">
-              {t("detail.callChainTitle")}
-            </Text>
-            <Timeline
-              items={calls.map((call, index) => {
-                const next = calls[index + 1];
-                const gap = next ? next.startedAt - call.startedAt : null;
-                return {
-                  color: call.errored ? "red" : "blue",
-                  children: (
-                    <>
-                      <CallNode
-                        call={call}
-                        deps={deps}
-                        onDelete={onDeleteCall}
+            <div className="flex items-center justify-between gap-2 mb-3">
+              {/* leading-6 pins the title's line box to the 24px small-button
+                  height, so the row centers on one line box. */}
+              <Text type="secondary" className="text-sm leading-6!">
+                {t("detail.callChainTitle")}
+              </Text>
+              <div className="flex items-center gap-1">
+                {failed && (
+                  <Text type="danger" className="text-xs! leading-6!">
+                    {t("detail.relevanceFailed")}
+                  </Text>
+                )}
+                {calls.length >= 3 && (
+                  <Tooltip title={t("detail.rerunRelevance")}>
+                    <Button
+                      size="small"
+                      type="text"
+                      loading={analyzing}
+                      onClick={() => void rerunRelevance()}
+                      icon={analyzing ? undefined : <ReloadOutlined />}
+                    />
+                  </Tooltip>
+                )}
+                <Dropdown
+                  menu={filterMenu}
+                  trigger={["click"]}
+                  placement="bottomRight"
+                >
+                  <Button
+                    size="small"
+                    type="text"
+                    title={t("detail.filterTitle")}
+                    icon={
+                      <FilterOutlined
+                        className={
+                          filter !== "all" ? "text-(--ant-color-primary)" : undefined
+                        }
                       />
-                      {gap != null && gap > 0 && (
-                        <Text
-                          type="secondary"
-                          className="block text-[12px]! mt-2"
-                        >
-                          {t("detail.waitGap", { gap: formatGap(gap) })}
-                        </Text>
-                      )}
-                    </>
-                  ),
-                };
-              })}
-            />
+                    }
+                  />
+                </Dropdown>
+              </div>
+            </div>
+            {shown.length === 0 ? (
+              <div className="py-10 text-center">
+                <Text type="secondary" className="text-xs">
+                  {t("detail.filterEmpty")}
+                </Text>
+              </div>
+            ) : (
+              <Timeline
+                items={shown.map((call, index) => {
+                  const next = shown[index + 1];
+                  const gap = next ? next.startedAt - call.startedAt : null;
+                  return {
+                    // A model-flagged call dims to gray — the mark is advisory,
+                    // not an error like `errored` (red).
+                    color: call.errored
+                      ? "red"
+                      : call.relevance?.verdict === "irrelevant"
+                        ? "gray"
+                        : "blue",
+                    children: (
+                      <>
+                        <CallNode
+                          call={call}
+                          deps={deps}
+                          onDelete={onDeleteCall}
+                        />
+                        {gap != null && gap > 0 && (
+                          <Text
+                            type="secondary"
+                            className="block text-[12px]! mt-2"
+                          >
+                            {t("detail.waitGap", { gap: formatGap(gap) })}
+                          </Text>
+                        )}
+                      </>
+                    ),
+                  };
+                })}
+              />
+            )}
           </div>
         )}
       </div>

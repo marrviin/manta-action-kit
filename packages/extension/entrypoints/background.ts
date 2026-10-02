@@ -19,7 +19,7 @@ import {
   ScreenshotError,
   SCREENSHOT_PREVIEW_MAX_BYTES,
 } from "@/lib/screenshot/types";
-import { screenshotPreview, settings } from "@/lib/storage";
+import { readCaptureFx, screenshotPreview } from "@/lib/storage";
 import {
   handleGifOffscreenDone,
   initGifStateWatch,
@@ -29,6 +29,7 @@ import {
   stopGifRecording,
 } from "@/lib/gif-recording/session";
 import { ensureLayaRuntime } from "@/lib/ai/laya-session";
+import { analyzeRecordingRelevance } from "@/lib/ai/relevance-run";
 import {
   initGatewayConfirm,
   isPendingConfirmation,
@@ -167,6 +168,12 @@ export default defineBackground(() => {
                 .catch((err) =>
                   console.error("[background] notification failed", err),
                 );
+              // Auto-run the laya relevance analysis in the background —
+              // fire-and-forget so the stop response (and the notification
+              // above) are never delayed by a model load.
+              void analyzeRecordingRelevance(result.recordingId).catch((err) =>
+                console.error("[background] relevance analysis failed", err),
+              );
             }
             sendResponse(result);
             break;
@@ -237,7 +244,7 @@ export default defineBackground(() => {
               await new Promise((r) => setTimeout(r, 200));
             }
             let fxSettled: Promise<unknown> = Promise.resolve();
-            if (!stitched && (await settings.screenshotCaptureFx.getValue())) {
+            if (!stitched && (await readCaptureFx())) {
               // 2.5s hard timeout: the fx itself runs ~1.15s, plus the
               // content script waits for its next real paint before starting
               // (double rAF) and fullPage adds a 200ms settle — the reply can
@@ -382,6 +389,25 @@ export default defineBackground(() => {
             // sendResponse and the caller would see "message channel closed".
             await ensureLayaRuntime();
             sendResponse(await browser.runtime.sendMessage(raw));
+            break;
+          }
+
+          case "LAYA_PREDICT_BATCH": {
+            // Same relay as LAYA_PREDICT, batched: one shared forward pass per
+            // chunk of states instead of one pass per state.
+            await ensureLayaRuntime();
+            sendResponse(await browser.runtime.sendMessage(raw));
+            break;
+          }
+
+          case "RUN_RECORDING_RELEVANCE": {
+            // Manual (re-)run from the detail view — fire-and-forget exactly
+            // like the auto pass at STOP_RECORDING; completion arrives via
+            // RECORDING_RELEVANCE_UPDATED.
+            void analyzeRecordingRelevance(msg.data.recordingId).catch((err) =>
+              console.error("[background] relevance analysis failed", err),
+            );
+            sendResponse({ started: true });
             break;
           }
 
