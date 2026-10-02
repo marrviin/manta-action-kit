@@ -20,7 +20,7 @@
     "dev:mcp": "pnpm --filter @manta-action-kit/protocol build && pnpm --filter @manta-action-kit/mcp dev",
     "start:mcp": "pnpm --filter @manta-action-kit/mcp start",
     "compile": "pnpm -r compile",
-    "test": "pnpm --filter @manta-action-kit/extension test",
+    "test": "pnpm -r --no-bail test",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "lint:style": "stylelint \"packages/**/*.css\"",

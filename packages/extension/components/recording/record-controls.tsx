@@ -82,6 +82,7 @@ export function RecordControls({
               className="hover:border-(--ant-color-border)!"
               icon={<RecordIcon className="text-(--ant-color-error)!" />}
               onClick={start}
+              data-testid="record-start-menu"
             />
           </Tooltip>
         ) : (
@@ -93,6 +94,7 @@ export function RecordControls({
                 className="hover:border-(--ant-color-border)!"
                 icon={state.paused ? <RecordIcon className="text-(--ant-color-error)!" /> : <PauseIcon />}
                 onClick={togglePause}
+                data-testid="record-pause-menu"
               />
             </Tooltip>
             <Tooltip title={t("recording.stopAndSave")}>
@@ -104,6 +106,7 @@ export function RecordControls({
                 className="bg-(--ant-color-error-bg)!"
                 icon={<StopIcon />}
                 onClick={stop}
+                data-testid="record-stop-menu"
               />
             </Tooltip>
           </>
@@ -117,6 +120,7 @@ export function RecordControls({
       <Button
         type="primary"
         onClick={start}
+        data-testid="record-start"
         // `!` required: antd's unlayered `.ant-btn-icon > svg { color: inherit }`
         // beats any layered (Tailwind) utility — only an important one wins.
         icon={<RecordIcon className="text-(--ant-color-error)!" />}
@@ -150,6 +154,7 @@ export function RecordControls({
           className="hover:border-(--ant-color-border)!"
           icon={state.paused ? <RecordIcon className="text-(--ant-color-error)!" /> : <PauseIcon />}
           onClick={togglePause}
+          data-testid="record-pause"
         />
         {/* Keep the light-red fill constant (antd would only show it on hover). */}
         <Button
@@ -157,6 +162,7 @@ export function RecordControls({
           className="bg-(--ant-color-error-bg)!"
           icon={<StopIcon />}
           onClick={stop}
+          data-testid="record-stop"
         />
       </div>
     </div>

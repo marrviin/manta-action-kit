@@ -29,6 +29,13 @@ export const FULLPAGE_STITCH = "FULLPAGE_STITCH";
 export const FULLPAGE_FX = "FULLPAGE_FX";
 
 /**
+ * Popup-driven camera fx for the visible-area shot (lib/screenshot/
+ * focus-fx.ts): background → content script via chrome.tabs.sendMessage, so
+ * it lives here with the other bare message-type consts.
+ */
+export const PLAY_SCREENSHOT_FX = "PLAY_SCREENSHOT_FX";
+
+/**
  * Marks the fx overlay's root in the page DOM: the capture's page
  * neutralization (stitch-page.ts) must never hide/unstick it — it is
  * position:fixed by design, and the background hides it around captures

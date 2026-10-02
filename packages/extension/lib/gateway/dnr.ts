@@ -31,7 +31,7 @@ function nextRuleId(): number {
 }
 
 /** Build a `name=value; name2=value2` Cookie header from the cookies for a URL. */
-function buildCookieHeader(cookies: chrome.cookies.Cookie[]): string {
+export function buildCookieHeader(cookies: chrome.cookies.Cookie[]): string {
   return cookies.map((c) => `${c.name}=${c.value}`).join('; ');
 }
 
@@ -41,7 +41,7 @@ function buildCookieHeader(cookies: chrome.cookies.Cookie[]): string {
  * silently ignored — but fetch's `referrer` option is allowed. Only accept a
  * well-formed http(s) URL; anything else is dropped rather than throwing.
  */
-function splitReferrer(headers: Record<string, string> = {}): {
+export function splitReferrer(headers: Record<string, string> = {}): {
   headers: Record<string, string>;
   referrer?: string;
 } {

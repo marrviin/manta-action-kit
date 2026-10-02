@@ -41,6 +41,8 @@ export interface Bridge {
   /** Invoke an RPC on the connected extension; rejects if none or on timeout. */
   call(method: RpcMethod, params: unknown, timeoutMs?: number): Promise<unknown>;
   close(): Promise<void>;
+  /** The actually bound port (resolves the ephemeral port when constructed with 0). */
+  port(): number;
 }
 
 /** Monotonic id generator for correlating requests with results. */
@@ -297,5 +299,6 @@ export function startBridge(port: number, token: string | undefined, host = '127
     whenReady: () => ready,
     call,
     close,
+    port: () => (wss.address() as { port: number } | null)?.port ?? port,
   };
 }

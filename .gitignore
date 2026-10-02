@@ -8,6 +8,13 @@ dist/
 .wxt/
 *.tsbuildinfo
 
+# E2E artifacts (Playwright)
+test-results/
+playwright-report/
+
+# Coverage HTML report
+coverage/
+
 # Logs
 logs/
 *.log

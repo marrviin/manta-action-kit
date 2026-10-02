@@ -1,6 +1,7 @@
 import { FP_OVERLAY_ATTR } from "./stitch-protocol";
 
-export const PLAY_SCREENSHOT_FX = "PLAY_SCREENSHOT_FX";
+import { PLAY_SCREENSHOT_FX } from "@/lib/screenshot/stitch-protocol";
+export { PLAY_SCREENSHOT_FX };
 
 /** The shutter iris color — classic black, always. */
 export const SHUTTER_COLOR = "#0a0a0a";

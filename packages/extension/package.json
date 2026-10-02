@@ -14,7 +14,9 @@
     "zip:firefox": "wxt zip -b firefox",
     "compile": "tsc --noEmit",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
+    "e2e": "pnpm --filter @manta-action-kit/mcp build && playwright test -c e2e/playwright.config.ts",
     "postinstall": "wxt prepare"
   },
   "dependencies": {
@@ -32,11 +34,15 @@
     "react-router-dom": "^7.18.2"
   },
   "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@playwright/test": "^1.63.0",
     "@tailwindcss/vite": "^4.3.3",
     "@types/chrome": "^0.1.30",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
+    "@vitest/coverage-v8": "^4.1.11",
     "@wxt-dev/module-react": "^1.2.2",
+    "fake-indexeddb": "^6.2.5",
     "onnxruntime-node": "^1.30.0",
     "tailwindcss": "^4.3.3",
     "typescript": "^5.7.0",

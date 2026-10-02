@@ -27,6 +27,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { createServer } from "node:net";
 import { createRequire } from "node:module";
+import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { startBridge, type Bridge } from "./bridge.js";
 import { startPeerClient, type PeerClient } from "./peer-client.js";
@@ -1499,7 +1500,29 @@ async function shutdown() {
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
 
-main().catch((err) => {
-  console.error("[manta-action-kit-mcp] fatal", err);
-  process.exit(1);
-});
+// Auto-run only when executed directly (node dist/index.js); a bare import
+// (the test suite) must get the registered tool surface WITHOUT binding ports.
+const isDirectRun =
+  !!process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isDirectRun) {
+  main().catch((err) => {
+    console.error("[manta-action-kit-mcp] fatal", err);
+    process.exit(1);
+  });
+}
+
+/** Test hook: swap the runtime bridge/peer so tool handlers can be driven in-process. */
+export const _test = {
+  server,
+  setBridge(bridge: Bridge | null) {
+    rt.role = "owner";
+    rt.bridge = bridge;
+  },
+  clear() {
+    rt.role = "peer";
+    rt.bridge = null;
+    rt.peer = null;
+    rt.proxyHttp = null;
+  },
+};
