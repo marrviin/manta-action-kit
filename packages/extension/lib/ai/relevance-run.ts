@@ -1,22 +1,43 @@
 /**
- * Background-side orchestration of the recording-relevance analysis.
+ * Background-side orchestration of the post-save laya analysis. Fired
+ * fire-and-forget from the STOP_RECORDING handler (never blocks the stop
+ * response), it runs three passes in order over one loaded model:
  *
- * Fired fire-and-forget from the STOP_RECORDING handler (never blocks the stop
- * response): load the just-saved recording's calls, classify each one against
- * the whole chain with the laya model (batched predict in the offscreen
- * runtime), and write the marks back into IndexedDB. The pure state-building /
- * verdict logic lives in relevance.ts (unit-tested); this module is the
- * extension-API glue.
+ *   0. stats dynamism    — deterministic, NO model needed (field-dynamism.ts);
+ *                          lands first so it survives a failed runtime load.
+ *   1. relevance         — per-call noise marks; the headline result. Its
+ *                          failure fails the run (status 'failed' + notify).
+ *   2. dep-confidence    — per-edge real-vs-coincidence marks (dep-confidence.ts).
+ *   3. dynamism (model)  — single-observation leaves the stats could not classify.
+ *
+ * Degradation: every pass after relevance degrades independently — a failure
+ * leaves its marks absent, which every consumer (UI, MCP tools) already reads
+ * as "unanalyzed" and renders neutrally. Refinement failures are logged, never
+ * fail the run. Pure state-building / verdict logic lives in the sibling
+ * modules (unit-tested); this file is the extension-API glue.
  */
 import {
   getCalls,
   getRecording,
   setRecordingRelevanceStatus,
   updateCallRelevances,
+  updateDepChecks,
+  updateFieldDynamism,
 } from '@/lib/db';
 import type { FieldDependency } from '@/lib/recording/types';
 import { sendMessage } from '@/lib/messaging';
 import { ensureLayaRuntime } from './laya-session';
+import {
+  buildDepStates,
+  mergeDepChecks,
+  type DepAnswers,
+} from './dep-confidence';
+import {
+  buildDynamismBatch,
+  computeDynamism,
+  mergeDynamismResults,
+  type DynamismAnswers,
+} from './field-dynamism';
 import { buildRelevanceStates, mergeVerdicts, type RelevanceAnswers } from './relevance';
 
 /** Below this many calls the chain is too small to be worth a model load. */
@@ -39,10 +60,26 @@ async function reportStatus(recordingId: string, status: RelevanceStatus): Promi
   await sendMessage('RECORDING_RELEVANCE_STATUS', { recordingId, status }).catch(() => {});
 }
 
+/** Relay one batch into the offscreen runtime; results align with `states` by index. */
+async function layaBatch(
+  states: Array<Record<string, string>>,
+  questions: Record<string, unknown>,
+): Promise<Array<Record<string, unknown>>> {
+  const res = (await sendMessage('LAYA_PREDICT_BATCH', { states, questions })) as {
+    ok: boolean;
+    results?: Array<Record<string, unknown>>;
+    __error?: string;
+  };
+  if (!res.ok || !res.results) {
+    throw new Error(res.__error || 'laya: batch predict failed');
+  }
+  return res.results;
+}
+
 /**
- * Analyze one recording's calls and persist per-call relevance marks.
- * Resolves when the marks are in IndexedDB (or throws — the caller decides how
- * to surface the failure; STOP_RECORDING logs it, this module notifies).
+ * Analyze one recording: stats dynamism, then the relevance + refinement
+ * passes. Resolves when the marks are in IndexedDB (or throws on a
+ * relevance-level failure — the caller decides how to surface it).
  */
 export async function analyzeRecordingRelevance(recordingId: string): Promise<void> {
   if (running.has(recordingId)) return;
@@ -65,29 +102,61 @@ async function runAnalysis(recordingId: string): Promise<void> {
   // Persisted + broadcast first, so the detail view shows "analyzing" through
   // the (possibly tens-of-seconds) model load instead of dead air.
   await reportStatus(recordingId, 'analyzing');
+
+  // Pass 0 — stats-only dynamism. Needs no model, so run it before touching
+  // laya: even a completely failed runtime load still leaves the recording
+  // with the cheap, deterministic half of the signal.
+  const dynamism = computeDynamism(calls);
+  if (Object.keys(dynamism.statsMarks).length > 0) {
+    await updateFieldDynamism(recordingId, dynamism.statsMarks).catch((err) =>
+      console.error('[relevance] stats dynamism write failed', err),
+    );
+  }
+
+  // Pass 1 — relevance. Its failure is the run's failure (existing semantics).
   try {
     await ensureLayaRuntime();
     const { states, callIds, questions } = buildRelevanceStates(calls);
-    // Relay into the offscreen runtime (same path as LAYA_PREDICT). Batched:
-    // one shared forward pass per chunk instead of one pass per call.
-    const res = (await sendMessage('LAYA_PREDICT_BATCH', { states, questions })) as {
-      ok: boolean;
-      results?: Array<Record<string, unknown>>;
-      __error?: string;
-    };
-    if (!res.ok || !res.results) {
-      throw new Error(res.__error || 'laya: batch predict failed');
-    }
+    // Batched: one shared forward pass per chunk instead of one pass per call.
+    const results = await layaBatch(states, questions);
     const entries = mergeVerdicts(
       calls,
       recording.deps as FieldDependency[] | undefined,
-      res.results as Array<RelevanceAnswers | null>,
+      results as Array<RelevanceAnswers | null>,
     );
     await updateCallRelevances(recordingId, entries);
   } catch (err) {
     await reportStatus(recordingId, 'failed');
     notifyRelevanceFailed();
     throw err;
+  }
+
+  // Pass 2 — dep-confidence. Degraded by design: a failure leaves edges
+  // without depCheck, which UI/MCP render as unanalyzed (neutral).
+  if (recording.deps?.length) {
+    try {
+      const { states, edges, questions } = buildDepStates(calls, recording.deps);
+      if (states.length > 0) {
+        const results = (await layaBatch(states, questions)) as Array<DepAnswers | null>;
+        const entries = mergeDepChecks(edges, results);
+        if (entries.length > 0) await updateDepChecks(recordingId, entries);
+      }
+    } catch (err) {
+      console.error('[relevance] dep-confidence pass failed', err);
+    }
+  }
+
+  // Pass 3 — dynamism for the single-observation leaves. Stats marks are
+  // already persisted (pass 0); a failure here just leaves those leaves
+  // without a model mark.
+  if (dynamism.queue.length > 0) {
+    try {
+      const { states, leaves, questions } = buildDynamismBatch(dynamism.queue);
+      const results = (await layaBatch(states, questions)) as Array<DynamismAnswers | null>;
+      await updateFieldDynamism(recordingId, mergeDynamismResults(leaves, results));
+    } catch (err) {
+      console.error('[relevance] field-dynamism pass failed', err);
+    }
   }
 
   // Tell any open detail view to re-read its calls. No listener (detail closed)

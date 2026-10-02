@@ -27,7 +27,13 @@
  * No third-party dependency — the native IndexedDB API is enough for our access
  * patterns (bulk insert on save, read-by-recording on detail, delete cascade).
  */
-import type { ApiCall, CallRelevance, Recording } from "./recording/types";
+import type {
+  ApiCall,
+  CallRelevance,
+  DepCheck,
+  FieldDynamism,
+  Recording,
+} from "./recording/types";
 import type { GatewayLog, GatewayProxyRule } from "./gateway/types";
 import type { Action } from "./action/types";
 import type { GifDraft, GifDraftMeta } from "./gif-recording/types";
@@ -393,6 +399,69 @@ export async function updateCallRelevances(
         recording.relevanceStatusAt = Date.now();
         t.objectStore(STORE_RECORDINGS).put(recording);
       }
+    };
+  });
+}
+
+/**
+ * Persist laya dep-confidence marks onto a recording's stored dependencies in
+ * one transaction. Edges not listed are left untouched; confirmed/manual edges
+ * are never modified (the model has no say over them). Does not touch the
+ * relevance lifecycle — this is a refinement of the flow view, not the
+ * headline analysis.
+ */
+export async function updateDepChecks(
+  recordingId: string,
+  entries: Array<{ depId: string; depCheck: DepCheck }>,
+): Promise<void> {
+  const db = await openDb();
+  await new Promise<void>((resolve, reject) => {
+    const t = tx(db, [STORE_RECORDINGS], "readwrite");
+    t.oncomplete = () => resolve();
+    t.onerror = () => reject(t.error);
+    t.onabort = () => reject(t.error);
+    const rec = t.objectStore(STORE_RECORDINGS).get(recordingId);
+    rec.onsuccess = () => {
+      const recording = rec.result as Recording | undefined;
+      if (!recording?.deps) return;
+      const byId = new Map(entries.map((e) => [e.depId, e.depCheck]));
+      for (const dep of recording.deps) {
+        const check = byId.get(dep.id);
+        if (check && dep.origin === "inferred") dep.depCheck = check;
+      }
+      t.objectStore(STORE_RECORDINGS).put(recording);
+    };
+  });
+}
+
+/**
+ * Merge laya field-dynamism marks into a recording's `fieldDynamism`
+ * leaf-level: entries overwrite their (endpointKey, leafPath) cell, all other
+ * cells (including past model marks this run did not refresh) are preserved.
+ * Does not touch the relevance lifecycle.
+ */
+export async function updateFieldDynamism(
+  recordingId: string,
+  marks: Record<string, Record<string, FieldDynamism>>,
+): Promise<void> {
+  const db = await openDb();
+  await new Promise<void>((resolve, reject) => {
+    const t = tx(db, [STORE_RECORDINGS], "readwrite");
+    t.oncomplete = () => resolve();
+    t.onerror = () => reject(t.error);
+    t.onabort = () => reject(t.error);
+    const rec = t.objectStore(STORE_RECORDINGS).get(recordingId);
+    rec.onsuccess = () => {
+      const recording = rec.result as Recording | undefined;
+      if (!recording) return;
+      const merged: NonNullable<Recording["fieldDynamism"]> = {
+        ...recording.fieldDynamism,
+      };
+      for (const [endpointKey, leaves] of Object.entries(marks)) {
+        merged[endpointKey] = { ...merged[endpointKey], ...leaves };
+      }
+      recording.fieldDynamism = merged;
+      t.objectStore(STORE_RECORDINGS).put(recording);
     };
   });
 }

@@ -153,6 +153,7 @@ export const zhCN: Messages = {
     response: "响应",
     consumes: "{{target}} ← 步骤 #{{fromSeq}} 的 {{fromField}}",
     produces: "响应 {{fromPath}} → 步骤 #{{toSeq}} 的{{target}}",
+    depUnlikely: "疑似巧合",
   },
   detail: {
     titleWithCount: "{{name}}（{{count}}个调用）",
@@ -199,6 +200,7 @@ export const zhCN: Messages = {
     items: "元素",
     inputsFrom: "值来源",
     inputFromLabel: "{{to}} ← {{from}} 的 {{fromPath}}",
+    inputUnlikely: "疑似巧合",
   },
   gateway: {
     tabLogs: "审计日志",

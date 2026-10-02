@@ -80,6 +80,19 @@ export type CapturedCall = Omit<ApiCall, 'id' | 'recordingId' | 'seq'>;
 export type DependencyLocation = 'url' | 'query' | 'body' | 'header';
 
 /**
+ * laya 对一条推断依赖边真实性的判定。只有 origin === 'inferred' 的边会被打标
+ * （confirmed/manual 边是 ground truth，模型无权推翻）；无此字段 = 未分析。
+ */
+export interface DepCheck {
+  /** likely=真实数据依赖 / unlikely=疑似巧合（时间戳、nonce 等撞车值） / uncertain。 */
+  verdict: 'likely' | 'unlikely' | 'uncertain';
+  /** 模型 answer_confidence (0..1)。 */
+  confidence: number;
+  /** epoch ms，本轮分析时间。 */
+  analyzedAt: number;
+}
+
+/**
  * One field-level data dependency between two calls in a recording's flow:
  * the value produced at `fromSeq` (JSON path `fromPath` in its response) reappears
  * as an input at `toSeq` (in `toLocation`, at `toPath`). Captured so an agent can
@@ -109,10 +122,28 @@ export interface FieldDependency {
    * user may confirm/remove); 'confirmed' = user-approved; 'manual' = user-added.
    */
   origin: 'inferred' | 'confirmed' | 'manual';
+  /** laya 真实性判定（lib/ai/dep-confidence.ts）；仅 inferred 边会有。 */
+  depCheck?: DepCheck;
 }
 
 /** The primitive JSON kinds a SchemaNode can describe (arrays/objects nest). */
 export type SchemaKind = 'string' | 'number' | 'boolean' | 'null' | 'array' | 'object';
+
+/**
+ * laya 对一个请求字段的动态性判定：同一路径的值在回放（新会话、明天）时是否会变。
+ * `source: 'stats'` 是多观测的确定性事实（同一 endpoint 多次调用值全不同/全相同），
+ * `'model'` 是单观测时 laya 的语义判断——下游采信 stats 优先于 model。
+ */
+export interface FieldDynamism {
+  /** varies=每次运行会变（该参数化） / stable=可写死 / uncertain。 */
+  verdict: 'varies' | 'stable' | 'uncertain';
+  /** 'stats' = 确定性统计判定（模型未参与）；'model' = laya 判定。 */
+  source: 'stats' | 'model';
+  /** 置信度 (0..1)。 */
+  confidence: number;
+  /** epoch ms，本轮分析时间。 */
+  analyzedAt: number;
+}
 
 /**
  * A structural description of a JSON value, inferred from one or more concrete
@@ -139,6 +170,10 @@ export interface SchemaNode {
    * set for primitive kinds; omitted for object/array.
    */
   example?: string;
+  /**
+   * laya 的字段动态性判定（lib/ai/field-dynamism.ts），只挂请求侧叶子；无此字段 = 未分析。
+   */
+  dynamism?: FieldDynamism;
 }
 
 /**
@@ -175,6 +210,10 @@ export interface EndpointSummary {
    * redacted like the schemas) — just the source location.
    */
   inputsFrom?: EndpointInput[];
+  /**
+   * laya 对各 query 参数的动态性判定（key = 参数名），见 FieldDynamism。无此字段 = 未分析。
+   */
+  queryDynamism?: Record<string, FieldDynamism>;
 }
 
 /**
@@ -191,6 +230,8 @@ export interface EndpointInput {
   fromEndpointKey: string;
   /** JSON path into that upstream endpoint's response body, e.g. "data[].id". */
   fromPath: string;
+  /** laya 真实性判定（透传自源依赖边，仅 inferred 边会有）。 */
+  depCheck?: DepCheck;
 }
 
 /** A saved recording's metadata (list view). Calls live in a separate store. */
@@ -211,6 +252,13 @@ export interface Recording {
    * Auto-inferred on save; the user may confirm/edit them in the detail view.
    */
   deps?: FieldDependency[];
+  /**
+   * laya 的请求字段动态性判定（lib/ai/field-dynamism.ts），按 endpoint key → 叶子
+   * 路径（"body.<json path>" / "query.<key>"）两级索引。EndpointSummary/schema 是
+   * 读取时从 calls 现算的，所以判定结果存这里（不落 per-call），读取时经
+   * attachDynamism 挂回。叶子无标记 = 未分析（stats 判定不了的且模型没跑/失败）。
+   */
+  fieldDynamism?: Record<string, Record<string, FieldDynamism>>;
   /**
    * Agent-authored natural-language description of what this recording captures
    * (the business flow / intent behind the calls). NOT user-editable in the UI —

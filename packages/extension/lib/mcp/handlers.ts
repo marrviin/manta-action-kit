@@ -36,6 +36,7 @@ import {
   aggregateEndpoints,
   attachDependencies,
 } from "@/lib/recording/aggregate";
+import { attachDynamism } from "@/lib/ai/field-dynamism";
 import type { GatewayRequest } from "@/lib/gateway/types";
 import { runAction } from "@/lib/action/replay";
 import {
@@ -410,10 +411,11 @@ export async function handleRpc<M extends RpcMethod>(
       // get_flow: prefer stored deps, fall back to on-the-fly inference for pre-flow
       // recordings (deps === undefined).
       const deps = recording.deps ?? inferDependencies(calls);
-      const endpoints = attachDependencies(
-        aggregateEndpoints(calls),
-        calls,
-        deps,
+      // Lay the field-dynamism marks (which fields would change on replay) onto
+      // the request schemas / query params. Absent marks read as unanalyzed.
+      const endpoints = attachDynamism(
+        attachDependencies(aggregateEndpoints(calls), calls, deps),
+        recording.fieldDynamism,
       );
       return { endpoints } as RpcMap[M]["result"];
     }

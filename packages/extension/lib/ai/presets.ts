@@ -214,3 +214,43 @@ export function relevanceQuestions(): Record<string, unknown> {
     },
   };
 }
+
+/**
+ * Questions for the dep-confidence pass (lib/ai/dep-confidence.ts): one inferred
+ * dependency edge per state — an earlier response produced a value that the same
+ * literal value later reappearing in a request suggests is a data dependency.
+ * Decide whether the edge is real or a coincidental match. English-only — the
+ * bundled checkpoint is laya-en.
+ */
+export function depConfidenceQuestions(): Record<string, unknown> {
+  return {
+    is_real_dependency: {
+      type: "noul",
+      instructions:
+        "An earlier API response produced the value shown in `value`, and the same literal value reappears inside the later request (see `from` and `to`). Given the two field paths and the value's shape, does the earlier response actually PRODUCE the value the later request CONSUMES?",
+      criteria: {
+        true: "a real data flow: the field paths and the value's shape fit a dependency — an entity id, an issued token or a cursor handed from one step to the next",
+        false: "a coincidence: the value looks like a timestamp, a nonce or random id, or a generic constant that merely matches by chance",
+      },
+    },
+  };
+}
+
+/**
+ * Questions for the field-dynamism pass (lib/ai/field-dynamism.ts): one
+ * single-observation request field per state. Fields observed two or more times
+ * are classified by deterministic statistics and never reach the model. English-only.
+ */
+export function dynamismQuestions(): Record<string, unknown> {
+  return {
+    stable_across_runs: {
+      type: "noul",
+      instructions:
+        "The request field `field` of `endpoint` was observed once, with the value shown in `samples`. If the same request were replayed tomorrow in a fresh browser session, would this field hold the identical value?",
+      criteria: {
+        true: "a stable value: a fixed id, version, currency, enum or other configuration that does not depend on the session or the wall clock",
+        false: "a volatile value: a session token, timestamp, nonce, auto-generated id or anything minted per session or per request",
+      },
+    },
+  };
+}

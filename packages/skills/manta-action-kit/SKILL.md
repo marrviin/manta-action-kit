@@ -156,6 +156,24 @@ carry `relevance.verdict === 'irrelevant'`, that call is background noise
 an action. No `relevance` field means the recording has not been analyzed; treat
 every call as potentially relevant then.
 
+**Dep-confidence marks**: inferred field dependencies in `get_flow` deps (and
+`get_endpoints` `inputsFrom`) can carry a `depCheck` mark
+(`likely` / `unlikely` / `uncertain`). `depCheck.verdict === 'unlikely'` means
+the local model considers the edge a coincidental value match (a timestamp or
+nonce that happened to collide) rather than a real data flow — do not build
+action parameterization on it. Absent `depCheck` = not analyzed; treat the edge
+as the heuristic inference it is.
+
+**Field dynamism marks**: `get_endpoints` request-schema leaves may carry a
+`dynamism` mark and query params appear in `queryDynamism`
+(`verdict: 'varies' | 'stable' | 'uncertain'`, `source: 'stats' | 'model'`).
+`varies` = the value would differ on a replay in a fresh session (a timestamp,
+session token, auto-generated id) — make it an action parameter, never a
+hardcoded literal. `stable` = safe to hardcode. `source: 'stats'` is a
+multi-observation fact and outranks `'model'` (a single-observation judgment).
+No mark = not analyzed (or the field was seen only once and the model pass
+failed) — judge from the value shape yourself then.
+
 ### Element captures (UI reference / visual diffing)
 
 The user can capture any on-page element from the extension popup (click or box-select; Alt+Shift+I

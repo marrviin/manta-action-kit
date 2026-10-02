@@ -165,6 +165,7 @@ export const en = {
     consumes: "{{target}} ← step #{{fromSeq}} {{fromField}}",
     // "response {{fromPath}} → step #{{toSeq}} {{target}}"
     produces: "response {{fromPath}} → step #{{toSeq}} {{target}}",
+    depUnlikely: "likely coincidental",
   },
   detail: {
     titleWithCount: "{{name}} ({{count}} calls)",
@@ -213,6 +214,7 @@ export const en = {
     items: "items",
     inputsFrom: "Value sources",
     inputFromLabel: "{{to}} ← {{from}} {{fromPath}}",
+    inputUnlikely: "likely coincidental",
   },
   gateway: {
     tabLogs: "Audit Logs",

@@ -53,30 +53,60 @@ function FlowAnnotations({
   const consumes = deps.filter((d) => d.toSeq === call.seq);
   const produces = deps.filter((d) => d.fromSeq === call.seq);
   if (consumes.length === 0 && produces.length === 0) return null;
+
+  // A laya-marked "likely coincidental" edge dims to gray — advisory like the
+  // relevance marks, not an error; the edge stays visible and confirmable.
+  const depTone = (d: FieldDependency) =>
+    d.depCheck?.verdict === "unlikely"
+      ? {
+          color: "default" as const,
+          className: cn("w-fit m-0! text-[10px]! font-normal!", "opacity-60"),
+          suffix: ` · ${t("flow.depUnlikely")}`,
+        }
+      : {
+          color: null,
+          className: "w-fit m-0! text-[10px]! font-normal!",
+          suffix: "",
+        };
+
   return (
     <div className="flex flex-col gap-1">
-      {consumes.map((d) => (
-        <Tooltip key={d.id} title={t("flow.valueTooltip", { value: d.value })}>
-          <Tag color="gold" className="w-fit m-0! text-[10px]! font-normal!">
-            {t("flow.consumes", {
-              target: `${locationLabel(d.toLocation, t)}${d.toPath ? ` · ${d.toPath}` : ""}`,
-              fromSeq: d.fromSeq,
-              fromField: d.fromPath || t("flow.response"),
-            })}
-          </Tag>
-        </Tooltip>
-      ))}
-      {produces.map((d) => (
-        <Tooltip key={d.id} title={t("flow.valueTooltip", { value: d.value })}>
-          <Tag color="blue" className="w-fit m-0! text-[10px]! font-normal!">
-            {t("flow.produces", {
-              fromPath: d.fromPath || "",
-              toSeq: d.toSeq,
-              target: locationLabel(d.toLocation, t),
-            })}
-          </Tag>
-        </Tooltip>
-      ))}
+      {consumes.map((d) => {
+        const tone = depTone(d);
+        return (
+          <Tooltip
+            key={d.id}
+            title={`${t("flow.valueTooltip", { value: d.value })}${tone.suffix ? ` — ${tone.suffix.replace(" · ", "")}` : ""}`}
+          >
+            <Tag color={tone.color ?? "gold"} className={tone.className}>
+              {t("flow.consumes", {
+                target: `${locationLabel(d.toLocation, t)}${d.toPath ? ` · ${d.toPath}` : ""}`,
+                fromSeq: d.fromSeq,
+                fromField: d.fromPath || t("flow.response"),
+              })}
+              {tone.suffix}
+            </Tag>
+          </Tooltip>
+        );
+      })}
+      {produces.map((d) => {
+        const tone = depTone(d);
+        return (
+          <Tooltip
+            key={d.id}
+            title={`${t("flow.valueTooltip", { value: d.value })}${tone.suffix ? ` — ${tone.suffix.replace(" · ", "")}` : ""}`}
+          >
+            <Tag color={tone.color ?? "blue"} className={tone.className}>
+              {t("flow.produces", {
+                fromPath: d.fromPath || "",
+                toSeq: d.toSeq,
+                target: locationLabel(d.toLocation, t),
+              })}
+              {tone.suffix}
+            </Tag>
+          </Tooltip>
+        );
+      })}
     </div>
   );
 }
