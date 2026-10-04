@@ -126,12 +126,11 @@ export default function PopupApp({
       active: true,
       currentWindow: true,
     });
-    if (!tab?.id || !tab.url) {
+    // Only an active tab is required: browser-internal pages (chrome:// …)
+    // often hide `tab.url` from us, but they ARE capturable — the background
+    // falls back to CDP there. Real failures surface as a system notification.
+    if (!tab?.id) {
       message.warning(t("popup.noActiveTab"));
-      return;
-    }
-    if (!isCapturableUrl(tab.url)) {
-      message.warning(t("popup.screenshotUnsupportedPage"));
       return;
     }
     void sendMessage("CAPTURE_SCREENSHOT", { mode }).catch(() => {

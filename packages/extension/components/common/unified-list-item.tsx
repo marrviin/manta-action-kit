@@ -139,7 +139,7 @@ export function UnifiedListItem({
             {status}
           </Space>
           {timestamp != null && (
-            <Text type="secondary" className="flex-none text-[10px]!">
+            <Text type="secondary" className="flex-none text-[12px]!">
               {formatDateTimeShort(timestamp)}
             </Text>
           )}

@@ -1040,8 +1040,9 @@ server.registerTool(
       "1568px JPEG when the raw PNG is large) plus metadata — the full-resolution original " +
       "is saved to the extension's screenshot history and can be reopened by the user from " +
       "the side panel's capture tab. Runs silently: no preview tab, no animation, no " +
-      "notification. Caveats: pages that block automation or are not capturable (chrome://, " +
-      "Web Store) fail; if DevTools is attached to the tab the capture reports " +
+      "notification. Caveats: browser-internal pages (chrome://) are captured via a CDP " +
+      "fallback, but Chrome-protected targets (Web Store etc.) refuse and report " +
+      "screenshot:protected-page; if DevTools is attached to the tab the capture reports " +
       "screenshot:debugger-conflict — ask the user to close DevTools; on the CDP fallback " +
       "path Chrome's 'being debugged' infobar may appear in the shot and in any tab recording. " +
       "file:// tabs fail unless the user enabled 'Allow access to file URLs' for the extension.",

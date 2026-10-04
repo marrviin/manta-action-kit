@@ -33,7 +33,6 @@ export const zhCN: Messages = {
     screenshot: "截图",
     screenshotViewport: "窗口",
     screenshotFullPage: "整页",
-    screenshotUnsupportedPage: "当前页面不支持截图，请在普通网页中使用",
     screenshotDebuggerConflict: "截图失败：请先关闭该标签页的 DevTools 再重试",
     screenshotTooLarge:
       "页面过长，整页截图超出预览上限——请改用「窗口」模式或缩短页面后重试",

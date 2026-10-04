@@ -76,6 +76,15 @@ export const settings = {
   ),
 
   /**
+   * Last-known version of the companion @manta-action-kit/mcp npm package.
+   * Cached so the settings page's about card renders the version tag
+   * immediately; revalidated against the registry in the background on each
+   * mount (see components/settings/settings-feature.tsx). Empty string =
+   * never fetched / registry unreachable — the tag stays hidden.
+   */
+  mcpVersion: storage.defineItem<string>("sync:mcpVersion", { fallback: "" }),
+
+  /**
    * Sandbox allowlist domains. A gateway call to one of these hosts skips the
    * confirmation popup entirely (auto-allow). User-managed only — there is no
    * MCP tool that can read or mutate it. `local` area: contains browsing hints,

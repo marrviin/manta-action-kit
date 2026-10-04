@@ -62,6 +62,10 @@
     "message": "Close DevTools on this tab and try again",
     "description": "System notification body when another debugger (usually DevTools) is attached to the tab."
   },
+  "notifyScreenshotProtectedMessage": {
+    "message": "Chrome protects this page, so it cannot be captured (e.g. the Web Store)",
+    "description": "System notification body when Chrome refuses to attach the debugger to a protected page (screenshot:protected-page)."
+  },
   "notifyScreenshotFailedMessage": {
     "message": "This page could not be captured as a screenshot",
     "description": "System notification body for a generic screenshot failure."

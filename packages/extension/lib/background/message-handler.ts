@@ -51,8 +51,15 @@ import { readCaptureFx, screenshotPreview } from "@/lib/storage";
 function notifyScreenshotFailed(err: unknown) {
   const message = err instanceof Error ? err.message : String(err);
   // "screenshot:debugger-conflict" — DevTools (or another client) is attached
-  // to the tab; the fix is user-actionable, so call it out specifically.
+  // to the tab; "screenshot:protected-page" — Chrome itself refuses capture
+  // there. Both fixes are user-comprehensible, so call them out specifically.
   const conflict = message.includes("debugger-conflict");
+  const protectedPage = message.includes("protected-page");
+  const key = conflict
+    ? "notifyScreenshotConflictMessage"
+    : protectedPage
+      ? "notifyScreenshotProtectedMessage"
+      : "notifyScreenshotFailedMessage";
   chrome.notifications
     .create({
       type: "basic",
@@ -61,14 +68,12 @@ function notifyScreenshotFailed(err: unknown) {
         browser.i18n.getMessage("notifyScreenshotFailedTitle") ||
         "Screenshot failed",
       message:
-        browser.i18n.getMessage(
-          conflict
-            ? "notifyScreenshotConflictMessage"
-            : "notifyScreenshotFailedMessage",
-        ) ||
+        browser.i18n.getMessage(key) ||
         (conflict
           ? "Close DevTools on this tab and try again"
-          : "This page could not be captured"),
+          : protectedPage
+            ? "Chrome protects this page, so it cannot be captured"
+            : "This page could not be captured"),
     })
     .catch((e) => console.error("[background] notification failed", e));
 }

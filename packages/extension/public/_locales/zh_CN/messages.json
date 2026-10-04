@@ -62,6 +62,10 @@
     "message": "请关闭此标签页上的 DevTools 后重试",
     "description": "System notification body when another debugger (usually DevTools) is attached to the tab."
   },
+  "notifyScreenshotProtectedMessage": {
+    "message": "Chrome 保护了此页面，无法截图（如 Chrome 网上应用店）",
+    "description": "System notification body when Chrome refuses to attach the debugger to a protected page (screenshot:protected-page)."
+  },
   "notifyScreenshotFailedMessage": {
     "message": "当前页面无法完成截图",
     "description": "System notification body for a generic screenshot failure."

@@ -179,7 +179,6 @@ export function LayaCard() {
           </Text>
         </div>
         <Button
-          size="small"
           loading={status === 'loading'}
           disabled={status === 'ready'}
           onClick={load}

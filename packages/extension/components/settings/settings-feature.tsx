@@ -62,8 +62,9 @@ export function SettingsFeature() {
   const [testing, setTesting] = useState(false);
   const [devMode, setDevMode] = useStorage(settings.devMode);
   const [captureFx, setCaptureFx] = useStorage(settings.captureFx);
-  // Companion npm package version, resolved from the registry (null = hidden).
-  const [mcpVersion, setMcpVersion] = useState<string | null>(null);
+  // Companion npm package version: the cached value renders immediately, then
+  // gets revalidated against the registry in the background ("" = hidden).
+  const [mcpVersion, setMcpVersion] = useStorage(settings.mcpVersion);
   // Easter-egg state: consecutive taps on the version tag (not persisted).
   const tapRef = useRef({ count: 0, timer: 0 });
 
@@ -71,9 +72,9 @@ export function SettingsFeature() {
     fetch('https://registry.npmjs.org/@manta-action-kit/mcp/latest')
       .then((res) => res.json())
       .then((data) => {
-        if (typeof data?.version === 'string') setMcpVersion(data.version);
+        if (typeof data?.version === 'string') void setMcpVersion(data.version);
       })
-      .catch(() => {}); // offline / registry unreachable — just hide the tag
+      .catch(() => {}); // offline / registry unreachable — keep showing the cache
   }, []);
 
   const options = SUPPORTED_LOCALES.map((loc) => ({

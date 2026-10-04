@@ -201,8 +201,9 @@ Pay attention to custom properties and pseudo-element rules, which are emitted i
 ### Page capture (agent-driven: screenshots / live element serialization / GIF recording)
 
 These tools act on the **active tab** of the user's Chrome window and run silently (no preview tab,
-no success notifications — outcomes come back in the tool result). `chrome://` pages and similar
-cannot be captured or injected.
+no success notifications — outcomes come back in the tool result). Element capture and GIF recording
+cannot run on `chrome://` pages, but screenshots CAN (they fall back to a CDP render there) — only
+Chrome-protected targets such as the Web Store still refuse (`screenshot:protected-page`).
 
 | User says                                                       | Tool                     | Notes                                                                        |
 | --------------------------------------------------------------- | ------------------------ | ---------------------------------------------------------------------------- |

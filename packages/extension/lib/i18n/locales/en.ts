@@ -37,8 +37,6 @@ export const en = {
     screenshot: "Screenshot",
     screenshotViewport: "Window",
     screenshotFullPage: "Full page",
-    screenshotUnsupportedPage:
-      "This page cannot be captured; use a regular web page",
     screenshotDebuggerConflict:
       "Capture failed: close DevTools for this tab and retry",
     screenshotTooLarge:

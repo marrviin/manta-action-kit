@@ -8,8 +8,9 @@ export type ScreenshotMode = 'visible' | 'fullPage';
  * i18n keys.
  */
 export type ScreenshotErrorCode =
-  | 'unsupported-page' // chrome://, Web Store, or a non-http(s) target
+  | 'unsupported-page' // no active tab (page type itself no longer blocks — chrome:// falls back to CDP)
   | 'debugger-conflict' // DevTools (or another client) is already attached
+  | 'protected-page' // Chrome-protected target (Web Store etc.) refuses debugger attach
   | 'preview-too-large' // capture OK, but too big for the session-storage handoff
   | 'capture-failed'; // captureVisibleTab / CDP capture failed
 

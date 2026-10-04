@@ -77,7 +77,7 @@ function CapturesPanel({ history }: { history: History }) {
   if (!history.captures.length)
     return <PanelEmpty text={t("capture.emptyCaptures")} />;
   return (
-    <div className="flex-1 min-h-0 overflow-auto">
+    <div className="flex-1 min-h-0 overflow-auto pb-14">
       {history.captures.map((c) => (
         <CaptureRow
           key={c.id}
@@ -145,7 +145,7 @@ function ScreenshotsPanel({ history }: { history: History }) {
   if (!history.screenshots.length)
     return <PanelEmpty text={t("capture.emptyScreenshots")} />;
   return (
-    <div className="flex-1 min-h-0 overflow-auto">
+    <div className="flex-1 min-h-0 overflow-auto pb-14">
       {history.screenshots.map((s) => (
         <UnifiedListItem
           key={s.id}
@@ -173,7 +173,7 @@ function GifPanel({ history }: { history: History }) {
   if (!history.gifs.length)
     return <PanelEmpty text={t("capture.emptyGif")} />;
   return (
-    <div className="flex-1 min-h-0 overflow-auto">
+    <div className="flex-1 min-h-0 overflow-auto pb-14">
       {history.gifs.map((g) => (
         <UnifiedListItem
           key={g.id}
