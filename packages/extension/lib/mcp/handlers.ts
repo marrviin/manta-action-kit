@@ -394,6 +394,11 @@ export async function handleRpc<M extends RpcMethod>(
             // laya relevance mark, when the recording has been analyzed:
             // 'irrelevant' calls are background noise the agent can skip.
             ...(c.relevance ? { relevance: c.relevance } : {}),
+            // The user interaction that likely triggered this step (nearest
+            // within ~2s before it started) — readable intent for the agent.
+            ...(c.precedingInteraction
+              ? { precedingInteraction: c.precedingInteraction }
+              : {}),
           })),
         deps,
       };

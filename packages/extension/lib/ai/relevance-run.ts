@@ -5,9 +5,11 @@
  *
  *   0. stats dynamism    — deterministic, NO model needed (field-dynamism.ts);
  *                          lands first so it survives a failed runtime load.
- *   1. relevance         — per-call noise marks; the headline result. Its
+ *   1. dep-confidence    — per-edge real-vs-coincidence marks (dep-confidence.ts);
+ *                          runs BEFORE relevance so mergeVerdicts can consult
+ *                          the edge verdicts when applying data-flow anchors.
+ *   2. relevance         — per-call noise marks; the headline result. Its
  *                          failure fails the run (status 'failed' + notify).
- *   2. dep-confidence    — per-edge real-vs-coincidence marks (dep-confidence.ts).
  *   3. dynamism (model)  — single-observation leaves the stats could not classify.
  *
  * Degradation: every pass after relevance degrades independently — a failure
@@ -113,10 +115,44 @@ async function runAnalysis(recordingId: string): Promise<void> {
     );
   }
 
-  // Pass 1 — relevance. Its failure is the run's failure (existing semantics).
+  // The runtime load gates the model passes. Its failure is the run's failure
+  // (the headline relevance result can never exist without it).
   try {
     await ensureLayaRuntime();
-    const { states, callIds, questions } = buildRelevanceStates(calls);
+  } catch (err) {
+    await reportStatus(recordingId, 'failed');
+    notifyRelevanceFailed();
+    throw err;
+  }
+
+  // Pass 1 — dep-confidence. Runs BEFORE relevance on purpose: mergeVerdicts
+  // consults each edge's depCheck to decide whether it may anchor its calls as
+  // 'relevant' (see mergeVerdicts), so a fresh recording needs its edge marks
+  // in place first. Degraded by design: a failure here leaves edges without
+  // depCheck — mergeVerdicts then falls back to anchoring every edge (the old,
+  // unconditional behavior), never the other way around.
+  if (recording.deps?.length) {
+    try {
+      const { states, edges, questions } = buildDepStates(calls, recording.deps);
+      if (states.length > 0) {
+        const results = (await layaBatch(states, questions)) as Array<DepAnswers | null>;
+        const entries = mergeDepChecks(edges, results);
+        if (entries.length > 0) await updateDepChecks(recordingId, entries);
+      }
+    } catch (err) {
+      console.error('[relevance] dep-confidence pass failed', err);
+    }
+  }
+
+  // Pass 2 — relevance. Its failure is the run's failure (existing semantics).
+  try {
+    // Interactions were persisted at stop, before this analysis fires — the
+    // model gets the user-intent context alongside each call (see
+    // buildRelevanceStates; absent interactions simply omit the `intent` key).
+    const { states, callIds, questions } = buildRelevanceStates(
+      calls,
+      recording.interactions,
+    );
     // Batched: one shared forward pass per chunk instead of one pass per call.
     const results = await layaBatch(states, questions);
     const entries = mergeVerdicts(
@@ -129,21 +165,6 @@ async function runAnalysis(recordingId: string): Promise<void> {
     await reportStatus(recordingId, 'failed');
     notifyRelevanceFailed();
     throw err;
-  }
-
-  // Pass 2 — dep-confidence. Degraded by design: a failure leaves edges
-  // without depCheck, which UI/MCP render as unanalyzed (neutral).
-  if (recording.deps?.length) {
-    try {
-      const { states, edges, questions } = buildDepStates(calls, recording.deps);
-      if (states.length > 0) {
-        const results = (await layaBatch(states, questions)) as Array<DepAnswers | null>;
-        const entries = mergeDepChecks(edges, results);
-        if (entries.length > 0) await updateDepChecks(recordingId, entries);
-      }
-    } catch (err) {
-      console.error('[relevance] dep-confidence pass failed', err);
-    }
   }
 
   // Pass 3 — dynamism for the single-observation leaves. Stats marks are

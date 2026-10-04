@@ -47,6 +47,13 @@ test.describe("API recording flow", () => {
         timeout: 15_000,
       });
 
+      // User-interaction capture: type via real (CDP) keyboard events and Tab
+      // away, so the browser fires its native change event on blur —
+      // programmatic fill() does not. The click on #load above is captured as
+      // a click interaction.
+      await page.locator("#name").pressSequentially("hello");
+      await page.locator("#name").press("Tab");
+
       // Pause hides the counter behind "Paused"; resume restores it.
       await panel.getByTestId("record-pause").click();
       await expect(panel.getByText(/Paused · 2/)).toBeVisible();
@@ -81,6 +88,25 @@ test.describe("API recording flow", () => {
       for (const call of calls) {
         expect(call.recordingId).toBe(recording.id);
       }
+
+      // User interactions were captured alongside the calls: the click on
+      // #load and the input change, each redacted/capped by the pipeline.
+      const interactions = recording.interactions as
+        | Array<Record<string, unknown>>
+        | undefined;
+      expect(Array.isArray(interactions)).toBe(true);
+      const click = interactions!.find((i) => i.kind === "click");
+      expect(click).toMatchObject({ kind: "click", text: "load" });
+      const change = interactions!.find((i) => i.kind === "change");
+      expect(change).toMatchObject({ kind: "change", value: "hello" });
+      // The click is linked to the call it triggered (nearest within ~2s).
+      expect(
+        calls.some(
+          (c) =>
+            (c.precedingInteraction as { text?: string } | undefined)?.text ===
+            "load",
+        ),
+      ).toBe(true);
     } finally {
       await context.close();
       await fixture.close();

@@ -22,6 +22,7 @@
 import type {
   ApiCall,
   CapturedCall,
+  CapturedInteraction,
   Recording,
   RecordingFilterRule,
   RecordingState,
@@ -29,6 +30,7 @@ import type {
 import { IDLE_RECORDING_STATE } from './types';
 import { isBlacklisted } from './filter';
 import { inferDependencies } from './infer-deps';
+import { attachPrecedingInteractions } from './interaction';
 
 /** Minimal async KV the state machine needs (satisfied by WXT storage items). */
 export interface StateStore<T> {
@@ -40,6 +42,8 @@ export interface SessionStores {
   state: StateStore<RecordingState>;
   buffer: StateStore<CapturedCall[]>;
   filterRules: StateStore<RecordingFilterRule[]>;
+  /** User-interaction buffer (same SW-sleep restore semantics as `buffer`). */
+  interactions: StateStore<CapturedInteraction[]>;
 }
 
 export interface SessionDeps extends SessionStores {
@@ -54,6 +58,29 @@ export interface SessionDeps extends SessionStores {
 export interface StopResult {
   recordingId: string | null;
   state: RecordingState;
+}
+
+/** Two interactions closer than this with the same kind+text+name are one action (double-clicks, re-fires). */
+export const INTERACTION_DEDUPE_MS = 500;
+/** Hard cap on interactions kept per recording; the oldest are dropped first. */
+export const MAX_INTERACTIONS = 300;
+
+/**
+ * Dedupe rule for interactions (pure, exported for tests): an interaction
+ * identical in kind/text/name to the PREVIOUSLY ACCEPTED one within
+ * `INTERACTION_DEDUPE_MS` is a repeat of the same action and is dropped.
+ */
+export function shouldKeepInteraction(
+  prev: CapturedInteraction | undefined,
+  next: CapturedInteraction,
+): boolean {
+  if (!prev) return true;
+  if (next.at - prev.at >= INTERACTION_DEDUPE_MS) return true;
+  return (
+    next.kind !== prev.kind ||
+    (next.text ?? '') !== (prev.text ?? '') ||
+    (next.name ?? '') !== (prev.name ?? '')
+  );
 }
 
 /**
@@ -83,6 +110,9 @@ export function isApiCall(call: CapturedCall): boolean {
 export function createSession(deps: SessionDeps) {
   /** In-memory buffer of calls for the active recording (restored after SW restarts). */
   let buffer: CapturedCall[] | null = null;
+
+  /** In-memory interaction buffer, same lifecycle as `buffer`. */
+  let interactions: CapturedInteraction[] | null = null;
 
   /** Serialized mutation queue (see module doc). */
   let queue: Promise<unknown> = Promise.resolve();
@@ -118,6 +148,29 @@ export function createSession(deps: SessionDeps) {
     );
   }
 
+  /** Restore the in-memory interaction buffer after a SW restart (same rules as `ensureBuffer`). */
+  async function ensureInteractions(): Promise<CapturedInteraction[]> {
+    if (interactions) return interactions;
+    interactions = await deps.interactions.getValue().catch(() => [] as CapturedInteraction[]);
+    return interactions;
+  }
+
+  /** Mirror the interaction buffer to storage.session (same degrade philosophy as `persistBuffer`). */
+  async function persistInteractions(): Promise<void> {
+    if (!interactions) return;
+    await deps.interactions.setValue(interactions).catch((err: unknown) =>
+      console.error('[recording] failed to persist interaction buffer', err),
+    );
+  }
+
+  /** Clear both in-memory interaction state and its session mirror. */
+  async function resetInteractions(): Promise<void> {
+    interactions = [];
+    await deps.interactions.setValue([]).catch((err: unknown) =>
+      console.error('[recording] failed to clear interaction buffer', err),
+    );
+  }
+
   async function getState(): Promise<RecordingState> {
     return deps.state.getValue();
   }
@@ -130,6 +183,7 @@ export function createSession(deps: SessionDeps) {
     return enqueue(async () => {
       buffer = [];
       await deps.buffer.setValue([]);
+      await resetInteractions();
       const state: RecordingState = {
         active: true,
         paused: false,
@@ -178,15 +232,43 @@ export function createSession(deps: SessionDeps) {
     });
   }
 
+  /**
+   * Push a captured user interaction if it belongs to the active recording tab.
+   * Same active/paused/tab filters as `push`; deduped against the previously
+   * accepted interaction; capped at MAX_INTERACTIONS (oldest dropped). Does NOT
+   * bump RecordingState.count — that counter is calls-only.
+   */
+  async function pushInteraction(
+    interaction: CapturedInteraction,
+    senderTabId: number | undefined,
+  ): Promise<number> {
+    return enqueue(async () => {
+      const state = await deps.state.getValue();
+      if (!state.active || state.paused || state.tabId == null) return 0;
+      if (senderTabId !== state.tabId) return 0;
+
+      const list = await ensureInteractions();
+      const prev = list[list.length - 1];
+      if (!shouldKeepInteraction(prev, interaction)) return list.length;
+
+      list.push(interaction);
+      while (list.length > MAX_INTERACTIONS) list.shift();
+      await persistInteractions();
+      return list.length;
+    });
+  }
+
   /** Stop recording, persist to IndexedDB, and reset state. Returns the recording id. */
   async function stop(): Promise<StopResult> {
     return enqueue(async () => {
       const state = await deps.state.getValue();
       const buf = state.active ? await ensureBuffer() : [];
+      const ints = state.active ? await ensureInteractions() : [];
 
       if (!state.active || buf.length === 0) {
         buffer = [];
         await deps.buffer.setValue([]);
+        await resetInteractions();
         await deps.state.setValue(IDLE_RECORDING_STATE);
         return { recordingId: null, state: IDLE_RECORDING_STATE };
       }
@@ -200,6 +282,10 @@ export function createSession(deps: SessionDeps) {
         seq: i,
       }));
 
+      // Link each call to the interaction that likely triggered it (nearest
+      // within the window) so UI/MCP/model consumers never re-derive it.
+      attachPrecedingInteractions(calls, ints);
+
       const recording: Recording = {
         id: recordingId,
         name: defaultName(state.origin, createdAt),
@@ -211,6 +297,9 @@ export function createSession(deps: SessionDeps) {
         // agent reading this recording gets the call chain, not just isolated calls.
         // Pure/deterministic (no LLM); the user can refine these in the detail view.
         deps: inferDependencies(calls),
+        // Keep the raw interaction timeline on the recording (Phase 2 feeds it to
+        // laya). Omit when empty so old recordings and interaction-less ones compare equal.
+        ...(ints.length > 0 ? { interactions: [...ints] } : {}),
       };
 
       // Persist BEFORE flipping state to idle: the side panel's recording list
@@ -220,12 +309,13 @@ export function createSession(deps: SessionDeps) {
       await deps.saveRecording(recording, calls);
       buffer = [];
       await deps.buffer.setValue([]);
+      await resetInteractions();
       await deps.state.setValue(IDLE_RECORDING_STATE);
       return { recordingId, state: IDLE_RECORDING_STATE };
     });
   }
 
-  return { getState, start, setPaused, push, stop };
+  return { getState, start, setPaused, push, pushInteraction, stop };
 }
 
 function defaultName(origin: string | null, at: number): string {

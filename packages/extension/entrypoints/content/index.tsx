@@ -1,4 +1,9 @@
-import { API_CALL_EVENT, type CapturedCall } from "@/lib/recording/types";
+import {
+  API_CALL_EVENT,
+  USER_INTERACTION_EVENT,
+  type CapturedCall,
+  type CapturedInteraction,
+} from "@/lib/recording/types";
 import { sendMessage } from "@/lib/messaging";
 import { initInspectorCapture } from "@/lib/inspector/capture";
 import { PLAY_SCREENSHOT_FX, playScreenshotFocusFx } from "@/lib/screenshot/focus-fx";
@@ -36,12 +41,25 @@ export default defineContentScript({
       });
     };
 
+    const onInteraction = (event: Event) => {
+      if (!(event instanceof CustomEvent)) return;
+      const interaction = event.detail as CapturedInteraction;
+      // Fire-and-forget; background ignores it when not recording this tab.
+      sendMessage("USER_INTERACTION_CAPTURED", interaction).catch(() => {
+        /* background may be asleep or not recording; safe to drop */
+      });
+    };
+
     // The hook dispatches on its own <script> element; fall back to window.
     script.addEventListener(API_CALL_EVENT, onCall);
     window.addEventListener(API_CALL_EVENT, onCall);
+    script.addEventListener(USER_INTERACTION_EVENT, onInteraction);
+    window.addEventListener(USER_INTERACTION_EVENT, onInteraction);
     ctx.onInvalidated(() => {
       script.removeEventListener(API_CALL_EVENT, onCall);
       window.removeEventListener(API_CALL_EVENT, onCall);
+      script.removeEventListener(USER_INTERACTION_EVENT, onInteraction);
+      window.removeEventListener(USER_INTERACTION_EVENT, onInteraction);
     });
 
     // Inspector capture: overlay + clipboard, toggled via popup message /

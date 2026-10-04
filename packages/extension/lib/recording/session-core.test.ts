@@ -6,10 +6,17 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   createSession,
   isApiCall,
+  MAX_INTERACTIONS,
+  shouldKeepInteraction,
   type SessionDeps,
   type StateStore,
 } from './session-core';
-import { IDLE_RECORDING_STATE, type CapturedCall, type RecordingState } from './types';
+import {
+  IDLE_RECORDING_STATE,
+  type CapturedCall,
+  type CapturedInteraction,
+  type RecordingState,
+} from './types';
 
 /** In-memory StateStore fake. */
 function store<T>(initial: T): StateStore<T> & { data: T } {
@@ -29,19 +36,23 @@ function makeDeps(): SessionDeps & {
   state: ReturnType<typeof store<RecordingState>>;
   buffer: ReturnType<typeof store<CapturedCall[]>>;
   rules: ReturnType<typeof store<RecordingFilterRuleList>>;
+  interactionStore: ReturnType<typeof store<CapturedInteraction[]>>;
   saved: Array<{ recording: unknown; calls: unknown[] }>;
 } {
   const saved: Array<{ recording: unknown; calls: unknown[] }> = [];
   const state = store<RecordingState>({ ...IDLE_RECORDING_STATE });
   const buffer = store<CapturedCall[]>([]);
   const rules = store<RecordingFilterRuleList>([]);
+  const interactionStore = store<CapturedInteraction[]>([]);
   let idCounter = 0;
   return {
     state,
     buffer,
     rules,
+    interactionStore,
     saved,
     filterRules: rules,
+    interactions: interactionStore,
     saveRecording: vi.fn(async (recording, calls) => {
       saved.push({ recording, calls });
     }),
@@ -70,6 +81,17 @@ function call(overrides: Partial<CapturedCall> = {}): CapturedCall {
     startedAt: 0,
     durationMs: 10,
     errored: false,
+    ...overrides,
+  };
+}
+
+/** Build a minimal CapturedInteraction; override any field. */
+function interaction(overrides: Partial<CapturedInteraction> = {}): CapturedInteraction {
+  return {
+    kind: 'click',
+    at: 0,
+    text: 'load',
+    page: { path: '/' },
     ...overrides,
   };
 }
@@ -290,5 +312,159 @@ describe('createSession', () => {
       await s.push(call({ url: 'https://x.com/api/disabled-rule/x' }), 1),
     ).toBe(1);
     expect(await s.push(call({ url: 'https://x.com/api/keep' }), 1)).toBe(2);
+  });
+});
+
+describe('shouldKeepInteraction', () => {
+  it('keeps the first interaction', () => {
+    expect(shouldKeepInteraction(undefined, interaction({ at: 100 }))).toBe(true);
+  });
+
+  it('drops an identical interaction within the dedupe window', () => {
+    const prev = interaction({ kind: 'click', text: 'load', at: 100 });
+    expect(shouldKeepInteraction(prev, interaction({ kind: 'click', text: 'load', at: 400 }))).toBe(
+      false,
+    );
+  });
+
+  it('keeps an identical interaction past the dedupe window', () => {
+    const prev = interaction({ kind: 'click', text: 'load', at: 100 });
+    expect(shouldKeepInteraction(prev, interaction({ kind: 'click', text: 'load', at: 700 }))).toBe(
+      true,
+    );
+  });
+
+  it('keeps interactions differing in kind, text, or name', () => {
+    const prev = interaction({ kind: 'click', text: 'load', at: 100 });
+    expect(
+      shouldKeepInteraction(prev, interaction({ kind: 'submit', text: 'load', at: 200 })),
+    ).toBe(true);
+    expect(
+      shouldKeepInteraction(prev, interaction({ kind: 'click', text: 'other', at: 200 })),
+    ).toBe(true);
+    expect(
+      shouldKeepInteraction(
+        interaction({ kind: 'change', text: undefined, name: 'q', at: 100 }),
+        interaction({ kind: 'change', text: undefined, name: 'email', at: 200 }),
+      ),
+    ).toBe(true);
+  });
+});
+
+describe('pushInteraction', () => {
+  it('rejects interactions while inactive, from other tabs, or while paused', async () => {
+    const deps = makeDeps();
+    const s = createSession(deps);
+
+    expect(await s.pushInteraction(interaction(), 7)).toBe(0);
+
+    await s.start({ tabId: 7, origin: 'https://x.com', url: '' });
+    expect(await s.pushInteraction(interaction(), 8)).toBe(0);
+
+    await s.setPaused(true);
+    expect(await s.pushInteraction(interaction(), 7)).toBe(0);
+
+    await s.setPaused(false);
+    expect(await s.pushInteraction(interaction(), 7)).toBe(1);
+    expect(deps.interactionStore.data).toHaveLength(1);
+    expect(deps.state.data.count).toBe(0); // count is calls-only
+  });
+
+  it('dedupes identical rapid-fire interactions', async () => {
+    const deps = makeDeps();
+    const s = createSession(deps);
+    await s.start({ tabId: 1, origin: 'https://x.com', url: '' });
+
+    expect(await s.pushInteraction(interaction({ at: 1000 }), 1)).toBe(1);
+    expect(await s.pushInteraction(interaction({ at: 1200 }), 1)).toBe(1); // deduped
+    expect(await s.pushInteraction(interaction({ at: 1300, text: 'other' }), 1)).toBe(2);
+    expect(deps.interactionStore.data.map((i) => i.text)).toEqual(['load', 'other']);
+  });
+
+  it('caps the buffer at MAX_INTERACTIONS, dropping the oldest', async () => {
+    const deps = makeDeps();
+    const s = createSession(deps);
+    await s.start({ tabId: 1, origin: 'https://x.com', url: '' });
+
+    for (let i = 0; i < MAX_INTERACTIONS + 5; i++) {
+      await s.pushInteraction(interaction({ text: `btn-${i}`, at: i * 1000 }), 1);
+    }
+    expect(deps.interactionStore.data).toHaveLength(MAX_INTERACTIONS);
+    expect(deps.interactionStore.data[0]!.text).toBe('btn-5'); // oldest 5 dropped
+  });
+});
+
+describe('interactions at stop', () => {
+  it('persists the interaction timeline and attaches preceding interactions', async () => {
+    const deps = makeDeps();
+    const s = createSession(deps);
+    await s.start({ tabId: 5, origin: 'https://x.com', url: '' });
+
+    await s.pushInteraction(interaction({ kind: 'click', text: 'load', at: 10_000 }), 5);
+    await s.push(call({ startedAt: 10_400 }), 5); // 400ms after the click -> attached
+    await s.push(call({ startedAt: 15_000 }), 5); // 5s later -> nothing attached
+    await s.pushInteraction(
+      interaction({ kind: 'change', text: undefined, name: 'q', value: 'hello', at: 16_000 }),
+      5,
+    );
+
+    const { recordingId } = await s.stop();
+    const { recording, calls } = deps.saved[0]!;
+    expect((recording as { interactions?: CapturedInteraction[] }).interactions).toHaveLength(2);
+
+    const apiCalls = calls as Array<{
+      startedAt: number;
+      precedingInteraction?: { kind: string; text?: string; deltaMs: number };
+    }>;
+    expect(apiCalls[0]!.precedingInteraction).toEqual({
+      kind: 'click',
+      text: 'load',
+      deltaMs: 400,
+    });
+    expect(apiCalls[1]!.precedingInteraction).toBeUndefined();
+    expect(recordingId).not.toBeNull();
+  });
+
+  it('omits the interactions field when none were captured', async () => {
+    const deps = makeDeps();
+    const s = createSession(deps);
+    await s.start({ tabId: 5, origin: 'https://x.com', url: '' });
+    await s.push(call(), 5);
+    await s.stop();
+    const { recording } = deps.saved[0]!;
+    expect('interactions' in (recording as object)).toBe(false);
+  });
+
+  it('clears the interaction store on stop, both in the normal and the empty-buffer path', async () => {
+    const deps = makeDeps();
+    const s = createSession(deps);
+    await s.start({ tabId: 5, origin: 'https://x.com', url: '' });
+    await s.pushInteraction(interaction(), 5);
+    await s.push(call(), 5);
+    await s.stop();
+    expect(deps.interactionStore.data).toEqual([]);
+
+    // Empty-buffer path: interactions exist but no calls -> early return still clears.
+    const deps2 = makeDeps();
+    const s2 = createSession(deps2);
+    await s2.start({ tabId: 5, origin: 'https://x.com', url: '' });
+    await s2.pushInteraction(interaction(), 5);
+    const { recordingId } = await s2.stop();
+    expect(recordingId).toBeNull();
+    expect(deps2.interactionStore.data).toEqual([]);
+  });
+
+  it('restores the interaction buffer after a simulated SW restart', async () => {
+    const deps = makeDeps();
+    const s1 = createSession(deps);
+    await s1.start({ tabId: 3, origin: 'https://x.com', url: '' });
+    await s1.pushInteraction(interaction({ text: 'before', at: 1000 }), 3);
+    expect(deps.interactionStore.data).toHaveLength(1);
+
+    // Fresh session over the same stores (SW restart): restore must append.
+    const s2 = createSession(deps);
+    const count = await s2.pushInteraction(interaction({ text: 'after', at: 5000 }), 3);
+    expect(count).toBe(2);
+    expect(deps.interactionStore.data.map((i) => i.text)).toEqual(['before', 'after']);
   });
 });

@@ -118,6 +118,7 @@ export async function startFixtureServer(): Promise<FixtureServer> {
       } else {
         res.setHeader("content-type", "text/html; charset=utf-8");
         res.end(`<!doctype html><html><body>
+          <input id="name" />
           <button id="load">load</button>
           <script>
             document.getElementById('load').addEventListener('click', () => {

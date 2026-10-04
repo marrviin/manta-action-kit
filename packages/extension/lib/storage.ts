@@ -9,6 +9,7 @@ import { storage } from "#imports";
 import {
   IDLE_RECORDING_STATE,
   type CapturedCall,
+  type CapturedInteraction,
   type RecordingFilterRule,
   type RecordingState,
 } from "./recording/types";
@@ -178,6 +179,16 @@ export const recordingState = storage.defineItem<RecordingState>(
  */
 export const recordingBuffer = storage.defineItem<CapturedCall[]>(
   "session:recordingBuffer",
+  { fallback: [] },
+);
+
+/**
+ * In-flight captured user interactions (clicks / submits / input changes) for
+ * the active recording, mirrored to the `session` area with the same SW-sleep
+ * restore + quota-degrade semantics as `recordingBuffer`. Cleared on start/stop.
+ */
+export const interactionBuffer = storage.defineItem<CapturedInteraction[]>(
+  "session:interactionBuffer",
   { fallback: [] },
 );
 

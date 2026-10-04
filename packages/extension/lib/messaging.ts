@@ -5,7 +5,11 @@
  * Keep the ProtocolMap as the single source of truth for message shapes. Extend it
  * as your business logic grows.
  */
-import type { CapturedCall, RecordingState } from "./recording/types";
+import type {
+  CapturedCall,
+  CapturedInteraction,
+  RecordingState,
+} from "./recording/types";
 import type { GatewayLog, GatewayProxyRule } from "./gateway/types";
 import type { ScreenshotMode } from "./screenshot/types";
 export interface ProtocolMap {
@@ -41,6 +45,12 @@ export interface ProtocolMap {
   /** Content script -> background: a captured API call from the page. */
   API_CALL_CAPTURED: {
     request: CapturedCall;
+    response: { ok: boolean; count: number };
+  };
+
+  /** Content script -> background: a captured user interaction from the page. */
+  USER_INTERACTION_CAPTURED: {
+    request: CapturedInteraction;
     response: { ok: boolean; count: number };
   };
 

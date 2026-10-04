@@ -65,6 +65,49 @@ export interface ApiCall {
   errorText?: string;
   /** laya 自动相关性分析结果；无此字段 = 未分析。 */
   relevance?: CallRelevance;
+  /**
+   * 触发本调用的用户交互（停止录制时由 attachPrecedingInteractions 回填，取调用开始前
+   * 2s 窗口内最近的一次）；无此字段 = 调用前没有可感知的用户交互。仅是意图提示，
+   * 不是因果证明——模型侧只当证据用，不做「无交互即无关」的硬规则。
+   */
+  precedingInteraction?: PrecedingInteraction;
+}
+
+/** 用户交互的种类。 */
+export type InteractionKind = 'click' | 'submit' | 'change';
+
+/**
+ * 一次采集到的用户交互描述符（injected hook 在页面里构建，经 content 中继、background
+ * 落 buffer，停止录制时整体存到 Recording.interactions）。只采「可读意图」（文本 +
+ * 少量容器语义文本）与「参数语义」（change 的 name/value）；不采坐标/轨迹/id/cssPath。
+ * 所有文本截断 + 脱敏（lib/recording/redact.ts），密码类控件的值永不采集。
+ */
+export interface CapturedInteraction {
+  kind: InteractionKind;
+  /** epoch ms，与 ApiCall.startedAt 对齐算 deltaMs。 */
+  at: number;
+  /** 元素自身可读文本 / aria-label，≤64 字符，脱敏。无文本的图标按钮可为空。 */
+  text?: string;
+  /** 向上最多 3 层祖先的语义文本（标题/aria-label/自身直接文本），每层 ≤32 字符，脱敏。 */
+  containers?: string[];
+  /** 事件时刻的页面路由快照（SPA 路由变化时每次点击各取一份）。 */
+  page: { path: string; title?: string };
+  /** 仅 change：表单控件的 name 属性——将来 Action 蒸馏的参数语义来源。 */
+  name?: string;
+  /** 仅 change：用户最终输入值，≤64 字符，脱敏；password 类控件永不采。 */
+  value?: string;
+}
+
+/**
+ * 挂在 ApiCall 上的瘦身交互描述：调用开始前 2s 窗口内最近一次用户交互。
+ * UI 时间线与 MCP get_flow 直接读它，无需回查 Recording.interactions 原始时间线。
+ */
+export interface PrecedingInteraction {
+  kind: InteractionKind;
+  /** 该交互的可读文本（未截断副本来自已脱敏的 CapturedInteraction.text）。 */
+  text?: string;
+  /** 调用开始时刻距交互时刻的毫秒数（≥0）。 */
+  deltaMs: number;
 }
 
 /**
@@ -279,6 +322,12 @@ export interface Recording {
    */
   relevanceStatus?: 'analyzing' | 'done' | 'failed';
   relevanceStatusAt?: number;
+  /**
+   * 录制期间采集到的用户交互时间线（click/submit/change 描述符，时间升序，上限 300 条
+   * 超出丢最旧）。Phase 1 仅落库 + UI 展示 + MCP 透出；Phase 2 将作为 laya 相关性
+   * 判定的用户意图信号。Optional：此功能之前保存的录制没有该字段。
+   */
+  interactions?: CapturedInteraction[];
 }
 
 /**
@@ -309,6 +358,9 @@ export const IDLE_RECORDING_STATE: RecordingState = {
 
 /** The custom DOM event name the injected hook dispatches for each captured call. */
 export const API_CALL_EVENT = 'manta-action-kit:api-call';
+
+/** The custom DOM event name the injected hook dispatches for each captured user interaction. */
+export const USER_INTERACTION_EVENT = 'manta-action-kit:user-interaction';
 
 /**
  * A recording filter rule. Currently only a blacklist: while recording, any

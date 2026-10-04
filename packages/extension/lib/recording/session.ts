@@ -7,7 +7,12 @@
  * just binds the real ones: WXT storage items, uuid/Date.now, and IndexedDB.
  * Kept separate so the core can be unit-tested without extension APIs.
  */
-import { recordingBuffer, recordingFilterRules, recordingState } from '@/lib/storage';
+import {
+  interactionBuffer,
+  recordingBuffer,
+  recordingFilterRules,
+  recordingState,
+} from '@/lib/storage';
 import { saveRecording } from '@/lib/db';
 import { uuid } from '@/lib/utils';
 import { createSession } from './session-core';
@@ -16,6 +21,7 @@ const session = createSession({
   state: recordingState,
   buffer: recordingBuffer,
   filterRules: recordingFilterRules,
+  interactions: interactionBuffer,
   saveRecording,
   newId: uuid,
   now: Date.now,
@@ -25,4 +31,5 @@ export const getState = session.getState;
 export const start = session.start;
 export const setPaused = session.setPaused;
 export const push = session.push;
+export const pushInteraction = session.pushInteraction;
 export const stop = session.stop;

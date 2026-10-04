@@ -147,3 +147,44 @@ describe('inferDependencies', () => {
     expect(deps[0]!.toLocation).toBe('body');
   });
 });
+
+describe('inferDependencies (hostname filter)', () => {
+  it('never indexes a domain-shaped response value, so no url-fallback edge is forged', () => {
+    // A config response mentions reporting hosts; later calls go to them.
+    const deps = inferDependencies([
+      call({
+        seq: 0,
+        url: 'https://console.example.com/settings',
+        resIsJson: true,
+        resBody: JSON.stringify({
+          endpoints: ['mon.example.com', 'mcs.example.com'],
+        }),
+      }),
+      call({ seq: 1, url: 'https://mon.example.com/collect' }),
+      call({ seq: 2, url: 'https://mcs.example.com/list' }),
+    ]);
+    expect(deps).toHaveLength(0);
+  });
+
+  it('still chains real values even when the response also contains hostnames', () => {
+    const deps = inferDependencies([
+      call({
+        seq: 0,
+        url: 'https://a.com/config',
+        resIsJson: true,
+        resBody: JSON.stringify({
+          reportHost: 'mon.example.com',
+          cursor: 'cur_987654',
+        }),
+      }),
+      call({
+        seq: 1,
+        url: 'https://a.com/page',
+        method: 'POST',
+        reqBody: JSON.stringify({ cursor: 'cur_987654' }),
+      }),
+    ]);
+    expect(deps).toHaveLength(1);
+    expect(deps[0]).toMatchObject({ value: 'cur_987654', toLocation: 'body' });
+  });
+});

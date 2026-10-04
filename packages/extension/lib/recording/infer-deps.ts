@@ -23,6 +23,17 @@ interface Leaf {
  */
 const MIN_VALUE_LEN = 6;
 
+/**
+ * A bare hostname/domain is an ENDPOINT POINTER, not a chained parameter: a
+ * config response listing reporting hosts ("mon.example.com") matches every
+ * later call to those hosts through the raw-url fallback, forging "edges" that
+ * anchor pure telemetry into the main flow. Never index domain-shaped values
+ * as producible dependencies. (Real URL-parameter values are matched via the
+ * structured query/body paths, which this filter does not touch — it only
+ * stops the value from being INDEXED as a producer, whatever the target.)
+ */
+const HOSTNAME_RE = /^(?=.{4,253}$)([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/i;
+
 /** Only string/number leaves make sense as linkable identifiers. */
 function isLinkable(v: unknown): v is string | number {
   if (typeof v === 'number') return Number.isFinite(v);
@@ -66,7 +77,7 @@ function responseLeaves(call: ApiCall): Leaf[] {
   if (parsed === undefined) return [];
   const out: Leaf[] = [];
   flatten(parsed, '', out);
-  return out.filter((l) => l.value.length >= MIN_VALUE_LEN);
+  return out.filter((l) => l.value.length >= MIN_VALUE_LEN && !HOSTNAME_RE.test(l.value));
 }
 
 /**

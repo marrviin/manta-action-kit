@@ -47,6 +47,48 @@ export interface Recording {
   description?: string;
   /** epoch ms when `description` was last written by an agent. */
   descriptionUpdatedAt?: number;
+  /**
+   * User interactions (clicks / submits / input changes) captured during the
+   * recording, ascending by time, capped (~300, oldest dropped). Absent on
+   * recordings saved before this feature. All texts are truncated and redacted;
+   * password-type control values are never captured.
+   */
+  interactions?: CapturedInteraction[];
+}
+
+/** The kind of a captured user interaction. */
+export type InteractionKind = 'click' | 'submit' | 'change';
+
+/**
+ * One captured user interaction — a compact descriptor of what the user did on
+ * the page (readable intent + optional form-control semantics + page snapshot).
+ */
+export interface CapturedInteraction {
+  kind: InteractionKind;
+  /** epoch ms; aligns with ApiCall.startedAt for delta computation. */
+  at: number;
+  /** The element's own readable text / aria-label, ≤64 chars, redacted. */
+  text?: string;
+  /** Up to 3 ancestor semantic texts, each ≤32 chars, redacted. */
+  containers?: string[];
+  /** Route snapshot at event time. */
+  page: { path: string; title?: string };
+  /** change only: the form control's name attribute. */
+  name?: string;
+  /** change only: the final input value, ≤64 chars, redacted; never for password controls. */
+  value?: string;
+}
+
+/**
+ * The interaction that most likely triggered a call: the nearest captured
+ * interaction within ~2s before the call started. A hint, not proof —
+ * consumers (UI, agents, models) treat it as evidence only.
+ */
+export interface PrecedingInteraction {
+  kind: InteractionKind;
+  text?: string;
+  /** Milliseconds between the interaction and the call's start (≥ 0). */
+  deltaMs: number;
 }
 
 /** One captured API call — request input + response output + timing. */
@@ -72,6 +114,8 @@ export interface ApiCall {
   durationMs: number;
   errored: boolean;
   errorText?: string;
+  /** The user interaction nearest before the call started (within ~2s); absent if none. */
+  precedingInteraction?: PrecedingInteraction;
 }
 
 /** Where in a request a dependency's value is injected. */
@@ -112,6 +156,8 @@ export interface FlowStep {
   status: number;
   /** Present only when the recording's relevance analysis has run. */
   relevance?: CallRelevanceMark;
+  /** The user interaction that likely triggered this step (nearest within ~2s). */
+  precedingInteraction?: PrecedingInteraction;
 }
 
 /** A recording's flow view: ordered steps + the dependencies linking them. */

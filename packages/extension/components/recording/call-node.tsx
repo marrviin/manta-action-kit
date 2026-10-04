@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { memo, useState, type ReactNode } from "react";
 import { App, Tag, Tooltip, Typography } from "antd";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
@@ -159,7 +159,7 @@ function RelevanceTag({ call }: { call: ApiCall }) {
  *   Row 2: method / status badges
  * The expandable detail renders in a light-gray card.
  */
-export function CallNode({ call, deps = [], onDelete }: Props) {
+export const CallNode = memo(function CallNode({ call, deps = [], onDelete }: Props) {
   const { modal } = App.useApp();
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
@@ -219,41 +219,55 @@ export function CallNode({ call, deps = [], onDelete }: Props) {
           <StatusBadge status={call.status} />
         </>
       }
+      // Detail is built only while expanded: the heavy prettyJson/section
+      // rendering must not run for the 100+ collapsed rows on every re-render.
       detail={
-        <div className="flex flex-col gap-2 bg-(--ant-color-fill-quaternary) border border-(--ant-color-border-secondary) rounded-md px-2.5 py-2">
-          <FlowAnnotations call={call} deps={deps} />
-          <Field label="URL" value={call.url} />
-          {Object.keys(call.reqHeaders).length > 0 && (
-            <Section
-              title={t("detail.reqHeaders")}
-              body={headerText(call.reqHeaders)}
-            />
-          )}
-          {call.reqBody && (
-            <Section
-              title={t("detail.reqBody")}
-              body={prettyJson(call.reqBody)}
-            />
-          )}
-          {call.streaming ? (
-            <SseEvents call={call} />
-          ) : (
-            <Section
-              title={t("detail.response", {
-                status: call.status,
-                statusText: call.statusText,
-              })}
-              body={prettyJson(call.resBody)}
-            />
-          )}
-          {call.errored && (
-            <Block title={t("detail.error")}>
-              <Text type="danger">{call.errorText}</Text>
-            </Block>
-          )}
-        </div>
+        expanded ? <CallDetail call={call} deps={deps} /> : undefined
       }
     />
+  );
+});
+
+/**
+ * Expanded detail body of a CallNode. Lives in its own component so the
+ * JSON pretty-printing (potentially large bodies) runs only when the node
+ * is actually expanded, not on every render of the parent list.
+ */
+function CallDetail({ call, deps }: { call: ApiCall; deps: FieldDependency[] }) {
+  const { t } = useTranslation();
+  return (
+    <div className="flex flex-col gap-2 bg-(--ant-color-fill-quaternary) border border-(--ant-color-border-secondary) rounded-md px-2.5 py-2">
+      <FlowAnnotations call={call} deps={deps} />
+      <Field label="URL" value={call.url} />
+      {Object.keys(call.reqHeaders).length > 0 && (
+        <Section
+          title={t("detail.reqHeaders")}
+          body={headerText(call.reqHeaders)}
+        />
+      )}
+      {call.reqBody && (
+        <Section
+          title={t("detail.reqBody")}
+          body={prettyJson(call.reqBody)}
+        />
+      )}
+      {call.streaming ? (
+        <SseEvents call={call} />
+      ) : (
+        <Section
+          title={t("detail.response", {
+            status: call.status,
+            statusText: call.statusText,
+          })}
+          body={prettyJson(call.resBody)}
+        />
+      )}
+      {call.errored && (
+        <Block title={t("detail.error")}>
+          <Text type="danger">{call.errorText}</Text>
+        </Block>
+      )}
+    </div>
   );
 }
 

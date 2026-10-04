@@ -12,10 +12,16 @@
  */
 import {
   API_CALL_EVENT,
+  USER_INTERACTION_EVENT,
   type CapturedCall,
   type HeaderMap,
 } from "@/lib/recording/types";
 import { createSseParser, type SseEvent } from "@/lib/sse-parse";
+import {
+  CONTAINER_MAX_COUNT,
+  describeInteraction,
+  type ElementLike,
+} from "@/lib/recording/interaction";
 
 export default defineUnlistedScript(() => {
   const self = document.currentScript as HTMLScriptElement | null;
@@ -41,6 +47,73 @@ export default defineUnlistedScript(() => {
       /* never let capture break the page */
     }
   };
+
+  const emitInteraction = (interaction: unknown) => {
+    try {
+      const target: EventTarget = self ?? window;
+      target.dispatchEvent(
+        new CustomEvent(USER_INTERACTION_EVENT, { detail: interaction }),
+      );
+    } catch {
+      /* never let capture break the page */
+    }
+  };
+
+  // ---- user interaction capture (click / submit / change) ----
+  // Document-level CAPTURE-phase listeners: they see every click before page
+  // handlers can stopPropagation, and event retargeting hands us the shadow
+  // host for composed clicks, which is the descriptor we want anyway. All
+  // filtering/deduping happens downstream in the background session.
+  {
+    /** Bridge a real Element to the structural ElementLike the descriptor reads. */
+    const toElementLike = (el: Element): ElementLike => ({
+      tagName: el.tagName,
+      type: el.getAttribute("type") ?? undefined,
+      ariaLabel: el.getAttribute("aria-label") ?? undefined,
+      textContent: el.textContent,
+      value:
+        el instanceof HTMLInputElement ||
+        el instanceof HTMLTextAreaElement ||
+        el instanceof HTMLSelectElement
+          ? el.value
+          : undefined,
+      name: el.getAttribute("name") ?? undefined,
+      autocomplete: el.getAttribute("autocomplete") ?? undefined,
+    });
+
+    const pageSnapshot = () => ({
+      path: location.pathname,
+      title: document.title || undefined,
+    });
+
+    const onInteractionEvent = (kind: "click" | "submit" | "change") => {
+      return (e: Event) => {
+        try {
+          if (!(e.target instanceof Element)) return;
+          // Only the few ancestor levels the descriptor keeps are touched.
+          const ancestors: ElementLike[] = [];
+          let p = e.target.parentElement;
+          while (p && ancestors.length < CONTAINER_MAX_COUNT) {
+            ancestors.push(toElementLike(p));
+            p = p.parentElement;
+          }
+          const described = describeInteraction(
+            kind,
+            toElementLike(e.target),
+            ancestors,
+            Date.now(),
+            pageSnapshot(),
+          );
+          if (described) emitInteraction(described);
+        } catch {
+          /* never let capture break the page */
+        }
+      };
+    };
+    document.addEventListener("click", onInteractionEvent("click"), true);
+    document.addEventListener("submit", onInteractionEvent("submit"), true);
+    document.addEventListener("change", onInteractionEvent("change"), true);
+  }
 
   const now = () =>
     typeof performance !== "undefined" ? performance.now() : Date.now();

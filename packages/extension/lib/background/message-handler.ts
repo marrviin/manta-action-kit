@@ -195,6 +195,15 @@ export function createMessageHandler(deps: MessageHandlerDeps) {
             break;
           }
 
+          case "USER_INTERACTION_CAPTURED": {
+            const count = await deps.session.pushInteraction(
+              msg.data,
+              sender.tab?.id,
+            );
+            sendResponse({ ok: true, count });
+            break;
+          }
+
           case "CAPTURE_SCREENSHOT": {
             // Re-query the active tab here so the handler is self-contained;
             // ScreenshotError messages ("screenshot:<code>") flow through the

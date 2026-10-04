@@ -2,9 +2,12 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { App, Button, Dropdown, Empty, Spin, Timeline, Tooltip, Typography } from "antd";
 import type { MenuProps } from "antd";
 import {
+  AimOutlined,
   CaretDownOutlined,
   CaretUpOutlined,
+  EditOutlined,
   FilterOutlined,
+  FormOutlined,
   LeftOutlined,
   ReloadOutlined,
 } from "@ant-design/icons";
@@ -17,11 +20,15 @@ import { deleteCall, getCalls, getRecording } from "@/lib/db";
 import { cn, formatGap } from "@/lib/utils";
 import type {
   ApiCall,
+  CapturedInteraction,
   FieldDependency,
   Recording,
 } from "@/lib/recording/types";
 
 const { Text, Paragraph } = Typography;
+
+/** Stable empty array so CallNode's memo never sees a fresh [] identity. */
+const EMPTY_DEPS: FieldDependency[] = [];
 
 type DetailTab = "result" | "endpoints";
 
@@ -72,7 +79,6 @@ export function RecordingDetail({ recordingId, onBack, initialTab }: Props) {
   }, [recordingId]);
 
   useEffect(() => reload(), [reload]);
-
   // The background broadcasts every analysis phase transition (and a final
   // update when marks land), possibly while the user is already reading this
   // detail view. No reply is expected (another listener or none answers).
@@ -94,20 +100,25 @@ export function RecordingDetail({ recordingId, onBack, initialTab }: Props) {
     return () => browser.runtime.onMessage.removeListener(onMessage);
   }, [recordingId, reload]);
 
-  const handleDelete = async (call: ApiCall) => {
-    try {
-      await deleteCall(recordingId, call.id);
-      // Only drop the deleted call; other calls keep their original startedAt,
-      // so the inter-call wait times shown stay unchanged.
-      setCalls((prev) => prev.filter((c) => c.id !== call.id));
-      setRecording((prev) =>
-        prev ? { ...prev, callCount: Math.max(0, prev.callCount - 1) } : prev,
-      );
-      message.success(t("common.deleted"));
-    } catch {
-      message.error(t("common.deleteFailed"));
-    }
-  };
+  // Stable identity: memoized CallNode rows bail on re-render unless a prop
+  // actually changed, so the delete callback must not be recreated per render.
+  const handleDelete = useCallback(
+    async (call: ApiCall) => {
+      try {
+        await deleteCall(recordingId, call.id);
+        // Only drop the deleted call; other calls keep their original startedAt,
+        // so the inter-call wait times shown stay unchanged.
+        setCalls((prev) => prev.filter((c) => c.id !== call.id));
+        setRecording((prev) =>
+          prev ? { ...prev, callCount: Math.max(0, prev.callCount - 1) } : prev,
+        );
+        message.success(t("common.deleted"));
+      } catch {
+        message.error(t("common.deleteFailed"));
+      }
+    },
+    [recordingId, message, t],
+  );
 
   if (loading) {
     return (
@@ -146,6 +157,7 @@ export function RecordingDetail({ recordingId, onBack, initialTab }: Props) {
             calls={calls}
             deps={recording.deps}
             description={recording.description}
+            interactions={recording.interactions}
             relStatus={relStatus}
             relStatusAt={relStatusAt}
             onDeleteCall={handleDelete}
@@ -229,6 +241,7 @@ function ResultPanel({
   calls,
   deps,
   description,
+  interactions,
   relStatus,
   relStatusAt,
   onDeleteCall,
@@ -237,6 +250,7 @@ function ResultPanel({
   calls: ApiCall[];
   deps?: FieldDependency[];
   description?: string;
+  interactions?: CapturedInteraction[];
   relStatus?: Recording["relevanceStatus"];
   relStatusAt?: number;
   onDeleteCall: (call: ApiCall) => void;
@@ -253,6 +267,23 @@ function ResultPanel({
   const countOf = (v: RelevanceFilter) =>
     v === "all" ? calls.length : calls.filter((c) => c.relevance?.verdict === v).length;
   const shown = filter === "all" ? calls : calls.filter((c) => c.relevance?.verdict === filter);
+
+  // Human-readable one-liner for a captured interaction.
+  const interactionLabel = (it: CapturedInteraction): string => {
+    if (it.kind === "change" && it.value) {
+      return t("detail.interactionChange", { value: it.value });
+    }
+    if (it.text) {
+      return it.kind === "click"
+        ? t("detail.interactionClick", { text: it.text })
+        : it.kind === "submit"
+          ? t("detail.interactionSubmit", { text: it.text })
+          : t("detail.interactionChange", { value: it.text });
+    }
+    return t("detail.interactionUnlabeled");
+  };
+  const interactionIcon = (kind: CapturedInteraction["kind"]) =>
+    kind === "click" ? <AimOutlined /> : kind === "submit" ? <FormOutlined /> : <EditOutlined />;
 
   // Manual (re-)run of the relevance analysis: covers recordings saved before
   // this feature, failed model loads, and OOM retries. The real completion
@@ -342,36 +373,71 @@ function ResultPanel({
               </div>
             ) : (
               <Timeline
-                items={shown.map((call, index) => {
-                  const next = shown[index + 1];
-                  const gap = next ? next.startedAt - call.startedAt : null;
-                  return {
-                    // A model-flagged call dims to gray — the mark is advisory,
-                    // not an error like `errored` (red).
-                    color: call.errored
-                      ? "red"
-                      : call.relevance?.verdict === "irrelevant"
-                        ? "gray"
-                        : "blue",
-                    children: (
-                      <>
-                        <CallNode
-                          call={call}
-                          deps={deps}
-                          onDelete={onDeleteCall}
-                        />
-                        {gap != null && gap > 0 && (
-                          <Text
-                            type="secondary"
-                            className="block text-[12px]! mt-2"
-                          >
-                            {t("detail.waitGap", { gap: formatGap(gap) })}
-                          </Text>
-                        )}
-                      </>
-                    ),
-                  };
-                })}
+                items={(() => {
+                  // Merge calls and (when unfiltered) captured interactions
+                  // into one time-sorted timeline; ties put the interaction
+                  // first, since it is what triggered the call that follows.
+                  type Entry = { at: number; call?: ApiCall; interaction?: CapturedInteraction };
+                  const merged: Entry[] = [
+                    ...shown.map((call) => ({ at: call.startedAt, call })),
+                    ...(filter === "all"
+                      ? (interactions ?? []).map((it) => ({ at: it.at, interaction: it }))
+                      : []),
+                  ];
+                  const entries = merged.sort(
+                    (a, b) => a.at - b.at || (a.interaction ? -1 : 1),
+                  );
+                  let callIdx = -1;
+                  return entries.map((entry) => {
+                    if (entry.interaction) {
+                      const it = entry.interaction;
+                      return {
+                        color: "gray",
+                        children: (
+                          <div className="flex items-center gap-1.5 text-[12px]! text-(--ant-color-text-tertiary) opacity-80">
+                            {interactionIcon(it.kind)}
+                            <span className="truncate">
+                              {interactionLabel(it)}
+                            </span>
+                            <Text type="secondary" className="text-[11px]! shrink-0">
+                              {it.page.path}
+                            </Text>
+                          </div>
+                        ),
+                      };
+                    }
+                    const call = entry.call!;
+                    callIdx += 1;
+                    const next = shown[callIdx + 1];
+                    const gap = next ? next.startedAt - call.startedAt : null;
+                    return {
+                      // A model-flagged call dims to gray — the mark is advisory,
+                      // not an error like `errored` (red).
+                      color: call.errored
+                        ? "red"
+                        : call.relevance?.verdict === "irrelevant"
+                          ? "gray"
+                          : "blue",
+                      children: (
+                        <>
+                          <CallNode
+                            call={call}
+                            deps={deps ?? EMPTY_DEPS}
+                            onDelete={onDeleteCall}
+                          />
+                          {gap != null && gap > 0 && (
+                            <Text
+                              type="secondary"
+                              className="block text-[12px]! mt-2"
+                            >
+                              {t("detail.waitGap", { gap: formatGap(gap) })}
+                            </Text>
+                          )}
+                        </>
+                      ),
+                    };
+                  });
+                })()}
               />
             )}
           </div>

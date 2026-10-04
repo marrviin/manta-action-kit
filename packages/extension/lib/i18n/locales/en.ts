@@ -190,6 +190,10 @@ export const en = {
     descExpand: "Expand",
     descCollapse: "Collapse",
     waitGap: "Wait {{gap}}",
+    interactionClick: "Click “{{text}}”",
+    interactionSubmit: "Submit “{{text}}”",
+    interactionChange: "Enter “{{value}}”",
+    interactionUnlabeled: "Unlabeled action",
     deleteCallTitle: "Delete this call",
     deleteCallConfirm:
       'Delete "{{url}}"? Removing it does not affect the other calls\' wait times.',
