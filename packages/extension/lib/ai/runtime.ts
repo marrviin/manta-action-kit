@@ -7,25 +7,35 @@
  *  - the side panel dies the moment the user closes it — a ~790 MB fp16 model
  *    load must not be repeated (or interrupted) on every panel toggle.
  *
- * The model bundle (fp16 encoder.onnx + head.onnx, ~900 MB total, plus
- * tokenizer.json and rl_agent_config.json) ships inside the extension package
- * under
- * public/models/laya-en, so `loadWebBundle` fetches it from the extension's own
- * origin (chrome-extension://<id>/models/laya-en) — same-origin, no CORS, and
- * the HTTP cache makes repeat loads cheap.
+ * The model bundle (fp16 encoder.onnx + head.onnx, ~850 MB of weights, plus
+ * tokenizer.json and rl_agent_config.json) is NOT shipped in the extension
+ * package. It is downloaded once from the HuggingFace artifacts repo (see
+ * MODEL_REPO below) into CacheStorage — the weights are data, not code, so
+ * fetching them at runtime is MV3-compliant; the ort runtime itself is
+ * bundled locally under public/ort/. `forceCache` routes the weight fetches
+ * through CacheStorage (cache-first), so the download happens exactly once
+ * and later loads work offline. preloadAgent warms that cache right after
+ * install/upgrade (see background.ts) — in dev too, so the download path is
+ * exercised on every machine exactly as it will run in production.
  *
  * laya-ts (vendored alongside this file) lazily imports "onnxruntime-web" —
  * which must be a real dependency of the extension package, never a remote
  * load (MV3 forbids remote code; the .wasm assets are bundled by Vite).
  */
 import { Agent, type SystemOneResult } from "./index";
+import { PINNED_REVISIONS, warmWebCache } from "./providers";
+import { sendMessage } from "@/lib/messaging";
 
-/** Base URL of the bundled English checkpoint (folder with the 6 model files).
- * WXT copies `public/` to the package root in both dev and build, so the
- * extension-origin URL (`chrome-extension://<id>/models/laya-en/`) is stable —
- * unlike `new URL(..., import.meta.url)`, which under the Vite dev server
- * resolves against `http://localhost:<port>/@fs/...` and 404s. */
-const MODEL_URL = new URL('models/laya-en/', browser.runtime.getURL('/')).href;
+/**
+ * HuggingFace repo holding the converted (fp16) artifacts the runtime loads.
+ * The bundle is the output of scripts/convert-encoder-fp16.py — publish it
+ * with scripts/publish-laya-model.sh, then pin the returned commit SHA by
+ * adding the repo to PINNED_REVISIONS (lib/ai/providers.ts). Until an entry
+ * exists there, `main` is loaded.
+ */
+const MODEL_REPO = "marrviin/laya-en-fp16";
+/** Pinned artifact commit; null loads the repo default (main). */
+const MODEL_REVISION = PINNED_REVISIONS[MODEL_REPO] ?? null;
 
 /** The loaded agent — created on first use, then reused for every predict. */
 let agent: Agent | null = null;
@@ -37,16 +47,33 @@ let loading: Promise<Agent> | null = null;
 export function getAgent(): Promise<Agent> {
   if (agent) return Promise.resolve(agent);
   if (!loading) {
-    loading = Agent.load(MODEL_URL)
-      .then((loaded) => {
-        // Cache the loaded agent — without this, isAgentReady() stays false
-        // forever and every single predict reloads the ~800 MB bundle.
-        agent = loaded;
-        return loaded;
-      })
-      .finally(() => {
-        loading = null; // a failed load must be retryable
+    loading = (async () => {
+      // An install/upgrade warm-up may hold the preloading slot: let it
+      // finish first, so this load reads the warm cache instead of racing it
+      // with a second parallel download of the same ~850 MB (the first
+      // predict to arrive during a download — card warmup, relevance
+      // analysis — would otherwise double the transfer). A failed warm-up is
+      // not fatal: this load downloads on demand just the same.
+      if (preloading) await preloading.catch(() => {});
+      const loaded = await Agent.load(MODEL_REPO, {
+        revision: MODEL_REVISION,
+        // Artifacts come from the network: route the weights through
+        // CacheStorage (cache-first), or ort-web would re-fetch ~850 MB on
+        // every load — its own sidecar fetches bypass the cache.
+        forceCache: true,
       });
+      // Cache the loaded agent — without this, isAgentReady() stays false
+      // forever and every single predict reloads the ~800 MB bundle.
+      agent = loaded;
+      // Tell the background: analyses skipped while the artifacts were
+      // downloading can run now. Fire-and-forget; no listener (e.g. in unit
+      // tests) is fine. Failed loads retry, so this may fire more than once —
+      // the handler is a cheap no-op when nothing is queued.
+      void sendMessage('LAYA_MODEL_READY', {}).catch(() => {});
+      return loaded;
+    })().finally(() => {
+      loading = null; // a failed load must be retryable
+    });
   }
   return loading;
 }
@@ -59,6 +86,90 @@ export function isAgentReady(): boolean {
 /** Whether a load is currently in flight (for status display across contexts). */
 export function isAgentLoading(): boolean {
   return loading !== null;
+}
+
+/**
+ * Cache warm-up, in flight or null. Distinct from `loading`: this only pulls
+ * the artifacts into CacheStorage and creates no session.
+ */
+let preloading: Promise<void> | null = null;
+
+/** Whether an artifact pre-fetch (install/upgrade warm-up) is in flight. */
+export function isAgentPreloading(): boolean {
+  return preloading !== null;
+}
+
+/** Latest warm-up progress snapshot; null before it starts reporting. */
+let preloadProgress: { loaded: number; total: number } | null = null;
+
+/** Warm-up download progress, for status display (LAYA_GET_STATUS). */
+export function getPreloadProgress(): { loaded: number; total: number } | null {
+  return preloadProgress;
+}
+
+/**
+ * Download the model artifacts into CacheStorage (progress goes to
+ * getPreloadProgress for the status UI) — WITHOUT creating a session. No
+ * guard of its own: callers own the `preloading` flag (a nested guard would
+ * have an inner finally clear an outer in-flight marker).
+ */
+async function warmArtifacts(): Promise<void> {
+  // Best-effort: mark the origin's storage persistent so the browser's
+  // disk-pressure eviction is far less likely to drop the ~850 MB cache.
+  await navigator.storage?.persist?.()?.catch(() => {});
+  await warmWebCache(MODEL_REPO, {
+    revision: MODEL_REVISION,
+    onProgress: (loaded, total) => {
+      preloadProgress = { loaded, total };
+    },
+  });
+}
+
+/**
+ * Download the model artifacts into CacheStorage — used by
+ * runtime.onStartup to resume a download interrupted by the browser closing
+ * mid-way, and by preloadAgent as its first phase. Cache-first: a complete
+ * cache makes this a no-op, so no model memory is taken on normal startups.
+ *
+ * The `preloading` slot holds a WARM-ONLY promise: it must never chain into
+ * getAgent. getAgent awaits an in-flight warm-up (to avoid racing its
+ * download), so a warm-up that awaited getAgent back would be a deadlock —
+ * getAgent waiting on preloading waiting on getAgent (observed live: the
+ * settings card's warmup predict during a download spun forever).
+ */
+export async function warmLayaArtifacts(): Promise<void> {
+  if (agent || loading || preloading) return;
+  preloading = warmArtifacts().finally(() => {
+    preloading = null;
+    preloadProgress = null;
+  });
+  return preloading;
+}
+
+/**
+ * Warm the artifact cache, then create the session — the full download →
+ * load pipeline with no user action (the settings card only displays it).
+ * Fired by background.ts on install/upgrade so the model is simply ready by
+ * the time anyone needs it. Failures are non-fatal — the lazy load path
+ * retries on demand.
+ */
+export async function preloadAgent(): Promise<void> {
+  if (agent) return;
+  // Join an already-running warm-up (e.g. a startup resume) instead of
+  // starting a second one; nothing to join and no load in flight → start one.
+  if (!preloading && !loading) {
+    preloading = warmArtifacts().finally(() => {
+      preloading = null;
+      preloadProgress = null;
+    });
+  }
+  if (preloading) await preloading.catch(() => {});
+  // The warm-up released the slot before resolving, and a load that raced us
+  // meanwhile makes this a no-op — getAgent dedupes regardless.
+  if (agent || loading) return;
+  // Session creation runs with no progress reporting (bytes are all in the
+  // cache by now) — status shows it as an indeterminate load.
+  await getAgent();
 }
 
 /**

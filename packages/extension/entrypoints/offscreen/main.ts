@@ -23,7 +23,16 @@
 import { sendMessage } from '@/lib/messaging';
 import { saveGifHistory } from '@/lib/db';
 import { fileHost, timestamp } from '@/lib/screenshot/capture';
-import { isAgentLoading, isAgentReady, layaPredict, layaPredictBatch } from '@/lib/ai/runtime';
+import {
+  getPreloadProgress,
+  isAgentLoading,
+  isAgentPreloading,
+  isAgentReady,
+  layaPredict,
+  layaPredictBatch,
+  preloadAgent,
+  warmLayaArtifacts,
+} from '@/lib/ai/runtime';
 
 /**
  * Hard cap on a single recording. The WebM→GIF transcode runs in the preview
@@ -114,7 +123,39 @@ browser.runtime.onMessage.addListener((raw: RuntimeMessage, _sender, sendRespons
           break;
         }
         case 'LAYA_GET_STATUS': {
-          sendResponse({ ready: isAgentReady(), loading: isAgentLoading() });
+          // `loading` folds the install/upgrade cache warm-up in: the settings
+          // card tracks it like any other load, and the background's
+          // closeLayaOffscreenDocument() treats the document as busy while the
+          // ~850 MB download runs. `progress` rides along so the card can show
+          // a download bar (the card polls, so no dedicated progress channel
+          // is needed).
+          sendResponse({
+            ready: isAgentReady(),
+            loading: isAgentLoading() || isAgentPreloading(),
+            progress: isAgentPreloading() ? getPreloadProgress() : undefined,
+          });
+          break;
+        }
+        case 'LAYA_PRELOAD': {
+          // Fire-and-forget: answer immediately — the service worker that
+          // relayed this on install may idle out long before the ~850 MB
+          // download finishes, and the offscreen document outlives it. The
+          // download keeps running here; LAYA_GET_STATUS reports it as
+          // `loading` until done.
+          void preloadAgent().catch((err) =>
+            console.error('[laya] artifact preload failed', err),
+          );
+          sendResponse({ ok: true });
+          break;
+        }
+        case 'LAYA_WARM_ARTIFACTS': {
+          // Same fire-and-forget as LAYA_PRELOAD, but warm-only: resume a
+          // download the browser closing killed mid-way, without paying the
+          // ~800 MB session residency on every startup.
+          void warmLayaArtifacts().catch((err) =>
+            console.error('[laya] artifact warm-up failed', err),
+          );
+          sendResponse({ ok: true });
           break;
         }
         // ---- GIF recorder (below) ----

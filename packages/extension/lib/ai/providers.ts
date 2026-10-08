@@ -7,6 +7,9 @@ export const PINNED_REVISIONS: Record<string, string> = {
   "convaiinnovations/laya": "55cf4c4ebb4ebe31b2550e8bdf3bd21b99753851",
   "convaiinnovations/laya-multilingual": "e4e9ddf21a7b1903b7acffd8814ad4307bf63a67",
   "convaiinnovations/laya-typed-decisions": "1a793eb568e6718f15941d08f85432581df534e3",
+  // Converted (fp16) browser artifacts published by
+  // scripts/publish-laya-model.sh — see lib/ai/runtime.ts.
+  "marrviin/laya-en-fp16": "5615e039c15498b42ba2d32b57472bfe7b0bfb8b",
 };
 
 /** Return an explicit revision unchanged; otherwise preserve the Hub default and cache. */
@@ -170,6 +173,14 @@ export interface ProviderOptions {
   expectedSha256?: Record<string, string>;
   signal?: AbortSignal | null;
   onProgress?: ((done: number, total: number, file: string) => void) | null;
+  /**
+   * Web only: fetch the ONNX artifacts through the CacheStorage-backed path
+   * (cache-first) and create the sessions from the buffered bytes, instead of
+   * handing ort-web the raw URLs. Required when the artifacts come from the
+   * network (HuggingFace) — ort-web's own sidecar fetches bypass CacheStorage,
+   * so without this every load would re-download the ~850 MB from the CDN.
+   */
+  forceCache?: boolean;
 }
 
 function applyNumThreads(ort: any, numThreads?: number): void {
@@ -224,10 +235,20 @@ async function fetchWithRetry(url: string, init?: RequestInit, retries = 2): Pro
   throw last instanceof Error ? last : new Error(`fetch failed for ${url}`);
 }
 
-/** Online-first fetch: try network, cache on success, fall back to CacheStorage. */
+/**
+ * Online-first fetch: try network, cache on success, fall back to CacheStorage.
+ * `preferCache` inverts this for the huge model weights: a cached copy is
+ * returned WITHOUT touching the network, so an already-downloaded checkpoint
+ * (~850 MB) survives extension updates and offline use; only a cache miss
+ * goes online (and is then cached).
+ */
 async function fetchArrayBuffer(
   url: string,
-  opts?: { signal?: AbortSignal | null; onHeaders?: (response: Response) => void },
+  opts?: {
+    signal?: AbortSignal | null;
+    onHeaders?: (response: Response) => void;
+    preferCache?: boolean;
+  },
 ): Promise<ArrayBuffer> {
   const g = globalThis as unknown as { caches?: any };
   let cache: any = null;
@@ -249,6 +270,13 @@ async function fetchArrayBuffer(
     cache = null;
   }
   if (cache) {
+    if (hit && opts?.preferCache) {
+      try {
+        return await hit.arrayBuffer();
+      } catch {
+        /* stale/blocked entry — fall through to the network path */
+      }
+    }
     try {
       const res = await fetchWithRetry(url, { signal: opts?.signal ?? undefined });
       opts?.onHeaders?.(res);
@@ -472,6 +500,228 @@ export async function loadWebBundle(
   return { dir: base, cfg, tokenizerJson, revision: reportedRevision };
 }
 
+/**
+ * Streaming, cache-first download used by warmWebCache: reports received
+ * bytes (for progress UI) and lands the file in CacheStorage. A cache hit
+ * reports the entry's full size once and skips the network entirely.
+ *
+ * Single-consumer read: the body is read to completion while counting bytes,
+ * THEN committed to the cache in one shot. Interleaving two consumers of the
+ * same network stream (tee/clone — one into cache.put, one counting) deadlocks
+ * on large responses in Chrome, stalling the download forever.
+ *
+ * A watchdog aborts when no bytes arrive for STALL_TIMEOUT_MS — a silent
+ * mid-body network stall would otherwise hang the warm-up indefinitely.
+ */
+const STALL_TIMEOUT_MS = 30_000;
+
+/** Attempts per file within fetchIntoCacheWithProgress (range-resumed). */
+const MAX_FILE_ATTEMPTS = 5;
+
+/**
+ * Streaming, cache-first download with byte-accurate progress AND resumable
+ * retries: a failed attempt (watchdog stall, proxy reset) resumes from the
+ * offset it died at via `Range: bytes=<offset>-` — HF's CDN supports ranges,
+ * so a restart never re-downloads bytes that already arrived. Only a server
+ * that ignores the Range request (200 instead of 206) falls back to a full
+ * restart. On completion the file is committed to CacheStorage in one shot.
+ *
+ * Single-consumer read: the body is read to completion while counting bytes.
+ * Interleaving two consumers of the same network stream (tee/clone) deadlocks
+ * on large responses in Chrome.
+ */
+async function fetchIntoCacheWithProgress(
+  url: string,
+  onBytes: (n: number) => void,
+  signal?: AbortSignal | null,
+): Promise<void> {
+  const g = globalThis as unknown as { caches?: any };
+  let cache: any = null;
+  try {
+    cache = g.caches && typeof g.caches.open === "function" ? await g.caches.open(CACHE_KEY) : null;
+  } catch {
+    cache = null;
+  }
+  if (cache) {
+    try {
+      const hit = await cache.match(url);
+      if (hit) {
+        try {
+          onBytes(Number((await hit.blob())?.size) || 0);
+          return;
+        } catch {
+          /* stale entry — fall through to the network path */
+        }
+      }
+    } catch {
+      /* fall through */
+    }
+  }
+  const chunks: Uint8Array[] = [];
+  let received = 0;
+  for (let attempt = 0; ; attempt++) {
+    if (attempt >= MAX_FILE_ATTEMPTS) {
+      throw new Error(`fetch failed for ${url} after ${attempt} attempts`);
+    }
+    if (signal?.aborted) throw new DOMException("aborted", "AbortError");
+    // Merge the caller's signal with the stall watchdog's. Armed BEFORE the
+    // fetch too: a connection that hangs waiting for response headers (proxy/
+    // CDN black hole) must not stall outside the read loop unprotected.
+    const ctrl = new AbortController();
+    const onOuterAbort = () => ctrl.abort();
+    if (signal) {
+      if (signal.aborted) ctrl.abort();
+      else signal.addEventListener("abort", onOuterAbort, { once: true });
+    }
+    let stall: ReturnType<typeof setTimeout> | null = null;
+    const armStall = () => {
+      if (stall) clearTimeout(stall);
+      stall = setTimeout(() => ctrl.abort(), STALL_TIMEOUT_MS);
+    };
+    try {
+      armStall();
+      const headers = new Headers();
+      if (received > 0) headers.set("Range", `bytes=${received}-`);
+      const res = await fetchWithRetry(url, { signal: ctrl.signal, headers });
+      if (received > 0 && res.status === 200) {
+        // Server ignored the Range request and restarted the file — drop what
+        // we had so the byte counts line up again.
+        chunks.length = 0;
+        received = 0;
+        onBytes(0);
+      }
+      if (!res.ok && res.status !== 206) {
+        throw new Error(`fetch failed for ${url}: ${res.status}`);
+      }
+      // What a complete body should total: a 206 carries only the remaining
+      // bytes, a 200 the whole file. A short body (server closed "cleanly"
+      // mid-range) must NOT be cached as if it were the full file.
+      const rangeLen = Number(res.headers?.get?.("content-length")) || 0;
+      const expectTotal = res.status === 206 ? received + rangeLen : rangeLen;
+      if (res.body) {
+        const reader = res.body.getReader();
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          armStall();
+          chunks.push(value);
+          received += value.byteLength;
+          // Cumulative for THIS file — the caller adds the already-completed
+          // files' sizes.
+          onBytes(received);
+        }
+      } else {
+        const buf = await res.arrayBuffer();
+        chunks.push(new Uint8Array(buf));
+        received += buf.byteLength;
+        onBytes(received);
+      }
+      if (expectTotal > 0 && received < expectTotal) {
+        throw new Error(`short body for ${url}: ${received}/${expectTotal}`);
+      }
+      if (cache) {
+        try {
+          // Rebuild with just the content-type: carrying the original
+          // content-length/encoding headers into a re-wrapped body can make
+          // later reads of the entry fail validation.
+          const putHeaders = new Headers();
+          const type = res.headers?.get?.("content-type");
+          if (type) putHeaders.set("content-type", type);
+          await cache.put(
+            url,
+            new Response(new Blob(chunks as unknown as BlobPart[]), {
+              status: 200,
+              headers: putHeaders,
+            }),
+          );
+        } catch {
+          /* cache full/blocked — the download itself still succeeded */
+        }
+      }
+      return;
+    } catch (e) {
+      // Keep `chunks`/`received`: the next attempt resumes from this offset.
+      if (signal?.aborted) throw e;
+      await sleep(1000 * Math.min(attempt, 3));
+    } finally {
+      if (stall) clearTimeout(stall);
+      if (signal) signal.removeEventListener("abort", onOuterAbort);
+    }
+  }
+}
+
+/**
+ * Download every artifact of a web checkpoint into the CacheStorage cache
+ * (cache-first: an entry already present is reused, never re-downloaded)
+ * WITHOUT creating any ONNX session — used by the extension to pre-fetch the
+ * ~850 MB laya weights on install/upgrade, so the first real predict skips the
+ * download. The artifacts and URLs match what `loadWebBundle` +
+ * `createWebProvider({ forceCache: true })` read later, so a warmed cache makes
+ * those loads fully offline.
+ *
+ * `onProgress` reports cumulative (loadedBytes, totalBytes) across all files,
+ * plus the file currently being downloaded. Sizes come from HEAD requests
+ * before the downloads start; a file whose size cannot be determined just
+ * contributes 0 to the total. Tokenizer candidates are tolerated to 404 (repo
+ * layout varies); the config and weight files are required — the first
+ * failure rejects.
+ */
+export async function warmWebCache(
+  repoOrUrl: string,
+  opts?: {
+    subfolder?: string | null;
+    revision?: string | null;
+    signal?: AbortSignal | null;
+    onProgress?: ((loadedBytes: number, totalBytes: number, file: string) => void) | null;
+  },
+): Promise<void> {
+  const revision = resolveRevision(repoOrUrl, opts?.revision);
+  const base = baseUrlFor(repoOrUrl, opts?.subfolder ?? null, revision);
+  const progress = opts?.onProgress ?? null;
+  const headSize = async (rel: string): Promise<number> => {
+    try {
+      const res = await fetchWithRetry(`${base}/${rel}`, { method: "HEAD", signal: opts?.signal ?? undefined });
+      return Number(res.headers?.get?.("content-length")) || 0;
+    } catch {
+      return 0;
+    }
+  };
+  // Resolve the tokenizer candidate (repo layouts vary), then size every file
+  // with a HEAD pass so the progress UI gets a real total before downloading.
+  let tokenizerRel: string | null = null;
+  for (const candidate of TOKENIZER_CANDIDATES) {
+    try {
+      const res = await fetchWithRetry(`${base}/${candidate}`, { method: "HEAD", signal: opts?.signal ?? undefined });
+      if (res.ok) {
+        tokenizerRel = candidate;
+        break;
+      }
+    } catch (e) {
+      if ((e as Error)?.name === "AbortError") throw e;
+    }
+  }
+  if (!tokenizerRel) {
+    throw new Error(`warmWebCache: no tokenizer found under ${base}`);
+  }
+  const files = [tokenizerRel, "rl_agent_config.json", "encoder.onnx", "encoder.onnx.data", "head.onnx", "head.onnx.data"];
+  const sized = await Promise.all(
+    files.map(async (rel) => ({ rel, total: await headSize(rel) })),
+  );
+  const totalBytes = sized.reduce((a, f) => a + f.total, 0);
+  let loadedBytes = 0;
+  for (const { rel, total } of sized) {
+    // fetchIntoCacheWithProgress owns the retries — range-resumed, so a
+    // mid-file failure continues where it died instead of restarting.
+    await fetchIntoCacheWithProgress(
+      `${base}/${rel}`,
+      (n) => progress?.(loadedBytes + n, totalBytes, rel),
+      opts?.signal ?? undefined,
+    );
+    loadedBytes += total;
+    progress?.(loadedBytes, totalBytes, rel);
+  }
+}
+
 export async function createNodeProvider(
   modelDir: string,
   opts?: ProviderOptions,
@@ -565,11 +815,17 @@ export async function createNodeProvider(
 }
 
 /** Best-effort fetch of a `<model>.data` sidecar; null when the model is single-file. */
-async function fetchSidecar(url: string): Promise<{ path: string; data: Uint8Array } | null> {
+async function fetchSidecar(
+  url: string,
+  opts?: { signal?: AbortSignal | null; preferCache?: boolean },
+): Promise<{ path: string; data: Uint8Array } | null> {
   const name = `${url.split("/").pop()}.data`;
   const sidecarUrl = `${url.replace(/\/+$/, "").split("/").slice(0, -1).join("/")}/${name}`;
   try {
-    const buf = await fetchArrayBuffer(sidecarUrl);
+    const buf = await fetchArrayBuffer(sidecarUrl, {
+      signal: opts?.signal ?? undefined,
+      preferCache: opts?.preferCache,
+    });
     return { path: name, data: new Uint8Array(buf) };
   } catch {
     return null;
@@ -611,30 +867,34 @@ export async function createWebProvider(
       mjs: new URL("ort/ort-wasm-simd-threaded.jsep.mjs", runtimeOrigin("/")).href,
     };
   }
-  // Verification (expectedSha256) needs the raw bytes, so that path buffers the
-  // model and mounts its `.onnx.data` sidecar explicitly. Without it, create
-  // straight from the URL. NOTE: even in URL mode the sidecar must be declared
-  // via the `externalData` option — ort-web (≥1.2x) only fetches external data
-  // when it is listed there; otherwise the wasm falls back to its legacy
-  // Module.MountedFiles mechanism and creation fails with "Module.MountedFiles
-  // is not available". `path` must match the location recorded inside the ONNX
-  // proto (a bare filename); `data` is what ort fetches (the absolute URL).
+  // "Buffered" mode needs the raw bytes: to verify them (expectedSha256) or to
+  // route them through CacheStorage (forceCache) — see ProviderOptions. In both
+  // cases the model is mounted from bytes and its `.onnx.data` sidecar
+  // explicitly. Without it, create straight from the URL. NOTE: even in URL
+  // mode the sidecar must be declared via the `externalData` option — ort-web
+  // (≥1.2x) only fetches external data when it is listed there; otherwise the
+  // wasm falls back to its legacy Module.MountedFiles mechanism and creation
+  // fails with "Module.MountedFiles is not available". `path` must match the
+  // location recorded inside the ONNX proto (a bare filename); `data` is what
+  // ort fetches (the absolute URL).
   const verify = opts?.expectedSha256 != null;
+  const buffered = verify || opts?.forceCache === true;
+  const preferCache = opts?.forceCache === true;
   type SessionSource = { source: string | Uint8Array; extra: Record<string, unknown> };
   const urlSidecar = (modelUrl: string) => ({
     path: `${modelUrl.split("/").pop()}.data`,
     data: `${modelUrl}.data`,
   });
   const encParts = async (): Promise<SessionSource> => {
-    if (!verify) return { source: encUrl, extra: { externalData: [urlSidecar(encUrl)] } };
-    const buf = await fetchArrayBuffer(encUrl, { signal: opts?.signal ?? undefined });
-    const sidecar = await fetchSidecar(encUrl);
+    if (!buffered) return { source: encUrl, extra: { externalData: [urlSidecar(encUrl)] } };
+    const buf = await fetchArrayBuffer(encUrl, { signal: opts?.signal ?? undefined, preferCache });
+    const sidecar = await fetchSidecar(encUrl, { signal: opts?.signal ?? undefined, preferCache });
     return { source: new Uint8Array(buf), extra: sidecar ? { externalData: [sidecar] } : {} };
   };
   const headParts = async (): Promise<SessionSource> => {
-    if (!verify) return { source: headUrl, extra: { externalData: [urlSidecar(headUrl)] } };
-    const buf = await fetchArrayBuffer(headUrl, { signal: opts?.signal ?? undefined });
-    const sidecar = await fetchSidecar(headUrl);
+    if (!buffered) return { source: headUrl, extra: { externalData: [urlSidecar(headUrl)] } };
+    const buf = await fetchArrayBuffer(headUrl, { signal: opts?.signal ?? undefined, preferCache });
+    const sidecar = await fetchSidecar(headUrl, { signal: opts?.signal ?? undefined, preferCache });
     return { source: new Uint8Array(buf), extra: sidecar ? { externalData: [sidecar] } : {} };
   };
   let enc: any;

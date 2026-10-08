@@ -71,3 +71,25 @@ export async function closeLayaOffscreenDocument(): Promise<void> {
   }
   await chrome.offscreen.closeDocument().catch(() => {});
 }
+
+/**
+ * Pre-fetch the laya model artifacts into CacheStorage right after
+ * install/upgrade. Ensures the offscreen runtime document exists, then fires
+ * the fire-and-forget LAYA_PRELOAD: the download keeps running in that
+ * document even after this service worker idles out. Non-fatal on failure —
+ * the lazy load path downloads on demand just the same.
+ */
+export async function preloadLayaModel(): Promise<void> {
+  await ensureLayaRuntime();
+  await sendMessage('LAYA_PRELOAD', {});
+}
+
+/**
+ * Resume an artifact download that a browser shutdown killed mid-way —
+ * fired on every browser start (runtime.onStartup). Warm-only: the session
+ * is NOT created here, so a complete cache (the normal case) costs nothing.
+ */
+export async function resumeLayaModelDownload(): Promise<void> {
+  await ensureLayaRuntime();
+  await sendMessage('LAYA_WARM_ARTIFACTS', {});
+}

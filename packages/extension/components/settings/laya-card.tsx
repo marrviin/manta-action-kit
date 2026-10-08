@@ -1,15 +1,14 @@
 /**
  * Laya decision-model card for the settings page.
  *
- * Loads the bundled ~800 MB checkpoint into the offscreen runtime (fp16
- * encoder on WebGPU, int8 head on WASM). "Load" here means loading the model
- * files that ship with the extension package into the runtime; no network is
- * involved. Real consumers of the model (e.g. the recording-relevance marks)
- * trigger loads lazily on their first predict — this card is the manual
- * control + status display.
+ * Fully automatic: the artifacts are downloaded once from the HuggingFace
+ * artifacts repo on install (background pre-fetch — see lib/ai/runtime.ts)
+ * and the session is created right after, so this card is a status display,
+ * not a control. While the download runs, a ring shows byte progress; the
+ * session-creation phase (no byte progress) shows a spinner.
  */
 import { useEffect, useRef, useState } from 'react';
-import { Button, Tag, Typography } from 'antd';
+import { Progress, Tag, Typography } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { sendMessage } from '@/lib/messaging';
 
@@ -22,6 +21,9 @@ const WARMUP = {
 } as const;
 
 type LayaStatus = 'idle' | 'loading' | 'ready';
+
+/** Byte progress of the install/upgrade artifact download, while in flight. */
+type LayaProgress = { loaded: number; total: number };
 
 /** True while a load initiated by any hook instance is in flight. */
 let loadStarted = false;
@@ -36,6 +38,7 @@ let loadStarted = false;
 function useLayaModel() {
   const [status, setStatus] = useState<LayaStatus>('idle');
   const [error, setError] = useState<string | null>(null);
+  const [progress, setProgress] = useState<LayaProgress | null>(null);
 
   // Load = ensure the offscreen document exists, then run a trivial predict
   // (the runtime loads the model on first call). The prediction result is
@@ -117,17 +120,21 @@ function useLayaModel() {
             idleTicks = 0;
             autoRetries = 0;
             setStatus('ready');
+            setProgress(null);
             setMode('slow');
             return;
           }
           if (s.loading) {
-            // A load in flight (this card's warmup, or a lazy consumer such
-            // as the relevance analysis) — track it until it converges.
+            // A load in flight (this card's warmup, the install warm-up, or a
+            // lazy consumer such as the relevance analysis) — track it, with a
+            // download bar while the warm-up reports byte progress.
             idleTicks = 0;
             setStatus('loading');
+            setProgress(s.progress ?? null);
             setMode('fast');
             return;
           }
+          setProgress(null);
           idleTicks += 1;
           if (idleTicks >= 2) concludeIdle();
         })
@@ -150,6 +157,7 @@ function useLayaModel() {
           return;
         }
         setStatus('loading');
+        setProgress(s.progress ?? null);
         if (!loadStarted) void loadRef.current();
         setMode('fast');
       } catch {
@@ -161,17 +169,20 @@ function useLayaModel() {
     return stop;
   }, []);
 
-  return { status, error, load: () => void loadRef.current() };
+  return { status, error, progress, load: () => void loadRef.current() };
 }
 
-/** The model card: status + load button. */
+/** The model card: status tags + download ring, no controls. */
 export function LayaCard() {
   const { t } = useTranslation();
-  const { status, error, load } = useLayaModel();
+  const { status, error, progress } = useLayaModel();
+  // Byte progress exists only while the artifact download runs; the session
+  // creation phase (all bytes cached) is an indeterminate load → tag only.
+  const downloading = status === 'loading' && !!progress && progress.total > 0;
 
   return (
     <section className="flex-none rounded-xl border border-(--ant-color-border-secondary) bg-(--ant-color-bg-container) overflow-hidden">
-      {/* Header: title + status/load button */}
+      {/* Header: title + status tag + download ring */}
       <div className="flex items-center justify-between gap-2 px-3 py-2.5">
         <div className="min-w-0">
           <div className="flex items-center gap-1.5">
@@ -183,18 +194,23 @@ export function LayaCard() {
                 {t('settings.layaLoaded')}
               </Tag>
             )}
+            {status === 'loading' && !downloading && (
+              <Tag color="processing" className="mr-0 px-1.5! text-xs! leading-4!">
+                {t('settings.layaLoading')}
+              </Tag>
+            )}
           </div>
           <Text type="secondary" className="text-xs!">
             {t('settings.layaDesc')}
           </Text>
         </div>
-        <Button
-          loading={status === 'loading'}
-          disabled={status === 'ready'}
-          onClick={load}
-        >
-          {status === 'loading' ? t('settings.layaLoading') : t('settings.layaLoad')}
-        </Button>
+        {downloading && (
+          <Progress
+            type="circle"
+            percent={Math.min(100, Math.round((progress!.loaded / progress!.total) * 100))}
+            size={44}
+          />
+        )}
       </div>
       {error && status !== 'ready' && (
         <div className="px-3 pb-2.5">

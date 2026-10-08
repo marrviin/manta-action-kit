@@ -767,6 +767,12 @@ export class Agent extends HookRegistry {
        * or executed. A missing artifact or digest mismatch throws and loading is refused.
        */
       expectedSha256?: Record<string, string>;
+      /**
+       * Web only: route the ONNX artifacts through the CacheStorage-backed
+       * (cache-first) fetch instead of letting ort-web hit the raw URLs. See
+       * ProviderOptions.forceCache.
+       */
+      forceCache?: boolean;
       signal?: AbortSignal | null;
       onProgress?: ((done: number, total: number, file: string) => void) | null;
     },
@@ -795,6 +801,7 @@ export class Agent extends HookRegistry {
       provider = await createWebProvider(dir, {
         numThreads: opts?.numThreads,
         expectedSha256: opts?.expectedSha256,
+        forceCache: opts?.forceCache,
       });
     } else {
       const { loadNodeBundle, createNodeProvider } = await import("./providers.js");

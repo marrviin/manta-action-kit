@@ -13,8 +13,11 @@ import {
   upsertGatewayProxyRule,
 } from "@/lib/db";
 import { handleGifOffscreenDone, initGifStateWatch } from "@/lib/gif-recording/session";
-import { ensureLayaRuntime } from "@/lib/ai/laya-session";
-import { analyzeRecordingRelevance } from "@/lib/ai/relevance-run";
+import { ensureLayaRuntime, preloadLayaModel, resumeLayaModelDownload } from "@/lib/ai/laya-session";
+import {
+  analyzeRecordingRelevance,
+  rerunPendingAnalyses,
+} from "@/lib/ai/relevance-run";
 import {
   initGatewayConfirm,
   isPendingConfirmation,
@@ -72,6 +75,28 @@ export default defineBackground(() => {
   // the offscreen document mid-recording (see lib/gif-recording/session.ts).
   initGifStateWatch();
 
+  // Lay a warm cache for the laya decision model: the ~850 MB weights are NOT
+  // shipped in the package — they are downloaded from the artifacts repo on
+  // first use (see lib/ai/runtime.ts). Start that download right after
+  // install/upgrade so the first real predict doesn't wait for it. Dev runs
+  // this too, deliberately: the download path is what production exercises,
+  // and the cache-first warm-up makes repeat reloads cheap.
+  browser.runtime.onInstalled.addListener((details) => {
+    if (details.reason !== "install" && details.reason !== "update") return;
+    preloadLayaModel().catch((err) =>
+      console.error("[background] laya model preload failed", err),
+    );
+  });
+
+  // Browser startup: resume an artifact download that a browser shutdown
+  // killed mid-way. Warm-only — a complete cache makes this a no-op, so no
+  // model memory is spent on normal startups.
+  browser.runtime.onStartup.addListener(() => {
+    resumeLayaModelDownload().catch((err) =>
+      console.error("[background] laya download resume failed", err),
+    );
+  });
+
   browser.runtime.onMessage.addListener(
     createMessageHandler({
       session,
@@ -97,6 +122,7 @@ export default defineBackground(() => {
       resolveGifConfirmation,
       isPendingGifConfirmation,
       ensureLayaRuntime,
+      rerunPendingAnalyses,
     }),
   );
 });
