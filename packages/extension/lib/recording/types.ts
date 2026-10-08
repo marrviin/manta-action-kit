@@ -67,7 +67,7 @@ export interface ApiCall {
   relevance?: CallRelevance;
   /**
    * 触发本调用的用户交互（停止录制时由 attachPrecedingInteractions 回填，取调用开始前
-   * 2s 窗口内最近的一次）；无此字段 = 调用前没有可感知的用户交互。仅是意图提示，
+   * 5s 窗口内最近的一次，每次交互最多标记 5 个调用）；无此字段 = 调用前没有可感知的用户交互。仅是意图提示，
    * 不是因果证明——模型侧只当证据用，不做「无交互即无关」的硬规则。
    */
   precedingInteraction?: PrecedingInteraction;
@@ -318,9 +318,11 @@ export interface Recording {
    * Lifecycle of the laya relevance analysis, so the detail view can show a
    * live status (incl. on reopen — persisted, not just broadcast). Absent =
    * never ran. `relevanceStatusAt` is the epoch ms of the last transition; a
-   * stale `analyzing` (SW died mid-run) is detected by its age.
+   * stale `analyzing` (SW died mid-run) is detected by its age. `skipped` =
+   * the run completed with stats-only marks because the model was still
+   * downloading; the auto-rerun (LAYA_MODEL_READY) flips it to `done`.
    */
-  relevanceStatus?: 'analyzing' | 'done' | 'failed';
+  relevanceStatus?: 'analyzing' | 'done' | 'failed' | 'skipped';
   relevanceStatusAt?: number;
   /**
    * 录制期间采集到的用户交互时间线（click/submit/change 描述符，时间升序，上限 300 条

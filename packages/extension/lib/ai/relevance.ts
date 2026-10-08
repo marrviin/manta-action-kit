@@ -77,6 +77,25 @@ export function hostOf(url: string): string {
   }
 }
 
+/**
+ * The `request-body` text the model reads: form-encoded envelopes (a
+ * `body=%7B…%7D`-style POST carries the whole JSON payload percent-encoded)
+ * are decoded one level so the payload fields stay readable. URL-encoded JSON
+ * is opaque to the model and hides exactly the request parameters that align
+ * a call with the user's action. JSON bodies pass through untouched; decode
+ * failures keep the raw text.
+ */
+export function readableBody(raw: string): string {
+  if (raw.includes('{') || !raw.includes('%')) return raw;
+  try {
+    const pairs = [...new URLSearchParams(raw).entries()];
+    if (pairs.length === 0) return raw;
+    return pairs.map(([k, v]) => `${k}=${v}`).join('&');
+  } catch {
+    return raw;
+  }
+}
+
 /** One call rendered as the `request` text the model classifies. */
 export function callSummary(call: ApiCall): string {
   const parts = [`#${call.seq} ${call.method} ${call.url}`];
@@ -90,7 +109,7 @@ export function callSummary(call: ApiCall): string {
       `user-action: ${pi.kind}${pi.text ? ` "${pi.text}"` : ''} ${pi.deltaMs}ms before`,
     );
   }
-  if (call.reqBody) parts.push(`request-body: ${clip(call.reqBody, MAX_BODY_CHARS)}`);
+  if (call.reqBody) parts.push(`request-body: ${clip(readableBody(call.reqBody), MAX_BODY_CHARS)}`);
   if (call.streaming) {
     const names = (call.sseEvents ?? [])
       .slice(0, MAX_SSE_EVENTS)
@@ -164,7 +183,7 @@ export function buildRelevanceStates(
 /** The subset of the laya answer shape this module reads (answers cross the message relay untyped). */
 export interface RelevanceAnswers {
   is_noise?: { noul?: number; answer_confidence?: number };
-  role?: { choice?: string };
+  role?: { choice?: string; answer_confidence?: number };
 }
 
 /**
@@ -186,6 +205,14 @@ export const IRRELEVANT_AT = 0.7;
 export const RELEVANT_AT = 0.3;
 export const NOISE_ROLE_AT = 0.5;
 export const PROTECTED_ROLE_AT = 0.8;
+/**
+ * Minimum confidence the role head needs before its noise vote may LOWER the
+ * irrelevant bar. A noise role picked at near-chance confidence (the role head
+ * commonly lands at 0.2–0.4 on clean business chains) must not turn the
+ * 0.5–0.7 noul band into 'irrelevant' on its own — that combination is what
+ * mass-mislabels business calls on single-host sites.
+ */
+export const NOISE_ROLE_MIN_CONF = 0.5;
 
 /** Roles that vote noise / protect the call, by criterion key. */
 const NOISE_ROLES = new Set(['telemetry', 'polling_heartbeat', 'preflight_static']);
@@ -221,7 +248,16 @@ export function verdictFromAnswers(answers: RelevanceAnswers): {
   const p = answers.is_noise?.noul;
   const conf = answers.is_noise?.answer_confidence;
   const role = typeof answers.role?.choice === 'string' ? answers.role.choice : undefined;
-  const bar = NOISE_ROLES.has(role ?? '')
+  const roleConf = answers.role?.answer_confidence;
+  const noiseRoleConfident =
+    NOISE_ROLES.has(role ?? '') &&
+    typeof roleConf === 'number' &&
+    Number.isFinite(roleConf) &&
+    roleConf >= NOISE_ROLE_MIN_CONF;
+  // A noise role only lowers the bar when the role head is confident in it;
+  // an unsure role falls back to the base bar (the protected bar still applies
+  // unconditionally — raising it never mislabels a business call).
+  const bar = noiseRoleConfident
     ? NOISE_ROLE_AT
     : PROTECTED_ROLES.has(role ?? '')
       ? PROTECTED_ROLE_AT

@@ -334,6 +334,11 @@ function ResultPanel({
                     {t("detail.relevanceFailed")}
                   </Text>
                 )}
+                {relStatus === "skipped" && (
+                  <Text type="secondary" className="text-xs! leading-6!">
+                    {t("detail.relevanceSkipped")}
+                  </Text>
+                )}
                 {calls.length >= 3 && (
                   <Tooltip title={t("detail.rerunRelevance")}>
                     <Button

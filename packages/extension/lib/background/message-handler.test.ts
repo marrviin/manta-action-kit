@@ -459,9 +459,12 @@ describe('CAPTURE_SCREENSHOT choreography', () => {
     fn(deps.captureTabScreenshot).mockResolvedValue(shot({ stitched: false }));
     readFx.mockResolvedValue(true);
     await dispatch({ type: 'CAPTURE_SCREENSHOT', data: { mode: 'visible' } });
-    expect(tabsSendMessage).toHaveBeenCalledWith(7, {
-      type: PLAY_SCREENSHOT_FX,
-    });
+    expect(tabsSendMessage).toHaveBeenCalledWith(
+      7,
+      { type: PLAY_SCREENSHOT_FX },
+      // fx is a viewport-level visual — top frame only.
+      { frameId: 0 },
+    );
     // fx reported played → the preview still opens (after the recovery beat)
     expect(tabsCreate).toHaveBeenCalledTimes(1);
   });

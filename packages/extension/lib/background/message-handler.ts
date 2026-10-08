@@ -21,7 +21,10 @@ import type {
   stopGifRecording,
 } from "@/lib/gif-recording/session";
 import type { ensureLayaRuntime } from "@/lib/ai/laya-session";
-import type { analyzeRecordingRelevance } from "@/lib/ai/relevance-run";
+import type {
+  analyzeRecordingRelevance,
+  rerunPendingAnalyses,
+} from "@/lib/ai/relevance-run";
 import type {
   isPendingConfirmation,
   requestGatewayConfirmation,
@@ -40,6 +43,10 @@ import {
   ScreenshotError,
   SCREENSHOT_PREVIEW_MAX_BYTES,
 } from "@/lib/screenshot/types";
+import {
+  INSPECTOR_CAPTURE_DEACTIVATE,
+  TOGGLE_INSPECTOR_CAPTURE,
+} from "@/lib/inspector/capture";
 import { readCaptureFx, screenshotPreview } from "@/lib/storage";
 
 /**
@@ -108,6 +115,7 @@ export interface MessageHandlerDeps {
   resolveGifConfirmation: typeof resolveGifConfirmation;
   isPendingGifConfirmation: typeof isPendingGifConfirmation;
   ensureLayaRuntime: typeof ensureLayaRuntime;
+  rerunPendingAnalyses: typeof rerunPendingAnalyses;
 }
 
 /**
@@ -265,9 +273,15 @@ export function createMessageHandler(deps: MessageHandlerDeps) {
               // (double rAF) and fullPage adds a 200ms settle — the reply can
               // legitimately arrive past 1.5s without anything being wrong.
               fxSettled = Promise.race([
-                chrome.tabs.sendMessage(tab.id, {
-                  type: PLAY_SCREENSHOT_FX,
-                }),
+                chrome.tabs.sendMessage(
+                  tab.id,
+                  {
+                    type: PLAY_SCREENSHOT_FX,
+                  },
+                  // Top frame only: the fx is a viewport-level visual, and an
+                  // all-frames broadcast would layer one copy per iframe.
+                  { frameId: 0 },
+                ),
                 new Promise((r) => setTimeout(r, 2_500)),
               ]).catch(() => {
                 /* no content script on this tab — straight to the preview */
@@ -305,6 +319,49 @@ export function createMessageHandler(deps: MessageHandlerDeps) {
                   : "/preview.html",
               ),
             });
+            sendResponse({ ok: true });
+            break;
+          }
+
+          case "INSPECTOR_CAPTURE_TOGGLE_ALL_FRAMES": {
+            // Relay the capture-mode toggle to EVERY frame of the tab: the
+            // hotkey lands only in the focused frame, and the popup goes
+            // through here so its reply never depends on multi-frame
+            // response semantics of a direct tabs.sendMessage. chrome:// and
+            // other non-injectable pages have no content script — surface
+            // that as ok:false with the raw error for diagnostics.
+            const tabId = sender.tab?.id ?? msg.data.tabId;
+            if (tabId == null) {
+              sendResponse({ ok: false, error: "no tab id" });
+              break;
+            }
+            try {
+              sendResponse({
+                ok: true,
+                ...(await chrome.tabs.sendMessage(tabId, {
+                  type: TOGGLE_INSPECTOR_CAPTURE,
+                })),
+              });
+            } catch (err) {
+              sendResponse({
+                ok: false,
+                error: err instanceof Error ? err.message : String(err),
+              });
+            }
+            break;
+          }
+
+          case "INSPECTOR_CAPTURE_DEACTIVATE_ALL_FRAMES": {
+            // Relay from deactivateAll() (Esc / hint-pill click): exit capture
+            // mode in every frame of the sender's tab. Best-effort — a frame
+            // without a content script just doesn't get the message.
+            if (sender.tab?.id != null) {
+              await chrome.tabs
+                .sendMessage(sender.tab.id, {
+                  type: INSPECTOR_CAPTURE_DEACTIVATE,
+                })
+                .catch(() => {});
+            }
             sendResponse({ ok: true });
             break;
           }
@@ -434,6 +491,16 @@ export function createMessageHandler(deps: MessageHandlerDeps) {
             sendResponse({ ok: true });
             break;
 
+          case "LAYA_MODEL_READY":
+            // The offscreen runtime finished loading the model — re-run the
+            // relevance analyses that were skipped while it was downloading.
+            // Fire-and-forget: the sender does not await an outcome.
+            void deps.rerunPendingAnalyses().catch((err) =>
+              console.error("[background] pending relevance rerun failed", err),
+            );
+            sendResponse({ ok: true });
+            break;
+
           case "LAYA_GET_STATUS": {
             // Relay, but do NOT ensure the document first: a status probe from
             // a freshly opened panel must not spawn the runtime. A missing
@@ -548,6 +615,17 @@ export function createMessageHandler(deps: MessageHandlerDeps) {
             });
             break;
           }
+
+          default:
+            // Hang-prevention for unknown message types: without a reply the
+            // sender's await never settles (e.g. a popup rebuilt against a
+            // service worker still running older code — the click appears to
+            // do nothing at all). Turn the silent hang into a visible error.
+            console.warn("[background] unhandled message type", msg?.type);
+            sendResponse({
+              __error: `unhandled message type: ${String(msg?.type)}`,
+            });
+            break;
         }
       } catch (err) {
         // A handler that throws must still answer, or the caller's sendMessage

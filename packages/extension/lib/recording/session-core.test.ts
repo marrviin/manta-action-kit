@@ -402,7 +402,7 @@ describe('interactions at stop', () => {
 
     await s.pushInteraction(interaction({ kind: 'click', text: 'load', at: 10_000 }), 5);
     await s.push(call({ startedAt: 10_400 }), 5); // 400ms after the click -> attached
-    await s.push(call({ startedAt: 15_000 }), 5); // 5s later -> nothing attached
+    await s.push(call({ startedAt: 15_100 }), 5); // past the 5s window -> nothing attached
     await s.pushInteraction(
       interaction({ kind: 'change', text: undefined, name: 'q', value: 'hello', at: 16_000 }),
       5,

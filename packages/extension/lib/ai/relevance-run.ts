@@ -12,11 +12,16 @@
  *                          failure fails the run (status 'failed' + notify).
  *   3. dynamism (model)  — single-observation leaves the stats could not classify.
  *
- * Degradation: every pass after relevance degrades independently — a failure
- * leaves its marks absent, which every consumer (UI, MCP tools) already reads
- * as "unanalyzed" and renders neutrally. Refinement failures are logged, never
- * fail the run. Pure state-building / verdict logic lives in the sibling
- * modules (unit-tested); this file is the extension-API glue.
+ * Degradation: laya is an ENHANCEMENT, never a gate. When the model is not
+ * ready (still downloading on first install), passes 1–3 are SKIPPED — the
+ * run completes with the stats-only marks and status 'skipped', and the
+ * recording is queued for an automatic rerun once the model reports ready
+ * (LAYA_MODEL_READY → rerunPendingAnalyses). Once the model IS ready, every
+ * pass after relevance degrades independently — a failure leaves its marks
+ * absent, which every consumer (UI, MCP tools) already reads as "unanalyzed"
+ * and renders neutrally. Refinement failures are logged, never fail the run.
+ * Pure state-building / verdict logic lives in the sibling modules
+ * (unit-tested); this file is the extension-API glue.
  */
 import {
   getCalls,
@@ -52,6 +57,24 @@ type RelevanceStatus = NonNullable<
 /** Recordings with an analysis currently in flight (guards the manual re-run
  * button against double-clicks stacking a second model pass). */
 const running = new Set<string>();
+
+/** Recordings whose analysis was skipped because the model was still
+ * downloading; re-run automatically when the model reports ready. In-memory
+ * on purpose — a dead SW loses the queue, and the manual re-run button stays
+ * as the fallback for anything lost. */
+const pendingModelRerun = new Set<string>();
+
+/** True when the offscreen runtime reports a loaded agent. A missing runtime
+ * document answers "not ready" without spawning one — probing must not
+ * create work. */
+async function isModelReady(): Promise<boolean> {
+  try {
+    const s = await sendMessage('LAYA_GET_STATUS', {});
+    return s.ready;
+  } catch {
+    return false;
+  }
+}
 
 /** Persist the phase AND broadcast it, so open detail views update live. */
 async function reportStatus(recordingId: string, status: RelevanceStatus): Promise<void> {
@@ -113,6 +136,16 @@ async function runAnalysis(recordingId: string): Promise<void> {
     await updateFieldDynamism(recordingId, dynamism.statsMarks).catch((err) =>
       console.error('[relevance] stats dynamism write failed', err),
     );
+  }
+
+  // Model gate — skip, never wait. laya is an enhancement to this flow: while
+  // the model is still downloading (first install), finish with the
+  // stats-only marks and queue an automatic rerun for when it reports ready.
+  // (The recording keeps its 'skipped' status until that rerun lands.)
+  if (!(await isModelReady())) {
+    pendingModelRerun.add(recordingId);
+    await reportStatus(recordingId, 'skipped');
+    return;
   }
 
   // The runtime load gates the model passes. Its failure is the run's failure
@@ -199,4 +232,24 @@ function notifyRelevanceFailed(): void {
         'The local model could not analyze this recording',
     })
     .catch((err) => console.error('[relevance] notification failed', err));
+}
+
+/**
+ * Re-run the analyses that were skipped while the model was still
+ * downloading. Fired from the LAYA_MODEL_READY notification (the offscreen
+ * runtime sends it on every successful model load). One attempt per queued
+ * recording — a failure this time drops it from the queue (the manual re-run
+ * button in the detail view stays as the fallback); entries already skipped
+ * again (model ready flipped back to false) simply re-queue themselves via
+ * the normal skip path.
+ */
+export async function rerunPendingAnalyses(): Promise<void> {
+  if (pendingModelRerun.size === 0) return;
+  const ids = [...pendingModelRerun];
+  pendingModelRerun.clear();
+  for (const id of ids) {
+    await analyzeRecordingRelevance(id).catch((err) =>
+      console.error('[relevance] queued rerun failed', id, err),
+    );
+  }
 }

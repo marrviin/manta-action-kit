@@ -113,6 +113,17 @@ describe('callSummary', () => {
     expect(text).toContain('…');
   });
 
+  it('decodes a form-encoded body so the payload stays readable', () => {
+    const encoded = `body=${encodeURIComponent('{"domain":"transfer-test.jdtest.net","pageSize":100}')}`;
+    const text = callSummary(makeCall({ reqBody: encoded }));
+    expect(text).toContain('request-body: body={"domain":"transfer-test.jdtest.net","pageSize":100}');
+  });
+
+  it('leaves json bodies untouched', () => {
+    const raw = '{"note":"a=b %7B not an envelope"}';
+    expect(callSummary(makeCall({ reqBody: raw }))).toContain(`request-body: ${raw}`);
+  });
+
   it('states the response size even when the body is opaque', () => {
     const text = callSummary(makeCall({ resBody: '{"code":0}' }));
     expect(text).toContain('response: HTTP 200, 10 chars');
@@ -250,10 +261,10 @@ describe('verdictFromAnswers', () => {
     expect(relevance.role).toBeUndefined();
   });
 
-  it('lowers the irrelevant bar when the role head votes noise', () => {
+  it('lowers the irrelevant bar when the role head votes noise confidently', () => {
     const { relevance } = verdictFromAnswers({
       is_noise: { noul: 0.55, answer_confidence: 0.6 },
-      role: { choice: 'telemetry' },
+      role: { choice: 'telemetry', answer_confidence: 0.8 },
     });
     // 0.55 is below the base 0.7 bar but above the noise-role 0.5 bar.
     expect(relevance.verdict).toBe('irrelevant');
@@ -262,9 +273,28 @@ describe('verdictFromAnswers', () => {
   it('treats the preflight_static role as a noise vote too', () => {
     const { relevance } = verdictFromAnswers({
       is_noise: { noul: 0.55, answer_confidence: 0.6 },
-      role: { choice: 'preflight_static' },
+      role: { choice: 'preflight_static', answer_confidence: 0.8 },
     });
     expect(relevance.verdict).toBe('irrelevant');
+  });
+
+  it('keeps the base bar when the noise vote itself is unconfident', () => {
+    // The production failure this guards: a near-chance role pick (0.34) must
+    // not turn the 0.5–0.7 noul band into 'irrelevant' on business chains.
+    const { relevance } = verdictFromAnswers({
+      is_noise: { noul: 0.55, answer_confidence: 0.6 },
+      role: { choice: 'telemetry', answer_confidence: 0.34 },
+    });
+    expect(relevance.verdict).toBe('uncertain');
+    expect(relevance.role).toBe('telemetry');
+  });
+
+  it('keeps the base bar when the role carries no confidence at all', () => {
+    const { relevance } = verdictFromAnswers({
+      is_noise: { noul: 0.55, answer_confidence: 0.6 },
+      role: { choice: 'telemetry' },
+    });
+    expect(relevance.verdict).toBe('uncertain');
   });
 
   it('raises the irrelevant bar when the role head votes business data', () => {

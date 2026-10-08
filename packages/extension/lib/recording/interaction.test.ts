@@ -236,7 +236,7 @@ describe('attachPrecedingInteractions', () => {
   it('attaches the nearest interaction within the window and skips out-of-window ones', () => {
     const calls = [
       { startedAt: 10_400 },
-      { startedAt: 15_000 },
+      { startedAt: 15_100 },
     ] as Array<{ startedAt: number; precedingInteraction?: PrecedingInteraction | undefined }>;
     const ints: CapturedInteraction[] = [
       interaction('click', 10_000, 'load'),
@@ -248,8 +248,19 @@ describe('attachPrecedingInteractions', () => {
       text: 'load',
       deltaMs: 400,
     });
-    // 15_000 has no interaction within 2s before it (next one is after it).
+    // 15_100 is past the 5s default window from the click (next one is after it).
     expect(calls[1]!.precedingInteraction).toBeUndefined();
+  });
+
+  it('covers the post-navigation call burst with the 5s default window', () => {
+    // A navigation click routinely settles into page-load calls 2–3s later;
+    // the old 2s window stripped the hint from exactly those calls.
+    const calls = [{ startedAt: 12_116 }] as Array<{
+      startedAt: number;
+      precedingInteraction?: PrecedingInteraction | undefined;
+    }>;
+    attachPrecedingInteractions(calls, [interaction('click', 10_000, '管理')]);
+    expect(calls[0]!.precedingInteraction).toMatchObject({ text: '管理', deltaMs: 2116 });
   });
 
   it('handles unsorted interaction input and a delta exactly at the window edge', () => {

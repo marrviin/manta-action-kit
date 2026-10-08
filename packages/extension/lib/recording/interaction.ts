@@ -180,7 +180,10 @@ export function describeInteraction(
 /**
  * Attach to each call the interaction nearest before its start (within
  * `windowMs`) — the likely trigger. A hint for consumers, not causality: no
- * interaction in the window simply leaves the field absent.
+ * interaction in the window simply leaves the field absent. The default is
+ * generous (5s) because a navigation click routinely settles into a burst of
+ * page-load calls 1.5–3s later; a tight window strips the causal hint from
+ * exactly those calls and nudges consumers toward "no interaction = noise".
  *
  * One interaction is attached to at most `maxPerInteraction` calls (the
  * chronologically FIRST ones after it): on a busy page a single committed input
@@ -194,7 +197,7 @@ export function describeInteraction(
 export function attachPrecedingInteractions(
   calls: Array<{ startedAt: number; precedingInteraction?: PrecedingInteraction }>,
   interactions: readonly CapturedInteraction[],
-  windowMs = 2000,
+  windowMs = 5000,
   maxPerInteraction = 5,
 ): void {
   const sorted = [...interactions].sort((a, b) => a.at - b.at);
