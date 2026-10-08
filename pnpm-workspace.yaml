@@ -5,6 +5,7 @@ packages:
 allowBuilds:
   onnxruntime-node: true
   protobufjs: true
+  simple-git-hooks: false # hooks 由 pnpm hooks 手动激活
 
 onlyBuiltDependencies:
   - esbuild
