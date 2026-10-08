@@ -1,6 +1,6 @@
 # Privacy Policy — Manta Action Kit
 
-_Last updated: 2026-09-24_
+_Last updated: 2026-10-08_
 
 Manta Action Kit ("the extension") is a developer tool that records API calls
 made by pages you visit and lets an AI agent, running on your own machine, read
@@ -25,10 +25,15 @@ we control:**
   the request and response payloads of the API calls (method, URL, headers,
   request/response bodies, timing, and parsed SSE events for streaming
   responses).
-- **User activity (network request capture)** — the extension observes the
-  fetch/XHR network requests made by the page **only while you are actively
-  recording**. It does not track clicks, mouse movement, scrolling, keystrokes,
-  or your browsing history.
+- **User activity (network request & interaction capture)** — the extension
+  observes the fetch/XHR network requests made by the page **only while you are
+  actively recording**. While recording, it also captures the flow's human side:
+  clicks, form submissions, and committed field changes, with the element's
+  text, container semantics, and name/value. This interaction capture is
+  redacted at capture time (password fields are never recorded; 4–8 digit
+  values such as OTP codes are masked). It does not track mouse movement,
+  scrolling, or your browsing history, and captures nothing once recording
+  stops.
 - **Website content (page capture)** — when you explicitly capture an element,
   take a screenshot, or record a GIF from the popup, the extension stores that
   capture locally: element captures include the picked element's DOM structure,
@@ -46,7 +51,7 @@ transmitted to us or to any third party we control.
 
 | Data                                                                                                                                                                               | Where it is stored                    | Why                                                                    |
 | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- | ---------------------------------------------------------------------- |
-| **Recorded API calls** — request method, URL, headers, request/response bodies, timing, and (for streaming responses) parsed SSE events                                            | IndexedDB, in your browser profile    | So you can review a recorded business flow and expose it to your agent |
+| **Recorded API calls** — request method, URL, headers, request/response bodies, timing, and (for streaming responses) parsed SSE events; plus the captured interaction timeline (clicks, submits, redacted field changes) attached as triggering hints                                          | IndexedDB, in your browser profile    | So you can review a recorded business flow and expose it to your agent |
 | **Settings** — enabled toggles, MCP port, gateway confirmation toggle, allow/deny domain lists, UI language/theme                                                                  | `chrome.storage` (sync/local/session) | To remember your preferences                                           |
 | **Element captures** — DOM structure, text, and computed styles of elements you explicitly pick in the page, with shadow-DOM support                                               | IndexedDB                             | So you can preview, diff, and copy the captured element                |
 | **Sandbox-proxy audit log** — for each agent-initiated call: method, URL, status, timing, the **names** of the cookies that were injected, and truncated request/response previews | IndexedDB                             | So you can audit exactly what your agent did                           |
@@ -93,8 +98,13 @@ You remain in control at all times:
   browsing activity to any remote server operated by us.
 - There is **no** analytics, telemetry, tracking, advertising, or fingerprinting.
 - There is **no** account, sign-in, or user identifier.
-- The extension uses **no remote code**: all scripts are bundled in the package;
-  nothing is fetched or executed from a remote source.
+- The extension uses **no remote code**: all scripts (including the ONNX
+  inference runtime) are bundled in the package; nothing is fetched and
+  executed from a remote source. The one remote fetch the extension makes is
+  **model data, not code**: the on-device decision model's weights (~800 MB)
+  are downloaded **once** from Hugging Face (`huggingface.co/marrviin/laya-en-fp16`)
+  into the browser's local cache. No page data, recordings, or identifiers are
+  sent in that request, and all analysis runs locally afterwards.
 
 ## Data you send to third parties (by your own action)
 

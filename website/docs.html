@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Documentation — Manta Action Kit | 文档</title>
-  <meta name="description" content="Manta Action Kit documentation: recording, Actions, sandbox gateway, element capture, screenshots, GIF recording, MCP tools reference and configuration. 文档：录制、Action、沙箱网关、元素捕获、截图、GIF 录屏、MCP 工具参考与配置。" />
+  <meta name="description" content="Manta Action Kit documentation: recording with AI auto-analysis, Actions, sandbox gateway, element capture, screenshots, GIF recording, MCP tools reference and configuration. 文档：录制与 AI 自动分析、Action、沙箱网关、元素捕获、截图、GIF 录屏、MCP 工具参考与配置。" />
   <link rel="icon" type="image/png" href="assets/icon-128.png" />
   <link rel="stylesheet" href="assets/site.css" />
 </head>
@@ -52,7 +52,9 @@
       <a class="lv2" href="#ui-panel" data-i18n="docs.tocUiPanel">Side panel</a>
       <a class="lv2" href="#ui-settings" data-i18n="docs.tocUiSettings">Settings</a>
       <a href="#recording" data-i18n="docs.tocRecording">Recording</a>
+      <a class="lv2" href="#rec-interactions" data-i18n="docs.tocRecInteractions">Interaction capture</a>
       <a class="lv2" href="#rec-deps" data-i18n="docs.tocRecDeps">Flow annotations</a>
+      <a class="lv2" href="#rec-ai" data-i18n="docs.tocRecAi">AI auto-analysis</a>
       <a class="lv2" href="#rec-redact" data-i18n="docs.tocRecRedact">Redacted contracts</a>
       <a href="#actions" data-i18n="docs.tocActions">Actions</a>
       <a href="#gateway" data-i18n="docs.tocGateway">Sandbox gateway</a>
@@ -77,6 +79,7 @@
       <a class="lv2" href="#tools-actions" data-i18n="docs.tocToolsAct">Actions</a>
       <a class="lv2" href="#tools-rules" data-i18n="docs.tocToolsRules">Proxy rules</a>
       <a class="lv2" href="#tools-gateway" data-i18n="docs.tocToolsGw">Gateway calls</a>
+      <a class="lv2" href="#tools-capture" data-i18n="docs.tocToolsCapture">Page capture</a>
       <a class="lv2" href="#tools-ops" data-i18n="docs.tocToolsOps">Runtime health</a>
       <a href="#config" data-i18n="docs.tocConfig">Configuration</a>
       <a href="#development" data-i18n="docs.tocDevelopment">Development</a>
@@ -210,6 +213,8 @@ client → auth    { proof = HMAC(token, "manta/auth/" + nonce) }</pre>
           <li data-i18n="docs.ui.settingsLi1"><strong>Language</strong> — English / 中文, synced live across popup and side panel; defaults to your browser's UI language.</li>
           <li data-i18n="docs.ui.settingsLi2"><strong>Connector</strong> — live bridge status (Connected / Connecting / Disconnected / <em>Auth failed</em> — the fix for the last is re-copying the install prompt). The <em>Tools</em> button expands the <strong>per-tool kill-switch list</strong>: every business MCP tool can be turned off individually.</li>
           <li data-i18n="docs.ui.settingsLi3"><strong>About</strong> — extension version + Chrome Web Store link, and the companion npm package with its live registry version.</li>
+          <li data-i18n="docs.ui.settingsLi4"><strong>Animation effects</strong> — the in-page animations played during element captures and screenshots; on by default.</li>
+          <li data-i18n="docs.ui.settingsLi5"><strong>Decision model</strong> — load the on-device Laya model used to auto-analyze recordings (see <a href="#rec-ai">AI auto-analysis</a>).</li>
         </ul>
       </section>
 
@@ -236,13 +241,53 @@ client → auth    { proof = HMAC(token, "manta/auth/" + nonce) }</pre>
           <li data-i18n="docs.rec.li5"><strong>Not captured</strong>: WebSocket frames, <code>sendBeacon</code>, page workers, and native <code>EventSource</code> (fetch-based SSE is covered).</li>
         </ul>
 
+        <h3 id="rec-interactions" data-i18n="docs.rec.interactionsH">Interaction capture</h3>
+        <p data-i18n="docs.rec.interactionsP">
+          Recording watches the human side of the flow too: clicks, form submissions
+          and field changes are relayed with the element's text, container semantics
+          and name/value — redacted on capture (password fields are never recorded;
+          4–8 digit values like OTP codes are masked). At stop, each captured call is
+          attached its most likely preceding interaction (a 5-second lookback window),
+          shown as timeline marks in the recording detail view and exposed to your
+          agent as <code>precedingInteraction</code> on <code>get_flow</code> steps —
+          so direct consequences of a user action can be told apart from calls that
+          merely co-occur (analytics, preloads fire without one).
+        </p>
+
         <h3 id="rec-deps" data-i18n="docs.rec.depsH">Flow annotations</h3>
         <p data-i18n="docs.rec.depsP">
           The call chain is annotated with inferred data dependencies — gold
           <strong>consumes</strong> tags mark request fields that reuse a value from an
           earlier response, blue <strong>produces</strong> tags mark the response paths
           that fed them. Inference is deterministic (no LLM): a value of ≥6 characters
-          that appears in an earlier response and is reused in a later request.
+          that appears in an earlier response and is reused in a later request. The
+          dep-confidence pass below may later dim an edge with an
+          <code>unlikely</code> tag when it judges the value match coincidental.
+        </p>
+
+        <h3 id="rec-ai" data-i18n="docs.rec.aiH">AI auto-analysis</h3>
+        <p data-i18n="docs.rec.aiP1">
+          When a recording is saved, the extension analyzes it on-device with
+          <strong>Laya</strong>, a local decision model (enable it in Settings →
+          <em>Decision model</em>. The model weights (~800&nbsp;MB) are downloaded
+          once from Hugging Face into a local browser cache; analysis itself runs
+          entirely on-device and your data never leaves your machine). Four passes run
+          in order, each degrading independently — if a pass fails, its marks are
+          simply absent, which every consumer (UI and MCP tools) reads as
+          <em>unanalyzed</em>:
+        </p>
+        <ol>
+          <li data-i18n="docs.rec.aiLi1"><strong>Field dynamism (stats)</strong> — deterministic, no model needed: fields whose value changed across repeated observations are classified before the model even loads, so this half of the signal always lands.</li>
+          <li data-i18n="docs.rec.aiLi2"><strong>Dep-confidence</strong> — every inferred dependency edge is re-judged as a real data flow vs a coincidental value match (<code>likely</code> / <code>unlikely</code> / <code>uncertain</code>); verdicts surface in the UI and on <code>get_flow</code> deps / <code>get_endpoints</code> <code>inputsFrom</code>.</li>
+          <li data-i18n="docs.rec.aiLi3"><strong>Relevance</strong> — the headline result: each call is marked <code>relevant</code> / <code>irrelevant</code> / <code>uncertain</code> with a <code>role</code> (e.g. <code>telemetry</code>), so noise like analytics, polling and preflights is auto-marked. User interactions feed the verdict, and a write guard means non-GET mutating calls are never auto-marked irrelevant — killing a write would break action generation.</li>
+          <li data-i18n="docs.rec.aiLi4"><strong>Field dynamism (model)</strong> — single-observation fields the stats could not classify go through the model: <code>varies</code> (a timestamp, session token, auto-generated id), <code>stable</code>, or <code>uncertain</code>, with a <code>source</code> of <code>stats</code> (multi-observation fact) or <code>model</code>.</li>
+        </ol>
+        <p data-i18n="docs.rec.aiP2">
+          Marks land in the side panel (unlikely edges dimmed, dynamism tags on
+          schemas) and on the MCP tools. Your agent weighs them when distilling
+          actions: skip <code>irrelevant</code> calls, never parameterize on an
+          <code>unlikely</code> edge, and turn <code>varies</code> fields into action
+          params instead of hardcoded literals.
         </p>
 
         <h3 id="rec-redact" data-i18n="docs.rec.redactH">Redacted endpoint contracts</h3>
@@ -425,8 +470,9 @@ GET http://127.0.0.1:8788/gh-api/repos/marrviin/manta-action-kit
 
         <h3 id="shot-modes" data-i18n="docs.shot.modesH">Two modes</h3>
         <ul>
-          <li data-i18n="docs.shot.li1"><strong>Window</strong> (visible area) via <code>captureVisibleTab</code>. <strong>Full page</strong> prefers scroll-and-stitch: the tab scrolls screen by screen while the extension composites the bands — lazy content loads naturally, and <code>position:fixed</code>/<code>sticky</code> elements are temporarily neutralized during capture. When stitching isn't available, it falls back to a one-shot <code>chrome.debugger</code> + CDP <code>captureBeyondViewport</code> (single render, DOM untouched) — the "being debugged" infobar appears only during that fallback.</li>
+          <li data-i18n="docs.shot.li1"><strong>Window</strong> (visible area) via <code>captureVisibleTab</code> — with a CDP viewport render as fallback, even browser-internal pages like <code>chrome://</code> are capturable (only Chrome-protected targets such as the Web Store still refuse). <strong>Full page</strong> prefers scroll-and-stitch: the tab scrolls screen by screen while the extension composites the bands — lazy content loads naturally, and <code>position:fixed</code>/<code>sticky</code> elements are temporarily neutralized during capture. When stitching isn't available, it falls back to a one-shot <code>chrome.debugger</code> + CDP <code>captureBeyondViewport</code> (single render, DOM untouched) — the "being debugged" infobar appears only during that fallback.</li>
           <li data-i18n="docs.shot.li2">Pages taller than Chromium's 16384-px capture surface are downscaled to fit (retina sharpness traded for completeness). If DevTools is open on the tab, the CDP fallback fails with a <code>debugger-conflict</code> hint — close DevTools and retry.</li>
+          <li data-i18n="docs.shot.li3"><strong>Viewfinder feedback</strong> — after the shot is taken, a camera-focus animation plays in the page (capture happens first, so it can never pollute the image), and the same effect sweeps across the full-page stitch. Failed captures surface as a system notification. Toggle the effect under Settings → <em>Animation effects</em>.</li>
         </ul>
 
         <h3 id="shot-preview" data-i18n="docs.shot.previewH">Preview &amp; export</h3>
@@ -490,8 +536,8 @@ GET http://127.0.0.1:8788/gh-api/repos/marrviin/manta-action-kit
             <tbody>
               <tr><td><code>list_recordings</code></td><td>All recordings' metadata (id, name, origin, createdAt, callCount).</td></tr>
               <tr><td><code>get_recording</code></td><td>One recording + its full API call chain (request/response/status/timing).</td></tr>
-              <tr><td><code>get_flow</code></td><td>Calls as ordered lightweight steps + inferred field dependencies linking them.</td></tr>
-              <tr><td><code>get_endpoints</code></td><td>Distinct endpoints collapsed by method + normalized path, with REDACTED request/response schemas (+ <code>inputsFrom</code>).</td></tr>
+              <tr><td><code>get_flow</code></td><td>Calls as ordered lightweight steps + inferred field dependencies linking them, plus the AI marks: <code>relevance</code>, <code>precedingInteraction</code>, <code>depCheck</code>.</td></tr>
+              <tr><td><code>get_endpoints</code></td><td>Distinct endpoints collapsed by method + normalized path, with REDACTED request/response schemas (+ <code>inputsFrom</code>, field <code>dynamism</code> marks).</td></tr>
               <tr><td><code>get_call</code></td><td>A single API call by id, with full request/response bodies &amp; headers.</td></tr>
               <tr><td><code>set_recording_description</code></td><td>Write a recording's business-level flow summary (the only write path).</td></tr>
             </tbody>
@@ -549,6 +595,31 @@ GET http://127.0.0.1:8788/gh-api/repos/marrviin/manta-action-kit
           call passes the extension's own confirmation popup — this covers the
           script-driven gateway path too and does not depend on the MCP client honoring
           native permission prompts.
+        </p>
+
+        <h3 id="tools-capture" data-i18n="docs.tools.capH">Agent-driven page capture</h3>
+        <p data-i18n="docs.tools.capP">
+          These tools act on the <strong>active tab</strong> of your Chrome window and
+          run silently — no preview tab, no success notifications; outcomes come back
+          in the tool result.
+        </p>
+        <div data-i18n="docs.tools.capTable">
+          <table class="tools-table">
+            <tbody>
+              <tr><td><code>capture_screenshot</code></td><td>Visible or full-page (scroll-and-stitch) screenshot of the active tab; returns a downscaled image + historyId. CDP fallback covers <code>chrome://</code> pages; protected targets fail with <code>protected-page</code>, DevTools conflicts with <code>debugger-conflict</code>.</td></tr>
+              <tr><td><code>capture_element</code></td><td>Capture a page element by selector, point, or box (exactly one); returns a lean element tree — full detail via <code>get_element_capture</code>.</td></tr>
+              <tr><td><code>start_gif_recording</code></td><td>Start tab capture. Blocks on the extension's confirmation popup — the user's Allow is Chrome's required gesture for tab capture. Auto-stops at 5 minutes.</td></tr>
+              <tr><td><code>stop_gif_recording</code></td><td>Stop the recording and return the WebM draftId.</td></tr>
+              <tr><td><code>pause_gif_recording</code> / <code>resume_gif_recording</code></td><td>Pause / resume the in-flight tab recording.</td></tr>
+              <tr><td><code>get_gif_recording_status</code></td><td>Current recording state + how the <em>previous</em> recording ended (<code>lastResult</code>).</td></tr>
+              <tr><td><code>list_gif_history</code></td><td>Recorded WebM drafts (metadata only).</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="dim" data-i18n="docs.tools.capNote">
+          GIF drafts are pre-transcode WebM: GIF/MP4 conversion runs inside the
+          extension's preview tab and cannot be triggered remotely — after stopping,
+          open the draft from the side panel's capture tab to transcode/download it.
         </p>
 
         <h3 id="tools-ops" data-i18n="docs.tools.opsH">Runtime health</h3>
@@ -642,7 +713,9 @@ pnpm test             # vitest unit suite (security-critical pure modules)</pre>
     "docs.tocUiPanel": "侧边栏",
     "docs.tocUiSettings": "设置",
     "docs.tocRecording": "接口录制",
+    "docs.tocRecInteractions": "交互捕获",
     "docs.tocRecDeps": "调用链注解",
+    "docs.tocRecAi": "AI 自动分析",
     "docs.tocRecRedact": "脱敏契约",
     "docs.tocActions": "Action",
     "docs.tocGateway": "沙箱网关",
@@ -667,6 +740,7 @@ pnpm test             # vitest unit suite (security-critical pure modules)</pre>
     "docs.tocToolsAct": "Action",
     "docs.tocToolsRules": "代理规则",
     "docs.tocToolsGw": "网关调用",
+    "docs.tocToolsCapture": "页面采集",
     "docs.tocToolsOps": "健康检查",
     "docs.tocConfig": "配置",
     "docs.tocDevelopment": "开发",
@@ -709,6 +783,8 @@ pnpm test             # vitest unit suite (security-critical pure modules)</pre>
     "docs.ui.settingsLi1": "<strong>语言</strong>——English / 中文，弹窗与侧边栏实时同步；默认跟随浏览器界面语言。",
     "docs.ui.settingsLi2": "<strong>连接器</strong>——实时桥接状态（已连接 / 连接中 / 未连接 / <em>认证失败</em>——最后一种的修复方式是重新复制安装提示词）。「工具」按钮展开<strong>按工具的 kill switch 列表</strong>：每个业务 MCP 工具都可单独关闭。",
     "docs.ui.settingsLi3": "<strong>关于</strong>——扩展版本 + Chrome 商店链接，以及配套 npm 包及其 npm registry 实时版本。",
+    "docs.ui.settingsLi4": "<strong>动画特效</strong>——元素捕获与截图时播放的页内动画；默认开启。",
+    "docs.ui.settingsLi5": "<strong>决策模型</strong>——加载用于录制自动分析的端侧 Laya 模型（见<a href=\"#rec-ai\">AI 自动分析</a>）。",
 
     "docs.rec.h": "接口录制",
     "docs.rec.p0": "<strong>使用场景</strong>：你想让 agent 在你已登录的站点里干活。边录制边把任务做一遍——提交一个表单、建一张工单、翻一页列表——捕获到的 API 调用链就是蓝图，agent 可以据此查看、学习并重放整个流程。",
@@ -718,8 +794,17 @@ pnpm test             # vitest unit suite (security-critical pure modules)</pre>
     "docs.rec.li3": "<strong>Agent 摘要</strong>：你的 agent 可以为录制撰写业务级摘要（<code>set_recording_description</code>），侧边栏只读展示。",
     "docs.rec.li4": "<strong>过滤规则</strong>：录制过滤规则可把噪音挡在外面。",
     "docs.rec.li5": "<strong>不捕获</strong>：WebSocket 帧、<code>sendBeacon</code>、页面 worker、原生 <code>EventSource</code>（基于 fetch 的 SSE 已覆盖）。",
+    "docs.rec.interactionsH": "交互捕获",
+    "docs.rec.interactionsP": "录制同样观察「人」的那一半流程：点击、表单提交、字段变更都会被记录——带元素文本、容器语义与 name/value，捕获即脱敏（密码输入框永不记录；4–8 位数字值如验证码会被打码）。停止时，每条捕获的调用会挂上最可能触发它的前序交互（5 秒回溯窗口），在录制详情视图里显示为时间线标记，并以 <code>precedingInteraction</code> 字段暴露在 <code>get_flow</code> 步骤上——agent 由此能区分「用户动作的直接后果」与「只是同时发生的调用」（埋点、预加载不会伴随交互）。",
     "docs.rec.depsH": "调用链注解",
-    "docs.rec.depsP": "调用链上会标注推断出的数据依赖——金色 <strong>consumes</strong> 标签标记复用了更早响应值的请求字段，蓝色 <strong>produces</strong> 标签标记供值的响应路径。推断是确定性的（不经 LLM）：一个 ≥6 字符的值出现在更早的响应里、又在后续请求中被复用。",
+    "docs.rec.depsP": "调用链上会标注推断出的数据依赖——金色 <strong>consumes</strong> 标签标记复用了更早响应值的请求字段，蓝色 <strong>produces</strong> 标签标记供值的响应路径。推断是确定性的（不经 LLM）：一个 ≥6 字符的值出现在更早的响应里、又在后续请求中被复用。下方的 dep-confidence pass 若判定值碰撞属于巧合，会以 <code>unlikely</code> 标签将该边置灰。",
+    "docs.rec.aiH": "AI 自动分析",
+    "docs.rec.aiP1": "录制保存后，扩展会用<strong>Laya</strong>——一个端侧决策模型——在本地完成分析（在 设置 → <em>决策模型</em> 中启用。模型权重（约 800&nbsp;MB）首次使用时从 Hugging Face 一次性下载到浏览器本地缓存，分析全程在端侧完成，你的数据永不离开你的机器）。四个 pass 按顺序执行、各自独立降级——某个 pass 失败时只是缺失其标记，所有消费方（UI 与 MCP 工具）都把缺失读作<em>未分析</em>：",
+    "docs.rec.aiLi1": "<strong>字段动态性（统计）</strong>——确定性、无需模型：多次观测中值发生变化的字段会在模型加载之前就完成分类，所以这半边信号总是能落地。",
+    "docs.rec.aiLi2": "<strong>依赖置信度（dep-confidence）</strong>——把每条推断出的依赖边重新判定为真实数据流还是巧合的值碰撞（<code>likely</code> / <code>unlikely</code> / <code>uncertain</code>）；结果在 UI 以及 <code>get_flow</code> deps / <code>get_endpoints</code> <code>inputsFrom</code> 上呈现。",
+    "docs.rec.aiLi3": "<strong>相关性（relevance）</strong>——主结果：每条调用被标记为 <code>relevant</code> / <code>irrelevant</code> / <code>uncertain</code> 并附 <code>role</code>（如 <code>telemetry</code>），埋点、轮询、预检等噪音被自动标记。用户交互会参与判定；且有写保护——非 GET 的变更类调用绝不会被自动标记为无关（误杀写调用会破坏 action 生成）。",
+    "docs.rec.aiLi4": "<strong>字段动态性（模型）</strong>——统计无法分类的单次观测字段走模型：<code>varies</code>（时间戳、会话 token、自动生成的 id）、<code>stable</code>、或 <code>uncertain</code>，并带 <code>source</code>：<code>stats</code>（多次观测的事实）或 <code>model</code>。",
+    "docs.rec.aiP2": "标记会落到侧边栏（unlikely 边置灰、Schema 上挂动态性标签）和 MCP 工具上。agent 蒸馏 action 时会参考这些标记：跳过 <code>irrelevant</code> 调用、不要在 <code>unlikely</code> 边上做参数化、把 <code>varies</code> 字段变成 action 参数而不是硬编码字面量。",
     "docs.rec.redactH": "脱敏接口契约",
     "docs.rec.redactP": "契约视图按方法 + 归一化路径合并调用（数字 id、UUID、长哈希折叠为 <code>:id</code>），并在字段名疑似敏感（password、token、authorization、cookie、apikey、csrf 等）或值疑似 JWT、长十六进制、base64 大块、邮箱时，把 Schema 示例脱敏为 <code>«redacted»</code>——agent 默认看到的是脱敏视图。脱敏是启发式的、不是保证——<code>get_call</code> 仍返回原始请求/响应，敏感录制请先用过滤规则清理再共享。",
 
@@ -767,8 +852,9 @@ pnpm test             # vitest unit suite (security-critical pure modules)</pre>
     "docs.shot.h": "截图",
     "docs.shot.p0": "<strong>使用场景</strong>：需要看像素的时候——让 agent 直观看到页面渲染出的样子、给 bug 报告附上视觉证据，或把一份长文档 / 仪表盘整页存档。",
     "docs.shot.modesH": "两种模式",
-    "docs.shot.li1": "<strong>窗口</strong>（可见区域）走 <code>captureVisibleTab</code>。<strong>整页</strong>首选滚动拼接：页面逐屏滚动、扩展逐屏拼接——滚动自然触发懒加载，捕获期间会临时中和 <code>fixed</code>/<code>sticky</code> 元素。拼接不可用时回退一次性 <code>chrome.debugger</code> + CDP <code>captureBeyondViewport</code>（单次渲染、不改 DOM）——「正在被调试」横幅只在该回退路径出现。",
+    "docs.shot.li1": "<strong>窗口</strong>（可见区域）走 <code>captureVisibleTab</code>——并有 CDP 视口渲染兜底，连 <code>chrome://</code> 这类浏览器内部页面也能截（只有 Chrome 保护目标如 Chrome 商店仍然拒绝）。<strong>整页</strong>首选滚动拼接：页面逐屏滚动、扩展逐屏拼接——滚动自然触发懒加载，捕获期间会临时中和 <code>fixed</code>/<code>sticky</code> 元素。拼接不可用时回退一次性 <code>chrome.debugger</code> + CDP <code>captureBeyondViewport</code>（单次渲染、不改 DOM）——「正在被调试」横幅只在该回退路径出现。",
     "docs.shot.li2": "超过 Chromium 16384px 捕获表面上限的页面会降采样以保完整（牺牲视网膜清晰度）。该标签页开着 DevTools 时，CDP 回退路径会报 <code>debugger-conflict</code> 提示——关掉 DevTools 重试。",
+    "docs.shot.li3": "<strong>取景器反馈</strong>——截图完成后，页面内会播放一段相机取景动画（先截图后播动画，绝不污染画面），整页拼接时该特效也会逐屏扫过。捕获失败会以系统通知提示。可在 设置 → <em>动画特效</em> 中开关。",
     "docs.shot.previewH": "预览与导出",
     "docs.shot.p3": "<strong>不自动落盘</strong>：截图先开进预览标签页（点击缩放、复制图像、下载），所见即所得，由你决定去留。截图同时保留一份小型历史（最近 20 条），可在侧栏「页面采集」标签页查看。",
 
@@ -785,7 +871,7 @@ pnpm test             # vitest unit suite (security-critical pure modules)</pre>
 
     "docs.tools.h": "MCP 工具参考",
     "docs.tools.recH": "录制（读取 + 一个写入）",
-    "docs.tools.recTable": "<table class=\"tools-table\"><tbody><tr><td><code>list_recordings</code></td><td>所有录制的元数据（id、名称、来源、创建时间、调用数）。</td></tr><tr><td><code>get_recording</code></td><td>单个录制 + 其完整 API 调用链（请求/响应/状态/耗时）。</td></tr><tr><td><code>get_flow</code></td><td>调用链：有序的轻量步骤 + 推断出的字段依赖关系。</td></tr><tr><td><code>get_endpoints</code></td><td>按方法 + 归一化路径去重的端点，请求/响应体为「脱敏 Schema」（含 <code>inputsFrom</code>）。</td></tr><tr><td><code>get_call</code></td><td>按 id 获取单个调用，含完整请求/响应体与请求头。</td></tr><tr><td><code>set_recording_description</code></td><td>写入录制的业务级流程摘要（唯一写入路径）。</td></tr></tbody></table>",
+    "docs.tools.recTable": "<table class=\"tools-table\"><tbody><tr><td><code>list_recordings</code></td><td>所有录制的元数据（id、名称、来源、创建时间、调用数）。</td></tr><tr><td><code>get_recording</code></td><td>单个录制 + 其完整 API 调用链（请求/响应/状态/耗时）。</td></tr><tr><td><code>get_flow</code></td><td>调用链：有序的轻量步骤 + 推断出的字段依赖关系，并附带 AI 标记：<code>relevance</code>、<code>precedingInteraction</code>、<code>depCheck</code>。</td></tr><tr><td><code>get_endpoints</code></td><td>按方法 + 归一化路径去重的端点，请求/响应体为「脱敏 Schema」（含 <code>inputsFrom</code> 与字段 <code>dynamism</code> 标记）。</td></tr><tr><td><code>get_call</code></td><td>按 id 获取单个调用，含完整请求/响应体与请求头。</td></tr><tr><td><code>set_recording_description</code></td><td>写入录制的业务级流程摘要（唯一写入路径）。</td></tr></tbody></table>",
     "docs.tools.ecH": "元素捕获（只读）",
     "docs.tools.ecTable": "<table class=\"tools-table\"><tbody><tr><td><code>list_element_captures</code></td><td>已保存元素捕获快照的概要（id、url、标题、捕获时间、元素数）。</td></tr><tr><td><code>get_element_capture</code></td><td>单个捕获的完整元素树与计算样式——对元素构建方式的忠实、可直接喂给 LLM 的描述。</td></tr><tr><td><code>diff_element_captures</code></td><td>对比两份捕获：按 DOM 路径列出逐属性变化的文本报告，另附 <code>identical</code> 标志。</td></tr></tbody></table>",
     "docs.tools.actH": "Action",
@@ -795,6 +881,10 @@ pnpm test             # vitest unit suite (security-critical pure modules)</pre>
     "docs.tools.gwH": "鉴权网关调用",
     "docs.tools.gwTable": "<table class=\"tools-table\"><tbody><tr><td><code>proxy_fetch</code></td><td>经扩展转发调用，转发时注入用户的 Cookie。</td></tr><tr><td><code>proxy_sse</code></td><td>与 <code>proxy_fetch</code> 类似，但用于 SSE 流，抽干后一次性返回全部事件。</td></tr></tbody></table>",
     "docs.tools.gwNote": "每次 <code>proxy_fetch</code> / <code>proxy_sse</code> / <code>execute_action</code> 调用都会经过扩展<strong>自身</strong>的确认弹窗——该闸门同时覆盖脚本驱动的网关路径，且不依赖 MCP 客户端是否支持原生权限提示。",
+    "docs.tools.capH": "Agent 驱动的页面采集",
+    "docs.tools.capP": "这组工具作用于你 Chrome 窗口的<strong>当前标签页</strong>，静默执行——不开预览页、不发成功通知，结果直接随工具返回值带回。",
+    "docs.tools.capTable": "<table class=\"tools-table\"><tbody><tr><td><code>capture_screenshot</code></td><td>当前标签页的窗口 / 整页（滚动拼接）截图；返回降采样图像 + historyId。CDP 兜底覆盖 <code>chrome://</code> 页面；Chrome 保护目标报 <code>protected-page</code>，DevTools 冲突报 <code>debugger-conflict</code>。</td></tr><tr><td><code>capture_element</code></td><td>按 selector、point 或 box（三选一）捕获页面元素；返回精简元素树——完整细节经 <code>get_element_capture</code> 获取。</td></tr><tr><td><code>start_gif_recording</code></td><td>开始标签页录制。会阻塞在扩展的确认弹窗上——用户的 Allow 是 Chrome 对标签页捕获要求的必要手势。5 分钟自动停止。</td></tr><tr><td><code>stop_gif_recording</code></td><td>停止录制并返回 WebM draftId。</td></tr><tr><td><code>pause_gif_recording</code> / <code>resume_gif_recording</code></td><td>暂停 / 继续进行中的标签页录制。</td></tr><tr><td><code>get_gif_recording_status</code></td><td>当前录制状态 + <em>上一次</em>录制的结束方式（<code>lastResult</code>）。</td></tr><tr><td><code>list_gif_history</code></td><td>已录制的 WebM 草稿（仅元数据）。</td></tr></tbody></table>",
+    "docs.tools.capNote": "GIF 草稿是转码前的 WebM：WebM→GIF/MP4 转换在扩展的预览页内完成、无法远程触发——停止录制后，请从侧栏「页面采集」标签页打开草稿进行转码 / 下载。",
     "docs.tools.opsH": "运行时健康检查",
     "docs.tools.opsTable": "<table class=\"tools-table\"><tbody><tr><td><code>health</code></td><td>返回 wsPort、proxyPort、proxyListening、extensionConnected、role。</td></tr><tr><td><code>rebind_proxy</code></td><td>运行时把 HTTP 代理迁移到空闲端口（用于从端口冲突中恢复）。</td></tr></tbody></table>",
 

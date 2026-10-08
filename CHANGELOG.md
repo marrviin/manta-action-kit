@@ -7,7 +7,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-08
+
+### Fixed
+
+#### Relevance verdicts: unconfident noise roles no longer lower the bar
+
+- The relevance pass marks a call `irrelevant` when the model's noise
+  probability clears a threshold. A `telemetry` / `polling_heartbeat` /
+  `preflight_static` role lowered that threshold from 0.7 to 0.5 — and the role
+  head often picks those roles at near-chance confidence (0.2–0.4) on clean
+  business chains, which mass-mislabelled business calls as "irrelevant" on
+  single-host sites. The lowered bar now applies only when the role head's own
+  confidence is ≥ 0.5; an unsure role falls back to the base 0.7 bar.
+- Form-encoded request bodies (a `body=%7B…%7D`-style percent-encoded JSON
+  envelope) are decoded one level before being shown to the model, so payload
+  fields stay readable instead of hiding the request parameters that align a
+  call with the user's action. JSON bodies pass through untouched.
+- The preceding-interaction lookback window is widened from 2 s to 5 s: a
+  navigation click routinely settles into a burst of page-load calls 1.5–3 s
+  later, and the tight window stripped the causal hint from exactly those
+  calls, nudging the model towards "no interaction = noise".
+
+## [0.4.0] - 2026-10-08
+
 ### Added
+
+#### User-interaction capture feeds the relevance verdict
+
+- Recording now captures the human side of the flow: clicks, form submissions
+  and committed field changes, relayed with the element's text, container
+  semantics and name/value, redacted at capture time (password fields never
+  recorded; 4–8 digit values such as OTP codes masked).
+- At stop, each captured call is attached its most likely preceding
+  interaction, shown as timeline marks in the detail view and exposed to the
+  agent as `precedingInteraction` on `get_flow` steps and as a `user-action:`
+  line in the relevance model's per-call state.
+
+#### Laya decision-model marks with graceful degradation
+
+- The relevance analysis runs four passes in order, each degrading
+  independently: stats-only field dynamism (no model needed), dep-confidence
+  on inferred dependency edges, the headline relevance verdict, and
+  model-based dynamism for single-observation fields.
+- Dep-confidence re-judges each inferred dependency edge as `likely` /
+  `unlikely` / `uncertain`; surfaced in the UI and on `get_flow` /
+  `get_endpoints`. A failed pass simply leaves its marks absent, which every
+  consumer reads as *unanalyzed*.
+- Field-dynamism leaves carry `verdict` (`varies` / `stable` / `uncertain`),
+  `confidence`, and a `source` (`stats` or `model`).
+
+#### Screenshot page-type policy relaxed, CDP fallback
+
+- Full-page screenshots keep the `debugger`-based CDP fallback for pages
+  taller than the viewport; the page-type policy deciding when to attach is
+  relaxed, and protected pages degrade gracefully with a notification.
 
 #### Element capture: preview tab & history comparison
 
@@ -28,19 +82,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   addressed by URL (`preview.html?mode=diff&a=…&b=…`), so refreshing restores
   the same comparison. The toolbar copies the diff as a report or JSON, and
   *Back* returns to the preview the comparison was launched from.
-
-### Removed
-
-#### Replay feature (removed after 0.1.0; retroactively documented here)
-
-- The standalone replay feature (`lib/recording/replay.ts`,
-  `lib/recording/replay-runs.ts`, the `components/recording/replay-*` UI and
-  `hooks/use-replay-*` hooks) has been fully removed from the codebase,
-  superseded by parameterized **Actions** (`create_action` / `execute_action`),
-  which replay flows through the sandbox gateway.
-- The `replayRuns` IndexedDB store was deleted in the v9 schema upgrade, along
-  with the `REPLAY_*` message types, `ReplayRun`/`ReplayResult` types, and the
-  `replayProgress` storage item.
 
 #### Page capture history (side panel tab)
 
@@ -70,6 +111,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   styles, an LLM-ready description of how the element is built.
 - `diff_element_captures` — diff two snapshots and return a text report of
   property-level changes per DOM path, plus an `identical` flag.
+
+### Changed
+
+#### Decision-model weights download instead of shipping in the package
+
+- The Laya model weights (~800 MB) are no longer bundled in the extension.
+  They are fetched once from Hugging Face (`marrviin/laya-en-fp16`) into the
+  browser's local CacheStorage — on install/upgrade (preload) or lazily on
+  first use — and every analysis still runs on-device. Model data only; no
+  scripts are fetched remotely and no page data is sent in that request.
+
+### Removed
+
+#### Replay feature (removed after 0.1.0; retroactively documented here)
+
+- The standalone replay feature (`lib/recording/replay.ts`,
+  `lib/recording/replay-runs.ts`, the `components/recording/replay-*` UI and
+  `hooks/use-replay-*` hooks) has been fully removed from the codebase,
+  superseded by parameterized **Actions** (`create_action` / `execute_action`),
+  which replay flows through the sandbox gateway.
+- The `replayRuns` IndexedDB store was deleted in the v9 schema upgrade, along
+  with the `REPLAY_*` message types, `ReplayRun`/`ReplayResult` types, and the
+  `replayProgress` storage item.
 
 ## [0.3.0] - 2026-09-24
 
