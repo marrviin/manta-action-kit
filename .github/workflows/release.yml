@@ -54,3 +54,23 @@ jobs:
       # pnpm pack 负责把 workspace:* 解析成实际版本号，npm publish 走已验证可用的 npm OIDC 通道
       - run: pnpm --filter @manta-action-kit/mcp pack
       - run: npm publish manta-action-kit-mcp-*.tgz --provenance --access public
+
+  github-release:
+    needs: [publish-protocol, publish-mcp]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # 创建 Release 需要
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create GitHub Release with changelog notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          # 从 CHANGELOG.md 抽取当前版本的条目（到下一个 ## [ 小节为止）
+          NOTES=$(awk "/^## \\[$VERSION\\]/{flag=1;next} /^## \\[/{flag=0} flag" CHANGELOG.md)
+          if [ -z "$NOTES" ]; then
+            echo "CHANGELOG.md has no $GITHUB_REF_NAME section" >&2
+            exit 1
+          fi
+          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes "$NOTES"
