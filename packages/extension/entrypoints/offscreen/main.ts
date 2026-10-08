@@ -83,6 +83,10 @@ browser.runtime.onMessage.addListener((raw: RuntimeMessage, _sender, sendRespons
               usage: result.usage,
             });
           } catch (err) {
+            // Log AND answer: the {ok:false,__error} reply resolves (never
+            // rejects) upstream, so without this the failure was invisible
+            // everywhere.
+            console.error('[laya] predict failed', err);
             sendResponse({ ok: false, __error: err instanceof Error ? err.message : String(err) });
           }
           break;
@@ -104,6 +108,7 @@ browser.runtime.onMessage.addListener((raw: RuntimeMessage, _sender, sendRespons
               ),
             });
           } catch (err) {
+            console.error('[laya] batch predict failed', err);
             sendResponse({ ok: false, __error: err instanceof Error ? err.message : String(err) });
           }
           break;

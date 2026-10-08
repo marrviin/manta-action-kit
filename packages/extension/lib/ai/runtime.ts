@@ -4,10 +4,10 @@
  *
  *  - the MV3 service worker has no WebGPU and idle-terminates after ~30s, so it
  *    cannot host an ONNX session; this document survives both.
- *  - the side panel dies the moment the user closes it — a 1.6 GB fp32 model load
- *    must not be repeated (or interrupted) on every panel toggle.
+ *  - the side panel dies the moment the user closes it — a ~790 MB fp16 model
+ *    load must not be repeated (or interrupted) on every panel toggle.
  *
- * The model bundle (fp16 encoder.onnx + int8 head.onnx, ~800 MB total, plus
+ * The model bundle (fp16 encoder.onnx + head.onnx, ~900 MB total, plus
  * tokenizer.json and rl_agent_config.json) ships inside the extension package
  * under
  * public/models/laya-en, so `loadWebBundle` fetches it from the extension's own
@@ -30,7 +30,7 @@ const MODEL_URL = new URL('models/laya-en/', browser.runtime.getURL('/')).href;
 /** The loaded agent — created on first use, then reused for every predict. */
 let agent: Agent | null = null;
 
-/** In-flight load, so concurrent first calls share one load (not two 1.6GB fp32 reads). */
+/** In-flight load, so concurrent first calls share one load (not two ~790MB fp16 reads). */
 let loading: Promise<Agent> | null = null;
 
 /** Ensures an Agent exists; concurrent callers await the same load. */

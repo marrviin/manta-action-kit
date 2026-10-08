@@ -613,20 +613,26 @@ export async function createWebProvider(
   }
   // Verification (expectedSha256) needs the raw bytes, so that path buffers the
   // model and mounts its `.onnx.data` sidecar explicitly. Without it, create
-  // straight from the URL: ort-web fetches the model AND its relative sidecar
-  // into its own heap, so the 1.5GB of fp32 weights never pass through a JS
-  // ArrayBuffer (nor a CacheStorage clone) on top of the session's own copy —
-  // those extra copies OOM-killed the offscreen document.
+  // straight from the URL. NOTE: even in URL mode the sidecar must be declared
+  // via the `externalData` option — ort-web (≥1.2x) only fetches external data
+  // when it is listed there; otherwise the wasm falls back to its legacy
+  // Module.MountedFiles mechanism and creation fails with "Module.MountedFiles
+  // is not available". `path` must match the location recorded inside the ONNX
+  // proto (a bare filename); `data` is what ort fetches (the absolute URL).
   const verify = opts?.expectedSha256 != null;
   type SessionSource = { source: string | Uint8Array; extra: Record<string, unknown> };
+  const urlSidecar = (modelUrl: string) => ({
+    path: `${modelUrl.split("/").pop()}.data`,
+    data: `${modelUrl}.data`,
+  });
   const encParts = async (): Promise<SessionSource> => {
-    if (!verify) return { source: encUrl, extra: {} };
+    if (!verify) return { source: encUrl, extra: { externalData: [urlSidecar(encUrl)] } };
     const buf = await fetchArrayBuffer(encUrl, { signal: opts?.signal ?? undefined });
     const sidecar = await fetchSidecar(encUrl);
     return { source: new Uint8Array(buf), extra: sidecar ? { externalData: [sidecar] } : {} };
   };
   const headParts = async (): Promise<SessionSource> => {
-    if (!verify) return { source: headUrl, extra: {} };
+    if (!verify) return { source: headUrl, extra: { externalData: [urlSidecar(headUrl)] } };
     const buf = await fetchArrayBuffer(headUrl, { signal: opts?.signal ?? undefined });
     const sidecar = await fetchSidecar(headUrl);
     return { source: new Uint8Array(buf), extra: sidecar ? { externalData: [sidecar] } : {} };

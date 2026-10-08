@@ -46,7 +46,17 @@ function useLayaModel() {
     setError(null);
     try {
       await sendMessage('LAYA_ENSURE_RUNTIME', undefined);
-      await sendMessage('LAYA_PREDICT', WARMUP);
+      // A failed predict resolves (never rejects) with { ok: false, __error } —
+      // the offscreen handler catches and answers instead of throwing. Treating
+      // any resolution as success showed a fake 已加载 until the status poll
+      // discovered ready:false and flipped the card back.
+      const res = (await sendMessage('LAYA_PREDICT', WARMUP)) as {
+        ok: boolean;
+        __error?: string;
+      };
+      if (!res.ok) {
+        throw new Error(res.__error ?? 'laya: warmup predict failed');
+      }
       setStatus('ready');
       return true;
     } catch (err) {
