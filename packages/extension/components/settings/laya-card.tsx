@@ -70,9 +70,12 @@ function useLayaModel() {
     }
   };
   // A ref keeps the mount effect below dependency-free while always calling
-  // the latest closure.
+  // the latest closure. The write happens in an effect: refs must not be
+  // touched during render (react-hooks/purity).
   const loadRef = useRef(load);
-  loadRef.current = load;
+  useEffect(() => {
+    loadRef.current = load;
+  });
 
   useEffect(() => {
     let timer: ReturnType<typeof setInterval> | null = null;

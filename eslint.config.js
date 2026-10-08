@@ -16,6 +16,10 @@ export default tseslint.config(
       '**/.wxt/**',
       '.codegraph/**',
       '**/*.min.js',
+      // Generated coverage report + vendored ONNX Runtime wasm loader
+      // (upstream: microsoft/onnxruntime, MIT).
+      '**/coverage/**',
+      '**/public/ort/**',
       // Vendored laya-ts runtime (upstream: NandhaKishorM/laya, Apache-2.0).
       // Kept as close to upstream as possible; our extension glue
       // (runtime.ts, laya-session.ts) is explicitly un-ignored below.
@@ -82,6 +86,16 @@ export default tseslint.config(
     languageOptions: {
       globals: {
         ...globals.node,
+      },
+    },
+  },
+
+  // Website — plain browser JS (no bundler, no TS).
+  {
+    files: ['website/**/*.js'],
+    languageOptions: {
+      globals: {
+        ...globals.browser,
       },
     },
   },

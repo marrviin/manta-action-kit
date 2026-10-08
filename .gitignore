@@ -50,3 +50,5 @@ coverage/
 # onnx weights — exported locally, too large for git (see lib/ai/runtime.ts)
 *.onnx
 *.onnx.data
+# 本机发布配置（发布源钉 npmjs），勿提交
+packages/protocol/.npmrc

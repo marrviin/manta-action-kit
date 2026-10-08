@@ -256,10 +256,20 @@ function ResultPanel({
   onDeleteCall: (call: ApiCall) => void;
 }) {
   const { t } = useTranslation();
-  // A persisted `analyzing` older than the stale window is a dead run.
+  // A persisted `analyzing` older than the stale window is a dead run. Time
+  // can't be read during render (impure), so a 1s tick drives staleness while
+  // a run is live; `now === 0` (before the first tick) stays optimistic so the
+  // banner doesn't flash "failed" for one frame.
+  const [now, setNow] = useState(0);
+  useEffect(() => {
+    if (relStatus !== "analyzing") return;
+    setNow(Date.now());
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [relStatus]);
   const analyzing =
     relStatus === "analyzing" &&
-    Date.now() - (relStatusAt ?? 0) < ANALYZING_STALE_MS;
+    (now === 0 || now - (relStatusAt ?? 0) < ANALYZING_STALE_MS);
   const failed = relStatus === "failed" || (relStatus === "analyzing" && !analyzing);
 
   // Relevance filter (dropdown on the filter icon button): all / one verdict.

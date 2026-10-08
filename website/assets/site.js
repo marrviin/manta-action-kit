@@ -17,7 +17,7 @@
   var dicts = window.MANTA_I18N || {};
 
   var stored = null;
-  try { stored = localStorage.getItem("manta-lang"); } catch (e) {}
+  try { stored = localStorage.getItem("manta-lang"); } catch { /* private mode */ }
   // Default is English; a stored choice from the toggle always wins.
   var lang = stored === "en" || stored === "zh" ? stored : "en";
 
@@ -41,7 +41,7 @@
       var opt = e.target.closest(".lang-opt");
       if (!opt) return;
       lang = opt.getAttribute("data-lang") === "zh" ? "zh" : "en";
-      try { localStorage.setItem("manta-lang", lang); } catch (err) {}
+      try { localStorage.setItem("manta-lang", lang); } catch { /* quota */ }
       apply();
     });
   }
