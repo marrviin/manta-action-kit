@@ -9,7 +9,25 @@ permissions:
   id-token: write # npm Trusted Publishing (OIDC) 需要
 
 jobs:
+  publish-protocol:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          registry-url: https://registry.npmjs.org/
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @manta-action-kit/protocol build
+      # pnpm publish 会把 workspace:* 解析成实际版本号；npm publish 不会
+      - run: pnpm --filter @manta-action-kit/protocol publish --no-git-checks --provenance --access public
+
   publish-mcp:
+    needs: publish-protocol
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -32,4 +50,4 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm compile && pnpm test
       - run: pnpm build:mcp
-      - run: npm publish ./packages/mcp --provenance
+      - run: pnpm --filter @manta-action-kit/mcp publish --no-git-checks --provenance --access public
