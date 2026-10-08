@@ -156,6 +156,13 @@ carry `relevance.verdict === 'irrelevant'`, that call is background noise
 an action. No `relevance` field means the recording has not been analyzed; treat
 every call as potentially relevant then.
 
+**User-intent marks**: `get_flow` steps may carry a
+`precedingInteraction` field — the user interaction (click/typing, with its
+text and `deltaMs`) that most likely triggered that call, captured from the
+page during recording. Use it to identify which steps are direct consequences
+of user intent vs. calls that merely co-occur (analytics, preloads fire without
+one). Absent field = the call had no interaction within the lookback window.
+
 **Dep-confidence marks**: inferred field dependencies in `get_flow` deps (and
 `get_endpoints` `inputsFrom`) can carry a `depCheck` mark
 (`likely` / `unlikely` / `uncertain`). `depCheck.verdict === 'unlikely'` means
