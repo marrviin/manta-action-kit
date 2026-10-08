@@ -23,7 +23,8 @@ jobs:
           registry-url: https://registry.npmjs.org/
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @manta-action-kit/protocol build
-      # pnpm publish 会把 workspace:* 解析成实际版本号；npm publish 不会
+      # 注意：npm OIDC 无法创建全新包（trusted publisher 配置挂在包的 Settings 页上），
+      # protocol 首个版本需手动本地发布一次并在 npmjs.com 配置 trusted publisher，之后 CI 才能发。
       - run: pnpm --filter @manta-action-kit/protocol publish --no-git-checks --provenance --access public
 
   publish-mcp:
@@ -50,4 +51,6 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm compile && pnpm test
       - run: pnpm build:mcp
-      - run: pnpm --filter @manta-action-kit/mcp publish --no-git-checks --provenance --access public
+      # pnpm pack 负责把 workspace:* 解析成实际版本号，npm publish 走已验证可用的 npm OIDC 通道
+      - run: pnpm --filter @manta-action-kit/mcp pack
+      - run: npm publish manta-action-kit-mcp-*.tgz --provenance --access public
