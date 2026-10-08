@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-10-08
+
+### Fixed
+
+#### Lint: satisfy the React Compiler rules (CI green again)
+
+- `recording-detail` read `Date.now()` during render to decide whether a
+  persisted `analyzing` status had gone stale. Rendering is now pure: a 1s
+  tick driven from an effect supplies the clock, and the first tick stays
+  optimistic so the banner cannot flash "failed" for a frame.
+- `laya-card` wrote the latest-ref (`loadRef.current = load`) during render;
+  the write moved into an effect.
+- ESLint config: ignore the vendored ONNX Runtime wasm loader
+  (`public/ort/**`) and generated coverage output; give the website's plain
+  JS browser globals; fix two empty `catch` blocks in `site.js`.
+
+### Changed
+
+#### Release pipeline: protocol is now published to npm
+
+- `@manta-action-kit/mcp` depends on `@manta-action-kit/protocol`, but npm
+  publish left the `workspace:*` literal unresolved in the published manifest
+  (and protocol was never published), so `mcp@0.2.0` was uninstallable. The
+  release workflow now publishes protocol first and packs mcp with pnpm (which
+  resolves `workspace:*` to the real version) before publishing with npm OIDC.
+  `protocol@0.4.1` is the first published version.
+
+#### Git hooks keep verification local
+
+- `simple-git-hooks` + `lint-staged`: pre-commit runs `eslint --fix` +
+  prettier on staged files; pre-push runs `pnpm compile && pnpm test`.
+  Activate after a fresh clone with `pnpm hooks`.
+
 ## [0.4.1] - 2026-10-08
 
 ### Fixed
@@ -53,7 +86,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Dep-confidence re-judges each inferred dependency edge as `likely` /
   `unlikely` / `uncertain`; surfaced in the UI and on `get_flow` /
   `get_endpoints`. A failed pass simply leaves its marks absent, which every
-  consumer reads as *unanalyzed*.
+  consumer reads as _unanalyzed_.
 - Field-dynamism leaves carry `verdict` (`varies` / `stable` / `uncertain`),
   `confidence`, and a `source` (`stats` or `model`).
 
@@ -73,7 +106,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   included), lean JSON (same as the capture clipboard), full JSON, and an
   agent-ready prompt wrapping the HTML.
 - Captures are kept as a bounded history (last 20, oldest evicted) in IndexedDB.
-  The preview's *Compare* dropdown lists the other records and opens a
+  The preview's _Compare_ dropdown lists the other records and opens a
   side-by-side diff for any pair: both snapshots rebuilt in parallel panes,
   property-level differences below as collapsible cards (hover a card to
   spotlight the node in both panes), and a git-style delta on each pane's
@@ -81,7 +114,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Diff results are recomputed on load — never stored — and diff pages are
   addressed by URL (`preview.html?mode=diff&a=…&b=…`), so refreshing restores
   the same comparison. The toolbar copies the diff as a report or JSON, and
-  *Back* returns to the preview the comparison was launched from.
+  _Back_ returns to the preview the comparison was launched from.
 
 #### Page capture history (side panel tab)
 
