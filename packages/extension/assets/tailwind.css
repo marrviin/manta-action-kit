@@ -88,6 +88,16 @@ input.ant-input-outlined.ant-input-lg,
   height: var(--ant-control-height-lg);
 }
 
+/* Segmented — drop the elevated shadow on the sliding selected block (thumb)
+ * and the selected item underneath it (both come from boxShadowTertiary via
+ * getItemSelectedStyle). The slide animation itself is untouched.
+ * `!important` needed: antd's runtime <style> lands after the Tailwind sheet
+ * and its hash-prefixed selectors tie ours on specificity. */
+.ant-segmented .ant-segmented-thumb,
+.ant-segmented .ant-segmented-item-selected {
+  box-shadow: none !important;
+}
+
 /* Primary button — near-black, matching the desktop theme. Now configured via
  * antd's Button component-token override in components/app-providers.tsx
  * (Button.colorPrimary / Hover / Active) instead of CSS !important hacks. */

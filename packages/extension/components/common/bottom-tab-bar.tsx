@@ -40,7 +40,10 @@ export function BottomTabBar<K extends string>({
           // Moving thumb gets its own glass layer. During the slide motion the
           // thumb paints the active fill, then the selected item takes over.
           '[&_.ant-segmented-thumb]:backdrop-blur-[8px] [&_.ant-segmented-thumb]:backdrop-saturate-[1.5]',
-          '[&_.ant-segmented-thumb]:shadow-[0_2px_8px_color-mix(in_srgb,var(--ant-color-text)_14%,transparent),inset_0_1px_0_rgba(255,255,255,0.45)]!',
+          // Drop shadow removed (only visible mid-slide, when the thumb peeks
+          // out from under the items); keep the inset top sheen for the glass
+          // look.
+          '[&_.ant-segmented-thumb]:shadow-[inset_0_1px_0_rgba(255,255,255,0.45)]!',
         )}
         value={active}
         onChange={(key) => onChange(key as K)}
