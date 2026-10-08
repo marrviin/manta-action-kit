@@ -13,7 +13,6 @@ import {
   listInspectorCaptures,
   type InspectorHistoryEntry,
 } from "@/lib/db";
-import { shortPath } from "@/lib/utils";
 import {
   buildDom,
   createResetStyle,
@@ -136,8 +135,8 @@ export default function ElementPreviewView() {
     } else if (key === "agent") {
       await clipboard(
         t("preview.agentPrompt", {
-          title: v.page.title,
-          url: v.page.url,
+          title: v.page?.title ?? "",
+          url: v.page?.url ?? "",
           html: snapshotHtml(),
           interpolation: { escapeValue: false },
         }),
@@ -234,11 +233,13 @@ export default function ElementPreviewView() {
                       key: h.id,
                       label: (
                         <span
-                          title={h.payload.page.url}
+                          title={h.payload.page?.url}
                           className="flex items-center gap-2 max-w-[280px]"
                         >
                           <span className="truncate">
-                            {h.payload.page.title || shortPath(h.payload.page.url)}
+                            {h.payload.page?.title ||
+                              h.payload.page?.url ||
+                              t("capture.untitledCapture")}
                           </span>
                           <span className="shrink-0 text-(--ant-color-text-tertiary) text-xs">
                             {new Date(h.payload.capturedAt).toLocaleString()}

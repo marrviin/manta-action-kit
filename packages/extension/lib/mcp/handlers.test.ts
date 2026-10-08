@@ -280,10 +280,16 @@ describe('element captures', () => {
       elements: [{ tag: 'div', fullStyles: [1, 2], pseudo: [3], textFull: 'long', styles: { color: 'red' } }],
     } as never);
     const res = await rpc('capture_element', { selector: '.a' });
-    expect(tabsSendMessage).toHaveBeenCalledWith(3, {
-      type: 'AGENT_CAPTURE_ELEMENTS',
-      data: { selector: '.a' },
-    });
+    // Pinned to the TOP frame: point/box coordinates are TOP viewport coords
+    // and an all-frames broadcast would duplicate the capture per iframe.
+    expect(tabsSendMessage).toHaveBeenCalledWith(
+      3,
+      {
+        type: 'AGENT_CAPTURE_ELEMENTS',
+        data: { selector: '.a' },
+      },
+      { frameId: 0 },
+    );
     expect(res.captureId).toBe('cap1');
     expect(res.elements[0]).toEqual({ tag: 'div', styles: { color: 'red' } });
   });

@@ -63,10 +63,10 @@ function PanelSpinner() {
   );
 }
 
-function PanelEmpty({ text }: { text: string }) {
+function PanelEmpty() {
   return (
     <div className="flex-1 flex items-center justify-center">
-      <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={text} />
+      <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={false} />
     </div>
   );
 }
@@ -74,8 +74,7 @@ function PanelEmpty({ text }: { text: string }) {
 function CapturesPanel({ history }: { history: History }) {
   const { t } = useTranslation();
   if (history.loading) return <PanelSpinner />;
-  if (!history.captures.length)
-    return <PanelEmpty text={t("capture.emptyCaptures")} />;
+  if (!history.captures.length) return <PanelEmpty />;
   return (
     <div className="flex-1 min-h-0 overflow-auto pb-14">
       {history.captures.map((c) => (
@@ -101,17 +100,26 @@ function CaptureRow({
 }) {
   const { modal } = App.useApp();
   const { t } = useTranslation();
+  // `page` was added to InspectorCapturePayload after the history store
+  // existed — older IndexedDB records lack it (and elementCount/selection),
+  // so every access must tolerate absence or one stale row whites out the
+  // whole panel.
   const p = capture.payload;
+  const title = p.page?.title || p.page?.url || t("capture.untitledCapture");
 
   return (
     <UnifiedListItem
       clickable
       onClick={onOpen}
-      title={p.page.title || p.page.url}
+      title={title}
       status={
         <>
-          <Tag>{t("capture.elementCount", { count: p.elementCount })}</Tag>
-          {p.selection !== "click" && <Tag>{t("capture.boxSelect")}</Tag>}
+          {typeof p.elementCount === "number" && (
+            <Tag>{t("capture.elementCount", { count: p.elementCount })}</Tag>
+          )}
+          {p.selection && p.selection !== "click" && (
+            <Tag>{t("capture.boxSelect")}</Tag>
+          )}
         </>
       }
       timestamp={Date.parse(p.capturedAt)}
@@ -124,9 +132,7 @@ function CaptureRow({
           onClick: () =>
             modal.confirm({
               title: t("capture.deleteTitle"),
-              content: (
-                <Text type="secondary">{p.page.title || p.page.url}</Text>
-              ),
+              content: <Text type="secondary">{title}</Text>,
               okText: t("common.delete"),
               okButtonProps: { danger: true },
               cancelText: t("common.cancel"),
@@ -142,15 +148,16 @@ function CaptureRow({
 function ScreenshotsPanel({ history }: { history: History }) {
   const { t } = useTranslation();
   if (history.loading) return <PanelSpinner />;
-  if (!history.screenshots.length)
-    return <PanelEmpty text={t("capture.emptyScreenshots")} />;
+  if (!history.screenshots.length) return <PanelEmpty />;
   return (
     <div className="flex-1 min-h-0 overflow-auto pb-14">
       {history.screenshots.map((s) => (
         <UnifiedListItem
           key={s.id}
           clickable
-          onClick={() => openPreview(`/preview.html?mode=screenshot&id=${s.id}`)}
+          onClick={() =>
+            openPreview(`/preview.html?mode=screenshot&id=${s.id}`)
+          }
           title={s.filename}
           timestamp={s.createdAt}
           menu={[
@@ -170,8 +177,7 @@ function ScreenshotsPanel({ history }: { history: History }) {
 function GifPanel({ history }: { history: History }) {
   const { t } = useTranslation();
   if (history.loading) return <PanelSpinner />;
-  if (!history.gifs.length)
-    return <PanelEmpty text={t("capture.emptyGif")} />;
+  if (!history.gifs.length) return <PanelEmpty />;
   return (
     <div className="flex-1 min-h-0 overflow-auto pb-14">
       {history.gifs.map((g) => (

@@ -71,7 +71,7 @@ export interface ProtocolMap {
    * Recording (relevanceStatus) for views opened later.
    */
   RECORDING_RELEVANCE_STATUS: {
-    request: { recordingId: string; status: 'analyzing' | 'done' | 'failed' };
+    request: { recordingId: string; status: 'analyzing' | 'done' | 'failed' | 'skipped' };
     response: { ok: boolean };
   };
 
@@ -222,6 +222,33 @@ export interface ProtocolMap {
       capturedAt?: string;
       error?: string;
     };
+  };
+
+  /**
+   * Toggle capture mode in EVERY frame of a tab. Two senders:
+   *  - the popup (`tabId` set) — the toggle must not depend on multi-frame
+   *    response semantics of a direct tabs.sendMessage, so it goes through
+   *    the background, which answers with a single, well-defined reply;
+   *  - a content script (`tabId` unset — the Alt+Shift+I hotkey lands only
+   *    in the focused frame's document) — the background uses sender.tab.id.
+   * The background re-dispatches TOGGLE_INSPECTOR_CAPTURE to all frames and
+   * relays the outcome; `error` carries the raw failure for diagnostics.
+   */
+  INSPECTOR_CAPTURE_TOGGLE_ALL_FRAMES: {
+    request: { tabId?: number };
+    response: { ok: boolean; active?: boolean; error?: string };
+  };
+
+  /**
+   * Content script -> background: exit capture mode in EVERY frame of the
+   * sender's tab. Esc and the hint-pill click are only ever received by the
+   * focused frame; the other frames must follow or their crosshair cursor,
+   * event interception and hidden overlay would leak. The background
+   * re-dispatches INSPECTOR_CAPTURE_DEACTIVATE to all frames.
+   */
+  INSPECTOR_CAPTURE_DEACTIVATE_ALL_FRAMES: {
+    request: void;
+    response: { ok: boolean };
   };
 
   /**
@@ -408,6 +435,27 @@ export interface ProtocolMap {
     };
   };
   /**
+   * Background -> offscreen (fire-and-forget): start pre-fetching the laya
+   * model artifacts into CacheStorage (fired by runtime.onInstalled). Answers
+   * as soon as the warm-up has STARTED; the download itself keeps running in
+   * the offscreen document — it shows up as `loading: true` in
+   * LAYA_GET_STATUS until it converges.
+   */
+  LAYA_PRELOAD: {
+    request: Record<string, never>;
+    response: { ok: boolean };
+  };
+  /**
+   * Background -> offscreen (fire-and-forget, same shape as LAYA_PRELOAD):
+   * resume the artifact download WITHOUT creating a session — fired by
+   * runtime.onStartup to heal a download that the browser closing killed
+   * mid-way. A complete cache makes this a no-op.
+   */
+  LAYA_WARM_ARTIFACTS: {
+    request: Record<string, never>;
+    response: { ok: boolean };
+  };
+  /**
    * Offscreen -> background: sent every 15s while a LAYA_PREDICT is in flight.
    * Model load + first predict run for minutes — beyond the MV3 service
    * worker's ~30s idle kill — so each receipt resets the SW idle timer and
@@ -415,6 +463,17 @@ export interface ProtocolMap {
    * confirm page's GATEWAY_CONFIRM_PING.
    */
   LAYA_KEEPALIVE: {
+    request: Record<string, never>;
+    response: { ok: true };
+  };
+  /**
+   * Offscreen -> background (fire-and-forget): the model just finished
+   * loading (install pre-fetch, startup resume, or a lazy first load). The
+   * background re-runs the relevance analyses that were skipped while the
+   * model was downloading (see rerunPendingAnalyses). The sender swallows
+   * the reply; nobody else needs to listen.
+   */
+  LAYA_MODEL_READY: {
     request: Record<string, never>;
     response: { ok: true };
   };
@@ -427,7 +486,12 @@ export interface ProtocolMap {
    */
   LAYA_GET_STATUS: {
     request: Record<string, never>;
-    response: { ready: boolean; loading: boolean };
+    response: {
+      ready: boolean;
+      loading: boolean;
+      /** Byte progress of the install/upgrade cache warm-up, while in flight. */
+      progress?: { loaded: number; total: number } | null;
+    };
   };
 }
 

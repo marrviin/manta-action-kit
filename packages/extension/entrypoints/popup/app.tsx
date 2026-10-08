@@ -17,7 +17,6 @@ import {
   RecordIcon,
   StopIcon,
 } from "@/components/recording/record-controls";
-import { toggleInspectorCaptureOnTab } from "@/lib/inspector/capture";
 import { sendMessage } from "@/lib/messaging";
 import type {
   GifRecordingErrorCode,
@@ -101,16 +100,36 @@ export default function PopupApp({
       message.warning(t("popup.captureUnsupportedPage"));
       return;
     }
+    // Toggle via the background relay: the background broadcasts to every
+    // frame of the tab and answers with a single well-defined reply, so the
+    // outcome never depends on multi-frame response semantics of a direct
+    // tabs.sendMessage. `error` carries the raw failure — shown in the
+    // warning so a regression is diagnosable from the popup alone.
+    let res: { ok: boolean; error?: string };
     try {
-      await toggleInspectorCaptureOnTab(tab.id);
-      window.close();
-    } catch {
+      res = await sendMessage("INSPECTOR_CAPTURE_TOGGLE_ALL_FRAMES", {
+        tabId: tab.id,
+      });
+    } catch (err) {
+      res = { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+    if (!res.ok) {
       // No receiver: content script not injectable/injected on this page.
-      const text = isFileUrl(tab.url)
+      // Surface the raw failure (relay `error`, or a background `__error`
+      // such as "unhandled message type" when versions are out of sync) so
+      // the popup alone is enough to diagnose a regression.
+      const detail =
+        res.error ??
+        (res as { __error?: string }).__error ??
+        undefined;
+      const base = isFileUrl(tab.url)
         ? `${t("popup.captureUnsupportedPage")} ${t("popup.fileAccessHint")}`
         : t("popup.captureUnsupportedPage");
-      message.warning(text);
+      console.warn("[capture] toggle failed", res);
+      message.warning(detail ? `${base} (${detail})` : base);
+      return;
     }
+    window.close();
   };
 
   /**

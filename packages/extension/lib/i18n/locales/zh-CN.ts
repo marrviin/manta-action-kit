@@ -92,13 +92,15 @@ export const zhCN: Messages = {
     tabCaptures: "元素",
     tabScreenshots: "截图",
     tabGif: "录制",
-    emptyCaptures: "暂无元素捕获。在页面上通过 popup 或 Alt+Shift+I 框选/点选元素。",
+    emptyCaptures:
+      "暂无元素捕获。在页面上通过 popup 或 Alt+Shift+I 框选/点选元素。",
     emptyScreenshots: "暂无截图。从 popup 发起截图。",
     emptyGif: "暂无录制。从 popup 发起 GIF 录制。",
     elementCount: "{{count}} 个元素",
     boxSelect: "框选",
     openPreview: "打开预览",
     deleteTitle: "删除这条捕获？",
+    untitledCapture: "未命名捕获",
   },
   recording: {
     tabRecords: "录制记录",
@@ -161,6 +163,7 @@ export const zhCN: Messages = {
     callChainTitle: "调用链路",
     rerunRelevance: "重新分析",
     relevanceFailed: "分析失败，可点击重新分析重试",
+    relevanceSkipped: "模型下载中，已跳过模型分析（仅统计标记）；模型就绪后自动补跑",
     filterTitle: "按相关性筛选",
     filterAll: "全部调用",
     filterRelevant: "相关",
@@ -384,7 +387,8 @@ export const zhCN: Messages = {
     start_gif_recordingDesc:
       "通过确认窗口请求用户允许录制活动标签页；阻塞至批准、拒绝或超时",
     stop_gif_recordingLabel: "停止 GIF 录制",
-    stop_gif_recordingDesc: "停止进行中的标签页录制并保存 WebM 草稿；返回草稿 id",
+    stop_gif_recordingDesc:
+      "停止进行中的标签页录制并保存 WebM 草稿；返回草稿 id",
     pause_gif_recordingLabel: "暂停 GIF 录制",
     pause_gif_recordingDesc: "暂停进行中的标签页录制",
     resume_gif_recordingLabel: "恢复 GIF 录制",
@@ -434,7 +438,7 @@ export const zhCN: Messages = {
     devModeDesc: "内部调试工具",
     devModeUnlockToast: "开发者模式已开启",
     layaTitle: "决策模型",
-    layaDesc: "Laya——在设备端运行、用于自动分析录制数据的本地推理模型",
+    layaDesc: "Laya - 在设备端运行、用于自动分析录制数据的本地推理模型",
     layaLoad: "加载",
     layaLoaded: "已加载",
     layaLoading: "加载中…",

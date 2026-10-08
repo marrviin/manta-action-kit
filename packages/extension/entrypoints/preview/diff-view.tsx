@@ -294,9 +294,11 @@ function DiffPane({
         <Tag color={side === "a" ? "error" : "success"} className="m-0">
           {side.toUpperCase()}
         </Tag>
-        <span className="truncate">{payload.page.title}</span>
-        <Tooltip title={payload.page.url}>
-          <span className="truncate opacity-60">{payload.page.url}</span>
+        <span className="truncate">
+          {payload.page?.title || payload.page?.url}
+        </span>
+        <Tooltip title={payload.page?.url}>
+          <span className="truncate opacity-60">{payload.page?.url}</span>
         </Tooltip>
         {/* Git-style delta on the right end of the title bar, split by side
             like a diff: A (old) shows what it loses — red − for nodes only

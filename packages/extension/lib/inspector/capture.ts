@@ -13,8 +13,14 @@
  * properties equal to the captured tree parent are omitted, and the clipboard
  * JSON is minified (the console still logs the pretty object).
  *
- * Runs inside the ISOLATED-world content script. Activated from the popup via
- * `TOGGLE_INSPECTOR_CAPTURE` (tabs.sendMessage) or the Alt+Shift+I hotkey.
+ * Runs inside the ISOLATED-world content script, in EVERY frame (the content
+ * script is all-frames so the API hook reaches micro-frontend sub-apps):
+ * each frame highlights and captures elements of its own document, so picking
+ * content inside an iframe works like on a plain page. Only the TOP frame
+ * builds the hint pill, and exit (Esc / pill click / hotkey) is relayed
+ * through the background to all frames of the tab so they can't desync.
+ * Activated from the popup via `TOGGLE_INSPECTOR_CAPTURE` (tabs.sendMessage)
+ * or the Alt+Shift+I hotkey.
  *
  * The page language for the in-page hint/toast strings follows
  * `navigator.language` — the content script has no React tree, so react-i18next
@@ -40,6 +46,13 @@ export const TOGGLE_INSPECTOR_CAPTURE = "TOGGLE_INSPECTOR_CAPTURE";
 
 /** Message type for the programmatic (agent) capture (background -> content script). */
 export const AGENT_CAPTURE_ELEMENTS = "AGENT_CAPTURE_ELEMENTS";
+
+/**
+ * Background -> content script (broadcast to EVERY frame of a tab): exit
+ * capture mode locally, no relaying. This is how the Esc / hint-pill exits
+ * triggered in one frame propagate to the others (see deactivateAll).
+ */
+export const INSPECTOR_CAPTURE_DEACTIVATE = "INSPECTOR_CAPTURE_DEACTIVATE";
 
 /** Source-locator attributes injected into built React output (compiler step). */
 const ATTR_PATH = "data-inspector-relative-path";
@@ -215,8 +228,12 @@ interface Ui {
   paddingStrips: HTMLDivElement[];
   contentFill: HTMLDivElement;
   gapLayer: HTMLDivElement;
-  /** Top hint bar; doubles as the visible exit button. */
-  hint: HTMLDivElement;
+  /**
+   * Top hint bar; doubles as the visible exit button. Built in the TOP frame
+   * only — child frames highlight/capture their own content but show no UI
+   * chrome, so a page with iframes never renders duplicate hint pills.
+   */
+  hint: HTMLDivElement | null;
 }
 
 /** Minimal rect used to position overlay boxes. */
@@ -238,37 +255,51 @@ let styleEl: HTMLStyleElement | null = null;
 
 // ---------- UI ----------
 
+/**
+ * True in the top-level frame. Only the top frame builds the hint pill; every
+ * frame (top included) otherwise runs the same highlight / selection / capture
+ * logic against its own document. Guarded: the background service worker
+ * imports this module (for the message-type constants via the mcp handlers)
+ * and has no `window` — a bare module-scope `window.self` would throw and
+ * take the whole background down with it.
+ */
+const IS_TOP =
+  typeof window !== "undefined" ? window.self === window.top : true;
+
 function buildUi(): Ui {
   const root = document.createElement("div");
   root.setAttribute(UI_MARKER, "1");
   root.style.cssText =
     "position:fixed;inset:0;z-index:2147483647;pointer-events:none;";
-  const hint = document.createElement("div");
-  // A Google Lens-style pill: lens icon + label. It keeps pointer-events so it
-  // doubles as an exit button — Chrome DevTools swallows Escape when it holds
-  // focus, so a page-level keydown listener can never see it and clicking the
-  // bar must remain a reliable way out (exit hint lives on its title).
-  hint.style.cssText =
-    "position:fixed;top:16px;left:50%;transform:translateX(-50%);" +
-    "display:flex;align-items:center;gap:10px;" +
-    "background:#202124;color:#e8eaed;" +
-    "font:14px/1.4 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;" +
-    "padding:10px 18px;border-radius:999px;white-space:nowrap;" +
-    "box-shadow:0 2px 10px rgba(0,0,0,.35);" +
-    "pointer-events:auto;cursor:pointer;user-select:none;";
-  // Lens/camera glyph (matches the reference screenshot's leading icon).
-  const lens = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  lens.setAttribute("viewBox", "0 0 24 24");
-  lens.setAttribute("width", "20");
-  lens.setAttribute("height", "20");
-  lens.setAttribute("fill", "currentColor");
-  lens.style.cssText = "flex:0 0 auto;";
-  lens.innerHTML =
-    '<path d="M9 3 7.2 5H4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-3.2L15 3H9Zm3 5.5A4.5 4.5 0 1 1 7.5 13 4.5 4.5 0 0 1 12 8.5Zm0 2A2.5 2.5 0 1 0 14.5 13 2.5 2.5 0 0 0 12 10.5Z"/>';
-  const label = document.createElement("span");
-  label.textContent = L.hint;
-  hint.title = L.exit;
-  hint.append(lens, label);
+  let hint: HTMLDivElement | null = null;
+  if (IS_TOP) {
+    hint = document.createElement("div");
+    // A Google Lens-style pill: lens icon + label. It keeps pointer-events so
+    // it doubles as an exit button — Chrome DevTools swallows Escape when it
+    // holds focus, so a page-level keydown listener can never see it and
+    // clicking the bar must remain a reliable way out (exit hint on its title).
+    hint.style.cssText =
+      "position:fixed;top:16px;left:50%;transform:translateX(-50%);" +
+      "display:flex;align-items:center;gap:10px;" +
+      "background:#202124;color:#e8eaed;" +
+      "font:14px/1.4 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;" +
+      "padding:10px 18px;border-radius:999px;white-space:nowrap;" +
+      "box-shadow:0 2px 10px rgba(0,0,0,.35);" +
+      "pointer-events:auto;cursor:pointer;user-select:none;";
+    // Lens/camera glyph (matches the reference screenshot's leading icon).
+    const lens = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    lens.setAttribute("viewBox", "0 0 24 24");
+    lens.setAttribute("width", "20");
+    lens.setAttribute("height", "20");
+    lens.setAttribute("fill", "currentColor");
+    lens.style.cssText = "flex:0 0 auto;";
+    lens.innerHTML =
+      '<path d="M9 3 7.2 5H4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-3.2L15 3H9Zm3 5.5A4.5 4.5 0 1 1 7.5 13 4.5 4.5 0 0 1 12 8.5Zm0 2A2.5 2.5 0 1 0 14.5 13 2.5 2.5 0 0 0 12 10.5Z"/>';
+    const label = document.createElement("span");
+    label.textContent = L.hint;
+    hint.title = L.exit;
+    hint.append(lens, label);
+  }
   // Chrome DevTools element-highlight palette: content blue, padding green,
   // border yellow, margin orange, gap purple. Flat semi-transparent fills with
   // no borders, drawn as position:fixed strips so page layout is untouched.
@@ -299,7 +330,7 @@ function buildUi(): Ui {
     gapLayer,
     sel,
     badge,
-    hint,
+    ...(hint ? [hint] : []),
   );
   document.documentElement.appendChild(root);
   return {
@@ -1331,16 +1362,62 @@ function swallowClick(e: Event) {
   if (!active) return;
   e.preventDefault();
   e.stopPropagation();
-  if (ui?.hint.contains(e.target as Node)) deactivate();
+  // The hint pill (top frame only) is the visible exit button — exiting from
+  // here must also tear down the other frames' capture state.
+  if (ui?.hint?.contains(e.target as Node)) deactivateAll();
+}
+
+/**
+ * A drag that leaves this frame (into a child iframe, or out the window) can
+ * never see its mouseup — the pointer events continue inside another frame's
+ * document. End the box here rather than leaving a stuck selection on screen;
+ * click-picks are unaffected (they complete on the mouseup inside the frame
+ * that owns the pointer).
+ */
+function onMouseOut(e: MouseEvent) {
+  if (!active || !dragging) return;
+  const rt = e.relatedTarget;
+  if (rt === null || (rt instanceof Element && rt.tagName === "IFRAME")) {
+    dragging = false;
+    selBox = null;
+    if (ui) {
+      ui.sel.style.display = "none";
+      ui.badge.style.display = "none";
+    }
+    clearHover();
+  }
+}
+
+/**
+ * Exit capture mode in THIS frame and relay the exit to every other frame of
+ * the tab (via the background). Key events land only in the focused frame, so
+ * a plain deactivate() would leave the other frames active — crosshair cursor,
+ * swallowed clicks, hidden overlay still in place.
+ */
+function deactivateAll() {
+  deactivate();
+  // Fire-and-forget: a missing background (extension reloading) must not
+  // break the local exit; the relay may also arrive back here, where the
+  // already-inactive deactivate() is a no-op.
+  sendMessage("INSPECTOR_CAPTURE_DEACTIVATE_ALL_FRAMES", undefined).catch(
+    () => {},
+  );
 }
 
 function onKeydown(e: KeyboardEvent) {
   if (e.code === "KeyI" && e.altKey && e.shiftKey) {
     e.preventDefault();
-    if (active) deactivate();
-    else activate();
+    // Toggle the WHOLE tab: the background re-dispatches TOGGLE_INSPECTOR_
+    // CAPTURE to every frame of this tab, including this one — so do NOT
+    // toggle locally here (it would double-toggle this frame). If the relay
+    // fails (background unreachable), degrade to a local toggle so the
+    // hotkey still does something.
+    sendMessage("INSPECTOR_CAPTURE_TOGGLE_ALL_FRAMES", {}).catch(() => {
+      if (active) deactivate();
+      else activate();
+    });
   } else if (e.key === "Escape" && active) {
-    deactivate();
+    deactivateAll();
   }
 }
 
@@ -1363,6 +1440,7 @@ function activate() {
   document.addEventListener("mousemove", onMouseMove, true);
   document.addEventListener("mouseup", onMouseUp, true);
   document.addEventListener("click", swallowClick, true);
+  document.addEventListener("mouseout", onMouseOut, true);
 }
 
 function deactivate() {
@@ -1373,6 +1451,7 @@ function deactivate() {
   document.removeEventListener("mousemove", onMouseMove, true);
   document.removeEventListener("mouseup", onMouseUp, true);
   document.removeEventListener("click", swallowClick, true);
+  document.removeEventListener("mouseout", onMouseOut, true);
   ui?.root.remove();
   styleEl?.remove();
   ui = null;
@@ -1389,6 +1468,13 @@ function deactivate() {
 export function initInspectorCapture(
   registerInvalidated?: (cb: () => void) => void,
 ) {
+  // Every frame wires the full capture logic: each frame highlights and
+  // captures its own document, so picking content inside an iframe works like
+  // on a plain page. The visual chrome (hint pill) exists only in the top
+  // frame (see buildUi), and exit/toggle are relayed tab-wide through the
+  // background (deactivateAll / onKeydown) so the frames cannot desync — a
+  // tabs.sendMessage without frameId reaches every frame, but a keydown or
+  // mouseup only ever lands in the focused frame.
   registerInvalidated?.(() => {
     document.removeEventListener("keydown", onKeydown, true);
     deactivate();
@@ -1401,11 +1487,26 @@ export function initInspectorCapture(
     if (
       msg &&
       typeof msg === "object" &&
+      (msg as { type?: unknown }).type === INSPECTOR_CAPTURE_DEACTIVATE
+    ) {
+      // Relay from deactivateAll() in another frame of this tab — exit here
+      // WITHOUT re-relaying (deactivateAll already did that hop).
+      deactivate();
+      return;
+    }
+    if (
+      msg &&
+      typeof msg === "object" &&
       (msg as { type?: unknown }).type === TOGGLE_INSPECTOR_CAPTURE
     ) {
       if (active) deactivate();
       else activate();
-      return { ok: true, active };
+      // Only the TOP frame answers. The toggle broadcasts to EVERY frame of
+      // the tab, and multiple simultaneous responses make the sender's
+      // sendMessage promise reject — the popup then wrongly shows its
+      // "unsupported page" warning. Child frames still toggle, they just
+      // don't reply; exactly one responder keeps the reply well-defined.
+      return IS_TOP ? { ok: true, active } : undefined;
     }
     // Agent-driven programmatic capture (capture_element RPC). Returning the
     // promise is enough for the polyfilled runtime.onMessage to resolve the
@@ -1420,15 +1521,4 @@ export function initInspectorCapture(
       );
     }
   });
-}
-
-/**
- * Popup-side helper: toggle capture mode on the given tab. Resolves with the
- * resulting active state; rejects when the tab has no content script (e.g. a
- * chrome:// page the script cannot inject into).
- */
-export async function toggleInspectorCaptureOnTab(
-  tabId: number,
-): Promise<{ ok: boolean; active: boolean }> {
-  return chrome.tabs.sendMessage(tabId, { type: TOGGLE_INSPECTOR_CAPTURE });
 }

@@ -67,7 +67,9 @@ import type { ScreenshotMode } from "@/lib/screenshot/types";
  * Send the programmatic capture request to a tab's content script. The
  * content script persists via its bridge-iframe path and replies with the
  * history id; a thrown error here means there is no listener (chrome:// and
- * other non-injectable pages).
+ * other non-injectable pages). Pinned to the TOP frame: point/box are TOP
+ * viewport coordinates, and an all-frames broadcast would run the same
+ * capture in every iframe too (duplicate records, wrong coordinates).
  */
 function sendAgentCapture(
   tabId: number,
@@ -78,10 +80,14 @@ function sendAgentCapture(
   elementCount?: number;
   error?: string;
 }> {
-  return chrome.tabs.sendMessage(tabId, {
-    type: AGENT_CAPTURE_ELEMENTS,
-    data: req,
-  }) as Promise<{
+  return chrome.tabs.sendMessage(
+    tabId,
+    {
+      type: AGENT_CAPTURE_ELEMENTS,
+      data: req,
+    },
+    { frameId: 0 },
+  ) as Promise<{
     ok: boolean;
     captureId?: string;
     elementCount?: number;

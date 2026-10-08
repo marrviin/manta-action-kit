@@ -27,6 +27,16 @@ import { handleFullpageMessage } from "@/lib/screenshot/stitch-page";
 export default defineContentScript({
   matches: ["<all_urls>"],
   runAt: "document_start",
+  // Run in EVERY frame, not just the top one: micro-frontend sub-apps
+  // (e.g. <micro-app iframe> sandbox) execute their JS inside a child frame
+  // with its OWN window/fetch/XMLHttpRequest — a top-frame-only hook never
+  // sees those calls. Each frame relays with the same tab id
+  // (sender.tab.id), so the background's tab filtering is unaffected.
+  allFrames: true,
+  // Also inject into about:blank/srcdoc frames (initiator-matched): some
+  // micro-frontend sandboxes boot their sub-app from such frames before any
+  // real URL exists there. Without this, MV3 content scripts skip them.
+  matchOriginAsFallback: true,
   async main(ctx) {
     const { script } = await injectScript("/injected-api-hook.js", {
       keepInDom: true,
@@ -67,40 +77,40 @@ export default defineContentScript({
     // (extremely unlikely) doesn't silently disable capture.
     initInspectorCapture((cb) => ctx.onInvalidated(cb));
 
-    // Screenshot focus fx: the background pings this right after it has
-    // captured (the shot is already taken — the fx can never pollute it) and
-    // waits for the reply before opening the preview tab, so the jump reads
-    // as the iris snap's recovery. Classic async-sendResponse pattern
+    // Screenshot focus fx + scroll-and-stitch full-page capture: both are
+    // TOP-frame-only. The fx is a viewport-level visual, and the stitch
+    // protocol drives the page's scroll position — running them in subframes
+    // would layer one fx copy per iframe and let iframes scroll themselves /
+    // race the top frame's replies. Senders also pin frameId: 0; this guard
+    // keeps future callers honest. Classic async-sendResponse pattern
     // (`return true` keeps the channel open); the inspector listener above
-    // returns undefined for this type, so the two listeners don't fight.
-    browser.runtime.onMessage.addListener(
-      (msg: unknown, _sender, sendResponse: (r: unknown) => void) => {
-        if (
-          !msg ||
-          typeof msg !== "object" ||
-          (msg as { type?: unknown }).type !== PLAY_SCREENSHOT_FX
-        ) {
-          return;
-        }
-        playScreenshotFocusFx().then((played) => sendResponse({ played }));
-        return true;
-      },
-    );
+    // returns undefined for these types, so the listeners don't fight.
+    if (window.self === window.top) {
+      browser.runtime.onMessage.addListener(
+        (msg: unknown, _sender, sendResponse: (r: unknown) => void) => {
+          if (
+            !msg ||
+            typeof msg !== "object" ||
+            (msg as { type?: unknown }).type !== PLAY_SCREENSHOT_FX
+          ) {
+            return;
+          }
+          playScreenshotFocusFx().then((played) => sendResponse({ played }));
+          return true;
+        },
+      );
 
-    // Scroll-and-stitch full-page capture: the background drives the page
-    // through begin/scroll/stitch/end steps (see lib/screenshot/stitch.ts).
-    // Same classic async-sendResponse pattern; non-fullpage messages resolve
-    // to null here, so the two listeners above stay unaffected.
-    browser.runtime.onMessage.addListener(
-      (msg: unknown, _sender, sendResponse: (r: unknown) => void) => {
-        const res = handleFullpageMessage(msg);
-        if (!res) return;
-        res.then(
-          (r) => sendResponse(r),
-          (err) => sendResponse({ __error: String(err) }),
-        );
-        return true;
-      },
-    );
+      browser.runtime.onMessage.addListener(
+        (msg: unknown, _sender, sendResponse: (r: unknown) => void) => {
+          const res = handleFullpageMessage(msg);
+          if (!res) return;
+          res.then(
+            (r) => sendResponse(r),
+            (err) => sendResponse({ __error: String(err) }),
+          );
+          return true;
+        },
+      );
+    }
   },
 });

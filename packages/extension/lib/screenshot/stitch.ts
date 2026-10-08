@@ -75,7 +75,12 @@ export async function captureFullPageStitched(
     ms: number = STEP_TIMEOUT_MS,
   ): Promise<T> =>
     withTimeout(
-      chrome.tabs.sendMessage(tabId, { type, ...data }) as Promise<T>,
+      // Pinned to the TOP frame: the stitch protocol drives the PAGE's scroll
+      // position and viewport metrics. The content script is all-frames (for
+      // API recording / element capture), and an all-frames broadcast would
+      // run the protocol in every iframe too — duplicate fx overlays, each
+      // frame scrolling itself, and subframes racing the top frame's replies.
+      chrome.tabs.sendMessage(tabId, { type, ...data }, { frameId: 0 }) as Promise<T>,
       type,
       ms,
     );
@@ -89,7 +94,11 @@ export async function captureFullPageStitched(
     // sweeps the page. Fire-and-forget: fx failures never block capture.
     if (fxEnabled) {
       chrome.tabs
-        .sendMessage(tabId, { type: FULLPAGE_FX, visible: true })
+        .sendMessage(
+          tabId,
+          { type: FULLPAGE_FX, visible: true },
+          { frameId: 0 },
+        )
         .catch(() => {});
     }
     const { metrics } = await send<{ metrics: FullpageMetrics }>(
@@ -194,7 +203,9 @@ export async function captureFullPageStitched(
     // when BEGIN never went through). Awaited briefly so the overlay is
     // really gone before a CDP fallback captures the page.
     await withTimeout(
-      chrome.tabs.sendMessage(tabId, { type: FULLPAGE_END }).catch(() => {}),
+      chrome.tabs
+        .sendMessage(tabId, { type: FULLPAGE_END }, { frameId: 0 })
+        .catch(() => {}),
       "fullpage-end",
       1_000,
     ).catch(() => {});
