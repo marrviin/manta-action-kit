@@ -355,6 +355,150 @@ describe('routing + ack shapes', () => {
   });
 });
 
+describe('INSPECTOR_CAPTURE_RELAY_* (child-frame capture relay)', () => {
+  const tab = (id: number) => ({ tab: { id } }) as chrome.runtime.MessageSender;
+
+  it('mint → use consumes the token once; replays and foreign tabs are refused', async () => {
+    const { dispatch } = makeHandler();
+    const sender = tab(5);
+    const mint = () =>
+      dispatch({
+        type: 'INSPECTOR_CAPTURE_RELAY_MINT',
+        data: { req: { point: { x: 1, y: 2 } } },
+      }, sender);
+    const token = (await mint()).token;
+    expect(token).toMatch(/^[0-9a-f-]{36}$/);
+
+    // first use hands the bound request to the same tab
+    await expect(
+      dispatch({ type: 'INSPECTOR_CAPTURE_RELAY_USE', data: { token } }, sender),
+    ).resolves.toEqual({ ok: true, req: { point: { x: 1, y: 2 } } });
+    // replay of the same token is refused
+    await expect(
+      dispatch({ type: 'INSPECTOR_CAPTURE_RELAY_USE', data: { token } }, sender),
+    ).resolves.toEqual({ ok: false });
+
+    // a fresh token minted for tab 5 cannot be used by tab 6 …
+    const token2 = (await mint()).token;
+    await expect(
+      dispatch({ type: 'INSPECTOR_CAPTURE_RELAY_USE', data: { token: token2 } }, tab(6)),
+    ).resolves.toEqual({ ok: false });
+    // … but is still intact for tab 5
+    await expect(
+      dispatch({ type: 'INSPECTOR_CAPTURE_RELAY_USE', data: { token: token2 } }, sender),
+    ).resolves.toMatchObject({ ok: true });
+
+    // unknown token refused
+    await expect(
+      dispatch({ type: 'INSPECTOR_CAPTURE_RELAY_USE', data: { token: 'nope' } }, sender),
+    ).resolves.toEqual({ ok: false });
+  });
+
+  it('mint without a sender tab yields an empty token (nothing to relay into)', async () => {
+    const { dispatch } = makeHandler();
+    await expect(
+      dispatch({ type: 'INSPECTOR_CAPTURE_RELAY_MINT', data: { req: {} } }),
+    ).resolves.toEqual({ token: '' });
+  });
+
+  it('RESULT from the minting tab resolves a parked AWAIT exactly once', async () => {
+    const { dispatch } = makeHandler();
+    const sender = tab(5);
+    const { token } = await dispatch(
+      { type: 'INSPECTOR_CAPTURE_RELAY_MINT', data: { req: { all: true } } },
+      sender,
+    );
+    const awaited = dispatch(
+      { type: 'INSPECTOR_CAPTURE_RELAY_AWAIT', data: { token } },
+      sender,
+    );
+    // no result yet → the AWAIT parks (does not settle on its own)
+    await expect(
+      Promise.race([
+        awaited.then(() => 'settled' as const),
+        new Promise((r) => setTimeout(() => r('parked' as const), 20)),
+      ]),
+    ).resolves.toBe('parked');
+
+    const result = { ok: true as const, captureId: 'e1', elementCount: 3 };
+    await expect(
+      dispatch({ type: 'INSPECTOR_CAPTURE_RELAY_RESULT', data: { token, result } }, sender),
+    ).resolves.toEqual({ ok: true });
+    await expect(awaited).resolves.toEqual(result);
+
+    // a late duplicate RESULT never settles the already-resolved channel again…
+    await expect(
+      dispatch(
+        { type: 'INSPECTOR_CAPTURE_RELAY_RESULT', data: { token, result: { ok: false } } },
+        sender,
+      ),
+    ).resolves.toEqual({ ok: true });
+    // … and AWAIT now answers immediately from the stored result
+    await expect(
+      dispatch({ type: 'INSPECTOR_CAPTURE_RELAY_AWAIT', data: { token } }, sender),
+    ).resolves.toEqual(result);
+  });
+
+  it('RESULT from a foreign tab is acked but never stored, so the AWAIT keeps waiting', async () => {
+    const { dispatch } = makeHandler();
+    const sender = tab(5);
+    const { token } = await dispatch(
+      { type: 'INSPECTOR_CAPTURE_RELAY_MINT', data: { req: {} } },
+      sender,
+    );
+    const awaited = dispatch(
+      { type: 'INSPECTOR_CAPTURE_RELAY_AWAIT', data: { token } },
+      sender,
+    );
+    await expect(
+      dispatch(
+        { type: 'INSPECTOR_CAPTURE_RELAY_RESULT', data: { token, result: { ok: true } } },
+        tab(6),
+      ),
+    ).resolves.toEqual({ ok: true });
+    await expect(
+      Promise.race([
+        awaited.then(() => 'settled' as const),
+        new Promise((r) => setTimeout(() => r('parked' as const), 20)),
+      ]),
+    ).resolves.toBe('parked');
+  });
+
+  it('an unanswered relay times the AWAIT out and the token is gone afterwards', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const { dispatch } = makeHandler();
+      const sender = tab(5);
+      const { token } = await dispatch(
+        { type: 'INSPECTOR_CAPTURE_RELAY_MINT', data: { req: { selector: 'x' } } },
+        sender,
+      );
+      const awaited = dispatch(
+        { type: 'INSPECTOR_CAPTURE_RELAY_AWAIT', data: { token } },
+        sender,
+      );
+      vi.advanceTimersByTime(20_000);
+      await expect(awaited).resolves.toEqual({
+        ok: false,
+        error: 'capture relay timed out',
+      });
+      // the TTL deleted the token: the child's late RESULT is refused …
+      await expect(
+        dispatch(
+          { type: 'INSPECTOR_CAPTURE_RELAY_RESULT', data: { token, result: { ok: true } } },
+          sender,
+        ),
+      ).resolves.toEqual({ ok: false });
+      // … and a new AWAIT reports expiry instead of parking
+      await expect(
+        dispatch({ type: 'INSPECTOR_CAPTURE_RELAY_AWAIT', data: { token } }, sender),
+      ).resolves.toEqual({ ok: false, error: 'capture relay expired' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe('STOP_RECORDING side effects', () => {
   it('notifies + fires the relevance analysis when a recording was saved', async () => {
     const { dispatch, deps } = makeHandler();

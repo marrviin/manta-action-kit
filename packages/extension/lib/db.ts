@@ -490,6 +490,57 @@ export async function deleteCall(
   });
 }
 
+/**
+ * Bulk add/overwrite (by id) recordings in one transaction — the import path of
+ * the settings data transfer (lib/transfer.ts). Ids are preserved verbatim so
+ * cross-references (calls → recordingId, actions → recordingId) stay intact.
+ */
+export async function putRecordings(recordings: Recording[]): Promise<void> {
+  const db = await openDb();
+  await new Promise<void>((resolve, reject) => {
+    const t = tx(db, [STORE_RECORDINGS], "readwrite");
+    t.oncomplete = () => resolve();
+    t.onerror = () => reject(t.error);
+    t.onabort = () => reject(t.error);
+    const store = t.objectStore(STORE_RECORDINGS);
+    for (const rec of recordings) store.put(rec);
+  });
+}
+
+/**
+ * Bulk add/overwrite (by id) calls in one transaction — the import path of the
+ * settings data transfer. Actions reference calls by id, so imported calls must
+ * keep their original ids for distilled actions to stay executable.
+ */
+export async function putCalls(calls: ApiCall[]): Promise<void> {
+  const db = await openDb();
+  await new Promise<void>((resolve, reject) => {
+    const t = tx(db, [STORE_CALLS], "readwrite");
+    t.oncomplete = () => resolve();
+    t.onerror = () => reject(t.error);
+    t.onabort = () => reject(t.error);
+    const store = t.objectStore(STORE_CALLS);
+    for (const call of calls) store.put(call);
+  });
+}
+
+/**
+ * Bulk add/overwrite (by id) actions in one transaction — the import path of
+ * the settings data transfer. Unlike {@link upsertAction}, original updatedAt
+ * stamps are preserved so an export → import roundtrip is lossless.
+ */
+export async function putActions(actions: Action[]): Promise<void> {
+  const db = await openDb();
+  await new Promise<void>((resolve, reject) => {
+    const t = tx(db, [STORE_ACTIONS], "readwrite");
+    t.oncomplete = () => resolve();
+    t.onerror = () => reject(t.error);
+    t.onabort = () => reject(t.error);
+    const store = t.objectStore(STORE_ACTIONS);
+    for (const action of actions) store.put(action);
+  });
+}
+
 // ---------------------------------------------------------------------------
 // API gateway feature (v3)
 // ---------------------------------------------------------------------------

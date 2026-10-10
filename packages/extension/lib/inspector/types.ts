@@ -19,6 +19,50 @@ export type {
   InspectorCapturePayload,
 } from "@manta-action-kit/protocol";
 
+import type { CoordinateSpace } from "./coords";
+
+export type { CoordinateSpace };
+
+/**
+ * Programmatic capture request — the AGENT_CAPTURE_ELEMENTS message payload
+ * and the capture_element RPC params (mirrored in
+ * @manta-action-kit/protocol's RpcMap). Exactly one of selector / point / box.
+ */
+export interface AgentCaptureRequest {
+  selector?: string;
+  point?: { x: number; y: number };
+  box?: { x: number; y: number; w: number; h: number };
+  all?: boolean;
+  maxElements?: number;
+  /**
+   * Which space point/box are expressed in. Default (and the value used when
+   * unset) is "viewport"; "page" is document space (e.g. coordinates read off
+   * a full-page screenshot). When unset, coordinates that fall outside the
+   * viewport are automatically treated as page coordinates.
+   */
+  coordinates?: CoordinateSpace;
+  /**
+   * Internal: how many child-frame relays this request has already crossed.
+   * Caps the recursion into nested iframes; never set by callers.
+   */
+  relayDepth?: number;
+}
+
+/**
+ * Reply shape of the programmatic (agent) element capture, shared by the
+ * AGENT_CAPTURE_ELEMENTS message, the capture-relay handshake (a child frame
+ * reports its capture back through the background) and the capture_element
+ * RPC's internal steps.
+ */
+export interface AgentCaptureResult {
+  ok: boolean;
+  captureId?: string;
+  elementCount?: number;
+  page?: { url: string; title: string };
+  capturedAt?: string;
+  error?: string;
+}
+
 /**
  * Attribute whitelist captured per element: small, high-signal attributes that
  * styles alone cannot express (form state, links, image sources, a11y hints).

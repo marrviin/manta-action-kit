@@ -401,6 +401,139 @@ describe("runAction: body overrides & coercion", () => {
     // New paths keep plain strings verbatim (no type to coerce to).
     expect(JSON.parse(forwardedReq(0).body!)).toEqual({ a: "1", b: "2" });
   });
+
+  it("overrides the embedded JSON of a form-encoded body and re-encodes it", async () => {
+    const form = `appid=web&body=${encodeURIComponent(
+      JSON.stringify({ subject: "会议", start: 1791630000000, nest: { deep: "x" } }),
+    )}&t=123`;
+    calls = [makeCall("c1", { reqBody: form })];
+    const action = makeAction([
+      makeStep("c1", {
+        overrides: [ov("body", "subject", "{{s}}"), ov("body", "nest.deep", "{{n}}")],
+      }),
+    ], [
+      { name: "s", type: "string", required: true },
+      { name: "n", type: "string", required: true },
+    ]);
+    await runAction(action, { s: "评审", n: "y" });
+    const sent = new URLSearchParams(forwardedReq(0).body!);
+    expect(sent.get("appid")).toBe("web");
+    expect(sent.get("t")).toBe("123");
+    expect(JSON.parse(sent.get("body")!)).toEqual({
+      subject: "评审",
+      start: 1791630000000,
+      nest: { deep: "y" },
+    });
+  });
+
+  it("prefers the field named body among form fields carrying JSON", async () => {
+    const form = `payload=${encodeURIComponent('{"a":1}')}&body=${encodeURIComponent(
+      '{"b":2}',
+    )}`;
+    calls = [makeCall("c1", { reqBody: form })];
+    const action = makeAction([makeStep("c1", { overrides: [ov("body", "b", "3")] })]);
+    await runAction(action, undefined);
+    const sent = new URLSearchParams(forwardedReq(0).body!);
+    expect(sent.get("payload")).toBe('{"a":1}');
+    expect(JSON.parse(sent.get("body")!)).toEqual({ b: 3 });
+  });
+
+  it("a single-segment toPath naming an existing form field overrides the FORM, not the embedded JSON", async () => {
+    const form = `appid=web&t=123&body=${encodeURIComponent('{"a":1}')}`;
+    calls = [makeCall("c1", { reqBody: form })];
+    const action = makeAction([
+      makeStep("c1", {
+        overrides: [ov("body", "t", "{{nowSec}}"), ov("body", "a", "2")],
+      }),
+    ]);
+    await runAction(action, undefined);
+    const sent = new URLSearchParams(forwardedReq(0).body!);
+    // "t" is an existing form field → refreshed there; the embedded JSON is untouched by it
+    expect(Number(sent.get("t"))).toBeGreaterThanOrEqual(1);
+    expect(JSON.parse(sent.get("body")!)).toEqual({ a: 2 });
+    expect(sent.get("appid")).toBe("web");
+  });
+
+  it("a body that is neither JSON nor urlencoded still fails with the clear not-JSON error", async () => {
+    calls = [makeCall("c1", { reqBody: '<req a="1"><t>123</t></req>' })];
+    const action = makeAction([
+      makeStep("c1", { overrides: [ov("body", "t", "9")] }),
+    ]);
+    const run = await runAction(action, undefined);
+    expect(run.steps[0]!.errorText).toMatch(/not JSON/);
+  });
+
+  it("plain form body supports whole-field overrides (set or create)", async () => {
+    calls = [
+      makeCall("c1", { reqBody: "appid=web&t=123&sign=abc" }),
+      makeCall("c2", { reqBody: "appid=web" }),
+    ];
+    const action = makeAction([
+      makeStep("c1", { overrides: [ov("body", "sign", "{{s}}")] }),
+      makeStep("c2", { overrides: [ov("body", "newField", "1")] }),
+    ], [{ name: "s", type: "string", required: true }]);
+    await runAction(action, { s: "fresh" });
+    expect(new URLSearchParams(forwardedReq(0).body!).get("sign")).toBe("fresh");
+    expect(new URLSearchParams(forwardedReq(1).body!).get("newField")).toBe("1");
+    expect(new URLSearchParams(forwardedReq(0).body!).get("appid")).toBe("web");
+  });
+
+  it("plain form body rejects a nested JSON-path override", async () => {
+    calls = [makeCall("c1", { reqBody: "appid=web&t=123" })];
+    const action = makeAction([makeStep("c1", { overrides: [ov("body", "a.b", "1")] })]);
+    const run = await runAction(action, undefined);
+    expect(run.steps[0]!.errorText).toMatch(/single-segment toPath/);
+  });
+
+  it("array-root JSON bodies accept indexed overrides", async () => {
+    calls = [makeCall("c1", { reqBody: '[{"id":1,"qty":2},{"id":3,"qty":4}]' })];
+    const action = makeAction([
+      makeStep("c1", { overrides: [ov("body", "[1].qty", "{{q}}")] }),
+    ], [{ name: "q", type: "string", required: true }]);
+    await runAction(action, { q: "5" });
+    expect(JSON.parse(forwardedReq(0).body!)).toEqual([
+      { id: 1, qty: 2 },
+      { id: 3, qty: 5 },
+    ]);
+  });
+
+  it("scalar JSON bodies reject a body override", async () => {
+    calls = [makeCall("c1", { reqBody: "123" })];
+    const action = makeAction([makeStep("c1", { overrides: [ov("body", "x", "1")] })]);
+    const run = await runAction(action, undefined);
+    expect(run.steps[0]!.errorText).toMatch(/must be a JSON object or array/);
+  });
+
+  it("template helpers resolve fresh values; declared params win", async () => {
+    calls = [makeCall("c1", { url: "https://api.example.com/x" })];
+    const action = makeAction([
+      makeStep("c1", {
+        overrides: [
+          ov("query", "t", "{{nowMs}}"),
+          ov("query", "rid", "{{uuid}}"),
+          ov("query", "echo", "{{p}}"),
+        ],
+      }),
+    ], [{ name: "p", type: "string", required: true }]);
+    const before = Date.now();
+    await runAction(action, { p: "nowMs" });
+    const url = new URL(forwardedReq(0).url);
+    const t = Number(url.searchParams.get("t"));
+    expect(t).toBeGreaterThanOrEqual(before);
+    expect(t).toBeLessThanOrEqual(Date.now());
+    expect(url.searchParams.get("rid")).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+    );
+    expect(url.searchParams.get("echo")).toBe("nowMs");
+  });
+
+  it("nowSec resolves to whole seconds", async () => {
+    calls = [makeCall("c1")];
+    const action = makeAction([makeStep("c1", { overrides: [ov("query", "t", "{{nowSec}}")] })]);
+    await runAction(action, undefined);
+    const t = Number(new URL(forwardedReq(0).url).searchParams.get("t"));
+    expect(Math.abs(t - Math.floor(Date.now() / 1000))).toBeLessThanOrEqual(2);
+  });
 });
 
 describe("runAction: other override locations", () => {

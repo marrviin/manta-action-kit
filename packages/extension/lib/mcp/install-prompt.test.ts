@@ -41,12 +41,17 @@ describe('ensureMcpAuthToken', () => {
 });
 
 describe('buildInstallPrompt', () => {
-  it('embeds the package, ports and token env', () => {
+  it('embeds the unpinned npx config, ports and token env', () => {
     const prompt = buildInstallPrompt(8765, 9000, 'tok-1');
-    expect(prompt).toContain(MCP_PACKAGE);
+    expect(prompt).toContain('- command: npx');
+    expect(prompt).toContain('- args: ["-y","@manta-action-kit/mcp@latest"]');
     expect(prompt).toContain('"MANTA_WS_PORT": "8765"');
     expect(prompt).toContain('"MANTA_PROXY_PORT": "9000"');
     expect(prompt).toContain('"MANTA_TOKEN": "tok-1"');
-    expect(prompt).toContain('- args: ["-y","@manta-action-kit/mcp"]');
+  });
+
+  it('includes the prewarm tip for the first cold-cache launch', () => {
+    const prompt = buildInstallPrompt(8765, 9000, 'tok-1');
+    expect(prompt).toContain('npx -y @manta-action-kit/mcp@latest');
   });
 });

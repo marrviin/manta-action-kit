@@ -9,6 +9,8 @@ import {
   buildCookieHeader,
   splitReferrer,
   forwardWithCookies,
+  collectCookiesForUrl,
+  compareForHeader,
 } from '@/lib/gateway/dnr';
 import type { GatewayRequest } from '@/lib/gateway/types';
 
@@ -18,6 +20,8 @@ const globalFetch = vi.fn(async (..._a: unknown[]) => new Response('ok'));
 
 const cookie = (name: string, value: string, domain = 'example.com') =>
   ({ name, value, domain }) as chrome.cookies.Cookie;
+
+const ck = (over: Partial<chrome.cookies.Cookie>) => over as chrome.cookies.Cookie;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -56,6 +60,60 @@ describe('splitReferrer', () => {
     expect(splitReferrer({ referer: 'ftp://x/' }).referrer).toBeUndefined();
     expect(splitReferrer({}).referrer).toBeUndefined();
     expect(splitReferrer().referrer).toBeUndefined(); // default param
+  });
+});
+
+describe('compareForHeader', () => {
+  it('orders longer paths first, then domain < host-only < partitioned', () => {
+    const domain = ck({ name: 'sid', path: '/', hostOnly: false });
+    const host = ck({ name: 'sid', path: '/', hostOnly: true });
+    const part = ck({ name: 'sid', path: '/', hostOnly: true, partitionKey: { topLevelSite: 'https://x.com' } });
+    const deep = ck({ name: 'other', path: '/a/b' });
+    const sorted = [host, part, domain, deep].sort(compareForHeader);
+    expect(sorted).toEqual([deep, domain, host, part]);
+  });
+});
+
+describe('collectCookiesForUrl', () => {
+  it('merges unpartitioned and partitioned getAll results, deduped, browser-ordered', async () => {
+    const url = 'https://console.example.com/api';
+    cookiesGetAll.mockImplementation(async (q?: { partitionKey?: unknown }) =>
+      q?.partitionKey
+        ? [ck({ name: 'sid', value: 'fresh', domain: 'console.example.com', path: '/', hostOnly: true, partitionKey: { topLevelSite: 'https://console.example.com' } })]
+        : [
+            ck({ name: 'sid', value: 'stale', domain: '.example.com', path: '/', hostOnly: false }),
+            ck({ name: 'theme', value: 'dark', domain: 'console.example.com', path: '/api', hostOnly: true }),
+          ],
+    );
+    const cookies = await collectCookiesForUrl(url);
+    // same path length: domain-scope stale cookie first, host-only partitioned last
+    expect(cookies.map((c) => `${c.name}=${c.value}`)).toEqual([
+      'theme=dark',
+      'sid=stale',
+      'sid=fresh',
+    ]);
+    // both queries were issued: one plain, one with the URL origin as topLevelSite
+    expect(cookiesGetAll).toHaveBeenCalledWith({ url });
+    expect(cookiesGetAll).toHaveBeenCalledWith({
+      url,
+      partitionKey: { topLevelSite: 'https://console.example.com' },
+    });
+  });
+
+  it('dedupes when the second query returns the same unpartitioned cookies', async () => {
+    const same = [cookie('a', '1'), cookie('b', '2')];
+    cookiesGetAll.mockResolvedValue(same);
+    const cookies = await collectCookiesForUrl('https://example.com/');
+    expect(cookies.map((c) => c.name)).toEqual(['a', 'b']);
+  });
+
+  it('survives a failing partitioned query', async () => {
+    cookiesGetAll.mockImplementation(async (q?: { partitionKey?: unknown }) => {
+      if (q?.partitionKey) throw new Error('unsupported');
+      return [cookie('a', '1')];
+    });
+    const cookies = await collectCookiesForUrl('https://example.com/');
+    expect(cookies.map((c) => c.name)).toEqual(['a']);
   });
 });
 

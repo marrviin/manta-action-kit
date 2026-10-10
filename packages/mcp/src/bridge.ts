@@ -17,6 +17,7 @@ import type {
   ClientFrame,
   HelloFrame,
   PeerRpcResultFrame,
+  PongFrame,
   RpcMethod,
   RpcRequestFrame,
 } from './protocol.js';
@@ -28,6 +29,14 @@ interface Pending {
   /** The socket the request was sent on — close() rejects only this socket's calls. */
   socket: WebSocket;
 }
+
+/**
+ * Heartbeat cadence. Every interval each socket is pinged; a client that has
+ * neither answered the ping nor sent anything by the NEXT interval is
+ * considered dead and terminated. 30s bounds half-open detection (sleep/wake,
+ * Wi-Fi/VPN switch) at ~1 minute while keeping the traffic negligible.
+ */
+const HEARTBEAT_INTERVAL_MS = 30_000;
 
 export interface Bridge {
   /** Is an extension currently connected? */
@@ -105,6 +114,24 @@ export function startBridge(port: number, token: string | undefined, host = '127
 
     sockets.add(ws);
     let role: 'extension' | 'peer' | 'unknown' = 'unknown';
+    // Heartbeat: the TCP stack can sit on a half-open connection for a long
+    // time (peer slept, network switched) while `active` still looks OPEN, so
+    // calls sent into the void hang until their timeout. Ping each socket
+    // every interval; terminate on a missed reply. Node's `ws` clients (peers)
+    // and browsers both answer pings at the protocol level automatically.
+    let isAlive = true;
+    const heartbeat = setInterval(() => {
+      if (!isAlive) {
+        log('heartbeat timeout — terminating dead socket');
+        ws.terminate();
+        return;
+      }
+      isAlive = false;
+      ws.ping();
+    }, HEARTBEAT_INTERVAL_MS);
+    ws.on('pong', () => {
+      isAlive = true;
+    });
     // Handshake stages: awaiting hello → awaiting the auth challenge answer →
     // authenticated. Only 'authed' sockets may speak the business frames below.
     let stage: 'hello' | 'auth' | 'authed' = 'hello';
@@ -115,9 +142,14 @@ export function startBridge(port: number, token: string | undefined, host = '127
         ws.terminate();
       }
     }, 10_000);
-    ws.on('close', () => clearTimeout(stageTimer));
+    ws.on('close', () => {
+      clearTimeout(stageTimer);
+      clearInterval(heartbeat);
+    });
 
     ws.on('message', (data) => {
+      // Any inbound frame doubles as a liveness signal.
+      isAlive = true;
       let frame: ClientFrame;
       try {
         frame = JSON.parse(String(data)) as ClientFrame;
@@ -183,6 +215,12 @@ export function startBridge(port: number, token: string | undefined, host = '127
       }
 
       // ── authenticated business frames ──
+      if (frame.type === 'ping') {
+        // App-level keepalive from the extension (browsers can't send WS ping
+        // control frames). Replying keeps both directions' activity flowing.
+        ws.send(JSON.stringify({ type: 'pong' } satisfies PongFrame));
+        return;
+      }
       if (frame.type === 'rpc-result') {
         const p = pending.get(frame.id);
         if (!p) return;

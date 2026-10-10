@@ -1,4 +1,8 @@
 import type { Message } from "@/lib/messaging";
+import type {
+  AgentCaptureRequest,
+  AgentCaptureResult,
+} from "@/lib/inspector/types";
 import type * as session from "@/lib/recording/session";
 import type {
   addProxyRule,
@@ -119,6 +123,59 @@ export interface MessageHandlerDeps {
 }
 
 /**
+ * One-shot relay tokens for programmatic element captures that must descend
+ * into a child frame (an <iframe>): the parent frame's content script mints a
+ * token bound to the (already translated) request, posts it into the child
+ * frame, the child verifies it here and captures, then reports the result
+ * back through the same token. Fail-secure like bridgeTokens: a dead service
+ * worker forgets every pending relay, the parent's AWAIT then rejects and it
+ * falls back to capturing the iframe shell.
+ */
+interface PendingCaptureRelay {
+  tabId: number;
+  req: AgentCaptureRequest;
+  used: boolean;
+  result?: AgentCaptureResult;
+  waiter?: (r: AgentCaptureResult) => void;
+  timer: ReturnType<typeof setTimeout>;
+}
+
+const captureRelays = new Map<string, PendingCaptureRelay>();
+
+/** Relay token TTL — covers the child's capture + IndexedDB handoff (15s cap). */
+const CAPTURE_RELAY_TTL_MS = 20_000;
+
+function mintCaptureRelay(
+  tabId: number | undefined,
+  req: AgentCaptureRequest,
+): string {
+  if (tabId == null) return "";
+  const token = crypto.randomUUID();
+  const entry: PendingCaptureRelay = {
+    tabId,
+    req,
+    used: false,
+    timer: setTimeout(() => {
+      captureRelays.delete(token);
+      entry.waiter?.({ ok: false, error: "capture relay timed out" });
+      entry.waiter = undefined;
+    }, CAPTURE_RELAY_TTL_MS),
+  };
+  captureRelays.set(token, entry);
+  return token;
+}
+
+function useCaptureRelay(
+  token: string,
+  senderTabId: number | undefined,
+): AgentCaptureRequest | undefined {
+  const entry = captureRelays.get(token);
+  if (!entry || entry.used || entry.tabId !== senderTabId) return undefined;
+  entry.used = true;
+  return entry.req;
+}
+
+/**
  * Builds the runtime.onMessage listener for the background service worker.
  * Returns `true` on every call: the async sendResponse below needs the
  * message channel kept open.
@@ -149,6 +206,50 @@ export function createMessageHandler(deps: MessageHandlerDeps) {
             const ok = bridgeTokens.delete(msg.data.token);
             if (!ok) sendResponse({ ok: false });
             else sendResponse({ ok: true });
+            break;
+          }
+
+          case "INSPECTOR_CAPTURE_RELAY_MINT": {
+            const token = mintCaptureRelay(sender.tab?.id, msg.data.req);
+            sendResponse({ token });
+            break;
+          }
+
+          case "INSPECTOR_CAPTURE_RELAY_USE": {
+            const req = useCaptureRelay(msg.data.token, sender.tab?.id);
+            if (!req) sendResponse({ ok: false });
+            else sendResponse({ ok: true, req });
+            break;
+          }
+
+          case "INSPECTOR_CAPTURE_RELAY_AWAIT": {
+            // Parks the response channel until the child frame reports
+            // RELAY_RESULT or the token TTL fires — the async sendResponse +
+            // `return true` below keep the channel open that long.
+            const entry = captureRelays.get(msg.data.token);
+            if (!entry) {
+              sendResponse({ ok: false, error: "capture relay expired" });
+            } else if (entry.result) {
+              sendResponse(entry.result);
+            } else {
+              entry.waiter = sendResponse;
+            }
+            break;
+          }
+
+          case "INSPECTOR_CAPTURE_RELAY_RESULT": {
+            const entry = captureRelays.get(msg.data.token);
+            if (entry && sender.tab?.id === entry.tabId) {
+              // Single resolution, both directions: the TTL must never answer
+              // an already-settled AWAIT channel a second time, and a late
+              // duplicate RESULT must not overwrite the stored result.
+              if (!entry.result) {
+                entry.result = msg.data.result;
+                entry.waiter?.(msg.data.result);
+                entry.waiter = undefined;
+              }
+            }
+            sendResponse({ ok: !!entry });
             break;
           }
           case "GET_RECORDING_STATE":

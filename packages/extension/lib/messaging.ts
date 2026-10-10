@@ -12,6 +12,10 @@ import type {
 } from "./recording/types";
 import type { GatewayLog, GatewayProxyRule } from "./gateway/types";
 import type { ScreenshotMode } from "./screenshot/types";
+import type {
+  AgentCaptureRequest,
+  AgentCaptureResult,
+} from "./inspector/types";
 export interface ProtocolMap {
   PING: {
     request: void;
@@ -213,6 +217,8 @@ export interface ProtocolMap {
       box?: { x: number; y: number; w: number; h: number };
       all?: boolean;
       maxElements?: number;
+      coordinates?: "page" | "viewport";
+      relayDepth?: number;
     };
     response: {
       ok: boolean;
@@ -222,6 +228,53 @@ export interface ProtocolMap {
       capturedAt?: string;
       error?: string;
     };
+  };
+
+  /**
+   * Parent-frame content script -> background: mint a one-shot token
+   * authorizing a capture relay into a CHILD frame (an element capture whose
+   * target lives inside one of this frame's iframes). The token binds the
+   * already-translated request (child viewport coordinates); it is posted
+   * into the child frame via postMessage, which any page can do — so the
+   * child verifies it here before acting (same trust model as the inspector
+   * bridge tokens: mint/use are runtime.sendMessage-only, unreachable for
+   * page scripts). The relayed result travels back the same way
+   * (RELAY_RESULT), and the parent collects it via RELAY_AWAIT.
+   */
+  INSPECTOR_CAPTURE_RELAY_MINT: {
+    request: { req: AgentCaptureRequest };
+    response: { token: string };
+  };
+
+  /**
+   * Child-frame content script -> background: verify a relay token received
+   * over postMessage and get the bound request. `ok:false` = unknown /
+   * expired / already-used / minted for a DIFFERENT tab — the child must not
+   * capture in that case.
+   */
+  INSPECTOR_CAPTURE_RELAY_USE: {
+    request: { token: string };
+    response: { ok: boolean; req?: AgentCaptureRequest };
+  };
+
+  /**
+   * Parent-frame content script -> background: wait for the relayed capture
+   * to finish. Resolves immediately with the stored result when the child
+   * already reported; otherwise parks the response channel until
+   * RELAY_RESULT arrives or the token's TTL expires (`ok:false` then).
+   */
+  INSPECTOR_CAPTURE_RELAY_AWAIT: {
+    request: { token: string };
+    response: AgentCaptureResult;
+  };
+
+  /**
+   * Child-frame content script -> background: the relayed capture settled.
+   * Resolves the parked RELAY_AWAIT response for the minting parent frame.
+   */
+  INSPECTOR_CAPTURE_RELAY_RESULT: {
+    request: { token: string; result: AgentCaptureResult };
+    response: { ok: boolean };
   };
 
   /**

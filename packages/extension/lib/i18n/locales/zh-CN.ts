@@ -382,7 +382,7 @@ export const zhCN: Messages = {
       "截取活动标签页（可见区域或滚动拼接整页）；返回给 Agent 一张降采样压缩图，原图存入截图历史",
     capture_elementLabel: "捕获元素",
     capture_elementDesc:
-      "通过选择器、屏幕坐标或框选区域把页面元素序列化为结构化描述（标签/属性/文本/计算样式），无需用户交互；返回瘦身树，全量细节经 get_element_capture 获取",
+      "通过选择器、坐标或框选区域把页面元素序列化为结构化描述（标签/属性/文本/计算样式），无需用户交互；可下钻 iframe，坐标支持页内空间（整页截图坐标经 coordinates:'page'）；返回瘦身树，全量细节经 get_element_capture 获取",
     start_gif_recordingLabel: "开始 GIF 录制",
     start_gif_recordingDesc:
       "通过确认窗口请求用户允许录制活动标签页；阻塞至批准、拒绝或超时",
@@ -423,6 +423,21 @@ export const zhCN: Messages = {
     languageEnglish: "English",
     captureFxTitle: "动画效果",
     captureFxDesc: "元素捕获与截图过程中在页面内播放的辅助动画",
+    dataTitle: "数据管理",
+    dataDesc: "备份或恢复动作库与录制数据",
+    dataExportTitle: "导出数据",
+    dataActionsLabel: "动作库",
+    dataRecordingsLabel: "接口录制数据",
+    dataExport: "导出",
+    dataImport: "导入",
+    dataNothingToExport: "所选类别没有可导出的数据",
+    dataExportDone: "已导出 {{actions}} 个动作、{{recordings}} 条录制",
+    dataImportConfirmTitle: "导入数据？",
+    dataImportConfirmContent:
+      "该文件包含 {{actions}} 个动作、{{recordings}} 条录制（{{calls}} 条调用）。相同 ID 的数据将被覆盖。",
+    dataImportDone: "已导入 {{actions}} 个动作、{{recordings}} 条录制",
+    dataImportInvalid: "文件格式不正确，不是本扩展导出的数据文件",
+    dataImportEmpty: "文件中没有可导入的数据",
     connectorTitle: "连接器",
     connectorDesc: "与本地 MCP 服务的连接状态和工具开关",
     mcpPackageDesc:

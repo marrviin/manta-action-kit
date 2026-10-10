@@ -36,6 +36,71 @@ export function buildCookieHeader(cookies: chrome.cookies.Cookie[]): string {
 }
 
 /**
+ * Order cookies the way the browser's network stack would put them in the
+ * Cookie header (RFC 6265 §5.4: longer paths first; ties broken by creation
+ * time — which the extensions API doesn't expose, so we approximate "set
+ * earlier" with "less specific"): domain (parent-scope) cookies first, then
+ * host-only cookies, then partitioned ones. Servers that resolve duplicate
+ * names by taking the last occurrence then read the same cookie a real page
+ * at this URL would have win, not a stale parent-domain shadow.
+ */
+export function compareForHeader(
+  a: chrome.cookies.Cookie,
+  b: chrome.cookies.Cookie,
+): number {
+  const pa = (a.path ?? '').length;
+  const pb = (b.path ?? '').length;
+  if (pa !== pb) return pb - pa;
+  const ha = a.hostOnly ? 1 : 0;
+  const hb = b.hostOnly ? 1 : 0;
+  if (ha !== hb) return ha - hb;
+  const qa = a.partitionKey ? 1 : 0;
+  const qb = b.partitionKey ? 1 : 0;
+  return qa - qb;
+}
+
+/**
+ * Collect the cookies the browser would send for `url`, as close to the
+ * network stack's own behavior as the extensions API allows:
+ *
+ *  - unpartitioned cookies via getAll({url});
+ *  - partitioned (CHIPS) cookies via a second getAll keyed to the URL's own
+ *    origin as topLevelSite — a page at `url` sees these, but a plain
+ *    getAll({url}) does NOT return them, and some sites (e.g. console.
+ *    volcengine.com) keep the live login session in a partitioned cookie.
+ *
+ * Results are merged (deduped in case an older Chrome ignores the partition
+ * key and answers both queries identically) and ordered per compareForHeader.
+ */
+export async function collectCookiesForUrl(
+  url: string,
+): Promise<chrome.cookies.Cookie[]> {
+  const origin = new URL(url).origin;
+  const queries: chrome.cookies.GetAllDetails[] = [
+    { url },
+    { url, partitionKey: { topLevelSite: origin } },
+  ];
+  const results = await Promise.all(
+    queries.map((q) =>
+      chrome.cookies.getAll(q).catch(() => [] as chrome.cookies.Cookie[]),
+    ),
+  );
+  const seen = new Set<string>();
+  const merged: chrome.cookies.Cookie[] = [];
+  for (const list of results) {
+    for (const c of list) {
+      const key = `${c.name}|${c.domain}|${c.path ?? ''}|${
+        c.partitionKey?.topLevelSite ?? ''
+      }`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(c);
+    }
+  }
+  return merged.sort(compareForHeader);
+}
+
+/**
  * Pull `referer` out of the headers and return it as fetch's `referrer` option.
  * `Referer` is a forbidden header name — putting it in RequestInit.headers is
  * silently ignored — but fetch's `referrer` option is allowed. Only accept a
@@ -78,7 +143,7 @@ export async function forwardWithCookies(req: GatewayRequest): Promise<{
   cookieDomain: string;
 }> {
   const { headers, referrer } = splitReferrer(req.headers);
-  const cookies = await chrome.cookies.getAll({ url: req.url });
+  const cookies = await collectCookiesForUrl(req.url);
   const cookieHeader = buildCookieHeader(cookies);
   const injectedCookieNames = cookies.map((c) => c.name);
   const cookieDomain = cookies[0]?.domain ?? '';

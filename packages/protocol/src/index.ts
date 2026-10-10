@@ -567,8 +567,17 @@ export interface RpcMap {
    * no mouse events, no clipboard. Exactly one of `selector` / `point` / `box`:
    *  - `selector` (default): first match + its visible subtree (click-pick
    *    semantic); `all: true` = every match as a sibling forest (box semantic).
-   *  - `point`: shadow-DOM-aware element at the viewport coordinates.
-   *  - `box`: every element intersecting the viewport rect, nested as a forest.
+   *    No match in the top frame → the request is relayed into the page's
+   *    iframes too, so iframe content is reachable with a selector written
+   *    from INSIDE that frame.
+   *  - `point`: shadow-DOM-aware element at the coordinates. A hit on an
+   *    <iframe> is relayed into that frame (the inner element is captured,
+   *    not the shell).
+   *  - `box`: every element intersecting the rect, nested as a forest. A box
+   *    that covers only iframe shells is relayed into them.
+   * `coordinates` picks the point/box space: "viewport" (default) or "page"
+   * (document space — coordinates read off a fullPage screenshot). Unset
+   * coordinates that fall outside the viewport are auto-treated as page space.
    * The response is a LEAN tree (fullStyles/pseudo/textFull stripped to stay
    * token-bounded); get_element_capture(captureId) fetches the full-fidelity
    * snapshot.
@@ -576,13 +585,13 @@ export interface RpcMap {
   capture_element: {
     params: {
       selector?: string;
-      /** Viewport px. */
       point?: { x: number; y: number };
-      /** Viewport px. */
       box?: { x: number; y: number; w: number; h: number };
       all?: boolean;
       /** Capture budget; default 100, hard cap 1000 (the manual flow's cap). */
       maxElements?: number;
+      /** Space of point/box; default "viewport", auto-inferred when unset. */
+      coordinates?: 'page' | 'viewport';
     };
     result: {
       captureId: string;
@@ -840,6 +849,22 @@ export interface AuthFrame {
 }
 
 /**
+ * App-level keepalive from an authenticated client. Browsers can't send WS
+ * ping control frames from JS, so the extension sends this instead; the server
+ * answers with `pong`. The exchange doubles as MV3 service-worker keepalive:
+ * since Chrome 116, active WebSocket traffic resets the SW's ~30s idle timer,
+ * so a sub-30s ping interval keeps the SW alive while the bridge is connected.
+ */
+export interface PingFrame {
+  type: 'ping';
+}
+
+/** The server's reply to a `ping`. */
+export interface PongFrame {
+  type: 'pong';
+}
+
+/**
  * Frame the server sends to invoke a method on the extension. Strongly typed
  * per-method via `M`; the server relay constructs it with `params: unknown`
  * (cast at the send site) and the extension parses inbound frames with the
@@ -882,10 +907,11 @@ export type ClientFrame =
   | HelloFrame
   | RpcResultFrame
   | PeerRpcRequestFrame
-  | AuthFrame;
+  | AuthFrame
+  | PingFrame;
 
 /** Frames the server may send to the extension. */
-export type ServerFrame = RpcRequestFrame | WelcomeFrame;
+export type ServerFrame = RpcRequestFrame | WelcomeFrame | PongFrame;
 
 /** Frames a peer process may send to the owner. */
 export type PeerClientFrame = HelloFrame | AuthFrame | PeerRpcRequestFrame;

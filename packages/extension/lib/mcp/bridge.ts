@@ -13,9 +13,13 @@
  * published to settings' session storage (mcpConnStatus) for the MCP tab to show.
  *
  * Keepalive: MV3 service workers sleep when idle, which would silently drop the WS
- * (and with it the agent's ability to call proxy_fetch). A chrome.alarms tick wakes
- * the worker periodically and re-dials if the socket isn't open — so the bridge
- * survives background sleep without the user having to keep a panel open.
+ * (and with it the agent's ability to call proxy_fetch). Two layers guard against
+ * that: a sub-30s app-level `ping` frame — since Chrome 116, active WebSocket
+ * traffic resets the SW's idle timer, so a connected bridge keeps the SW alive
+ * indefinitely — and, as the fallback for when the socket IS dropped (server
+ * gone, older Chrome), a chrome.alarms tick wakes the worker periodically and
+ * re-dials. Both keep the bridge alive in the background without the user
+ * having to keep a panel open.
  */
 import { settings, mcpConnStatus, type McpConnStatus } from '@/lib/storage';
 import { handleRpc } from './handlers';
@@ -31,6 +35,14 @@ import {
 /** Alarm that wakes the SW to keep the WS alive. Min period on MV3 is ~1 min. */
 const KEEPALIVE_ALARM = 'mcp-bridge-keepalive';
 const KEEPALIVE_PERIOD_MIN = 1;
+
+/**
+ * App-level ping cadence. Must stay under 30s: Chrome 116+ keeps the service
+ * worker alive as long as the WebSocket sees traffic within its ~30s idle
+ * window, so this ping IS the SW keepalive while the bridge is connected.
+ * The server answers with `pong` and uses inbound frames as liveness signals.
+ */
+const PING_INTERVAL_MS = 20_000;
 
 let socket: WebSocket | null = null;
 let desiredPort = DEFAULT_MCP_PORT;
@@ -48,6 +60,7 @@ let generation = 0;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let backoffMs = 1000;
 const MAX_BACKOFF_MS = 15000;
+let pingTimer: ReturnType<typeof setInterval> | null = null;
 
 // Dev-only diagnostics. Vite strips `import.meta.env.DEV` to `false` in production
 // builds, so these logs (and the reconnect/keepalive chatter they emit) never ship.
@@ -82,8 +95,22 @@ function clearReconnect() {
   }
 }
 
+/** Start the SW-keepalive ping loop (cleared by stopPing on close/teardown). */
+function startPing() {
+  stopPing();
+  pingTimer = setInterval(() => send({ type: 'ping' }), PING_INTERVAL_MS);
+}
+
+function stopPing() {
+  if (pingTimer != null) {
+    clearInterval(pingTimer);
+    pingTimer = null;
+  }
+}
+
 function teardown() {
   clearReconnect();
+  stopPing();
   if (socket) {
     // Detach handlers so onclose doesn't schedule a reconnect for a stale gen.
     socket.onopen = socket.onclose = socket.onerror = socket.onmessage = null;
@@ -162,6 +189,7 @@ function connect(gen: number) {
 
   ws.onclose = () => {
     if (gen !== generation) return;
+    stopPing();
     socket = null;
     publishStatus(unauthorized ? 'unauthorized' : 'disconnected');
     scheduleReconnect(gen);
@@ -170,6 +198,7 @@ function connect(gen: number) {
 
 /** Close only the socket (used before a fresh connect), keep timers/gen intact. */
 function teardownSocketOnly() {
+  stopPing();
   if (socket) {
     socket.onopen = socket.onclose = socket.onerror = socket.onmessage = null;
     try {
@@ -208,6 +237,7 @@ async function onMessage(ev: MessageEvent) {
     log('handshake ok');
     handshakeOk = true;
     send({ type: 'auth', proof: await authProof(desiredToken, frame.nonce) });
+    startPing(); // sub-30s traffic keeps the SW alive while connected
     publishStatus('connected'); // server drops us if the auth proof fails — onclose reports it
     return;
   }
