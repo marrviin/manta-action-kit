@@ -754,14 +754,17 @@ server.registerTool(
       "replay with TEMPLATE values only (never recorded literals): toLocation is " +
       '"url" (toPath must be empty), "query" (toPath = query param name), "header" (toPath = ' +
       'header name), or "body" (toPath = dotted/bracketed JSON path like "data[0].id"; the ' +
-      "body must be JSON). Templates are `{{paramName}}` or `{{steps[N].outputs[name]}}` — " +
+      "body may be JSON, a form carrying an embedded JSON object like " +
+      '`appid=...&body=%7B...%7D` (paths address the embedded JSON), or a plain form ' +
+      "(single-segment toPath = whole form field)). Templates are `{{paramName}}`, " +
+      "`{{steps[N].outputs[name]}}`, or the built-in helpers `{{nowMs}}`/`{{nowSec}}`/" +
+      "`{{uuid}}` for fresh timestamps and one-shot ids (a declared param of the same " +
+      "name wins) — " +
       "the latter reads an output that step N declared. `outputs` (per step) map output " +
       "names to JSON paths into that step\u2019s response (parsed as JSON; for SSE steps each " +
       "event\u2019s data is tried). `waitMs` pauses before a step (0-10000). Steps replay " +
       "strictly in order through the user\u2019s browser session. Study the recording first " +
-      "(get_flow, get_endpoints, get_recording), then build the action from it. " +
-      "\u26A0\uFE0F Requires the user to approve a native confirmation prompt (shows the " +
-      "action\u2019s name and description); on decline nothing is saved.",
+      "(get_flow, get_endpoints, get_recording), then build the action from it.",
     inputSchema: {
       name: z
         .string()
@@ -773,8 +776,7 @@ server.registerTool(
             "reader deciding whether to run it. Cover: when to use it vs when NOT to; " +
             "prerequisites (e.g. 'requires the user to be logged in to X'); how to interpret " +
             "the outputs; known failure modes (e.g. '409 if the name already exists'). " +
-            "Keep it concise and verifiable — it is also shown to the user in the native " +
-            "confirmation prompt before the action is saved.",
+            "Keep it concise and verifiable.",
         ),
       recordingId: z
         .string()
@@ -822,7 +824,8 @@ server.registerTool(
                   value: z
                     .string()
                     .describe(
-                      "Template value: {{param}} or {{steps[N].outputs[X]}}. For body " +
+                      "Template value: {{param}}, {{steps[N].outputs[X]}}, or a built-in " +
+                        "helper {{nowMs}}/{{nowSec}}/{{uuid}} (param of the same name wins). For body " +
                         "overrides the replay restores the recorded field's JSON type " +
                         "(numeric → number, boolean → boolean, array/object → JSON.parse); " +
                         'new paths: value starting with "["/"{" is parsed as JSON.',
@@ -846,11 +849,6 @@ server.registerTool(
           }),
         )
         .describe("Ordered replay steps (max 20)."),
-    },
-    // Writing a persistent, replayable flow is a standing capability — the user must
-    // approve it via the native confirmation prompt (shows name + description).
-    _meta: {
-      "anthropic/requiresUserInteraction": true,
     },
   },
   async ({ name, description, recordingId, params, steps }) => {
@@ -877,8 +875,7 @@ server.registerTool(
       "Patch an action's CONTENT by id: name, description, params, and/or steps (any subset " +
       "— only what you pass changes). The id, recordingId, and timestamps are never " +
       "patchable, and steps are re-validated against the source recording (callIds must " +
-      "belong to it). Get the current definition via get_action first. " +
-      "\u26A0\uFE0F Requires the user to approve a native confirmation prompt.",
+      "belong to it). Get the current definition via get_action first.",
     inputSchema: {
       id: z
         .string()
@@ -928,10 +925,6 @@ server.registerTool(
             ),
         })
         .describe("Fields to change (content only)."),
-    },
-    // Same standing-capability rationale as create_action: the user confirms the change.
-    _meta: {
-      "anthropic/requiresUserInteraction": true,
     },
   },
   async ({ id, patch }) => {
@@ -1079,9 +1072,15 @@ server.registerTool(
       "Serialize a page element from the active tab into a structured description (tag, " +
       "attributes, text, computed styles) — no user interaction needed. Exactly one of: " +
       "selector (CSS; default = first match + its visible subtree, click-pick semantics; " +
-      "all=true = every match as a forest of single elements), point ({x,y} screen coords, " +
-      "shadow-DOM aware hit test), or box ({x,y,w,h} — all elements intersecting the " +
-      "rectangle). maxElements caps the response (default 100). The response is a LEAN tree " +
+      "all=true = every match as a forest of single elements; if the top frame has no " +
+      "match, the page's iframes are searched too — write the selector as seen INSIDE the " +
+      "frame), point ({x,y}, shadow-DOM aware hit test; a hit on an <iframe> captures the " +
+      "INNER element, not the shell), or box ({x,y,w,h} — all elements intersecting the " +
+      "rectangle; a box covering only an iframe captures that frame's content). " +
+      "Coordinates: viewport px by default; for coordinates read off a mode=fullPage " +
+      "screenshot pass coordinates='page' (out-of-viewport coordinates are auto-treated " +
+      "as page space, so a fullPage screenshot's coords below the fold just work). " +
+      "maxElements caps the response (default 100). The response is a LEAN tree " +
       "(full per-node style maps stripped to stay within token budget); for the complete " +
       "payload with fullStyles pass the returned captureId to get_element_capture. Fails on " +
       "pages that cannot be injected (chrome://, Web Store) or with no matching element.",
@@ -1094,7 +1093,7 @@ server.registerTool(
         .object({ x: z.number(), y: z.number() })
         .optional()
         .describe(
-          "Viewport coordinates to hit-test (innermost element wins, pierces shadow DOM).",
+          "Coordinates to hit-test (innermost element wins, pierces shadow DOM and into iframes).",
         ),
       box: z
         .object({
@@ -1104,7 +1103,7 @@ server.registerTool(
           h: z.number(),
         })
         .optional()
-        .describe("Viewport rectangle; captures every visible element intersecting it."),
+        .describe("Rectangle; captures every visible element intersecting it."),
       all: z
         .boolean()
         .optional()
@@ -1118,14 +1117,26 @@ server.registerTool(
         .max(1000)
         .optional()
         .describe("Element budget (default 100)."),
+      coordinates: z
+        .enum(["page", "viewport"])
+        .optional()
+        .describe(
+          "Space of point/box. 'viewport' (default): current viewport px (mode=visible " +
+            "screenshot coords). 'page': document px (mode=fullPage screenshot coords; " +
+            "the page is scrolled to the target and back). Unset + out-of-viewport " +
+            "coordinates are auto-treated as 'page'.",
+        ),
     },
   },
-  async ({ selector, point, box, all, maxElements }) => {
+  async ({ selector, point, box, all, maxElements, coordinates }) => {
     try {
       const res = (await call(
         "capture_element",
-        { selector, point, box, all, maxElements },
-        30000,
+        { selector, point, box, all, maxElements, coordinates },
+        // 45s: must cover the worst-case iframe relay chain (up to 3 nested
+        // relays × 12s RELAY_DEADLINE_MS + the base capture) — 30s cut off
+        // captures that were still legitimately progressing.
+        45000,
       )) as RpcResults["capture_element"];
       return jsonContent(res);
     } catch (err) {

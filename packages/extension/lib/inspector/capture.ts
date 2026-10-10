@@ -29,9 +29,25 @@
 
 import {
   ATTR_WHITELIST,
+  type AgentCaptureRequest,
+  type AgentCaptureResult,
   type ElementDescription,
   type InspectorCapturePayload,
 } from "./types";
+// Re-exported for the existing import sites (lib/mcp/handlers.ts).
+export type { AgentCaptureRequest } from "./types";
+import {
+  boxIntoFrame,
+  inferBoxSpace,
+  inferPointSpace,
+  pageBoxToViewport,
+  pagePointToViewport,
+  pointIntoFrame,
+  scrollForPageBox,
+  scrollForPagePoint,
+  type CoordinateSpace,
+  type ScrollOffset,
+} from "./coords";
 import { leanElement } from "./lean";
 import { sendMessage } from "@/lib/messaging";
 import {
@@ -182,6 +198,24 @@ const INHERITED_PROPS = new Set([
 // lean (fullStyles/pseudo/textFull stripped), so it remains small.
 const MAX_ELEMENTS = 1000;
 const DRAG_THRESHOLD = 4;
+
+// ---- programmatic capture: child-frame relay ----
+
+/** Elements hosting a nested browsing context the relay can descend into. */
+const FRAME_HOST_TAGS = new Set(["iframe", "frame"]);
+/** Relay recursion cap for iframes nested in iframes in iframes… */
+const MAX_RELAY_DEPTH = 3;
+/** Never relay into more than this many child frames per capture. */
+const MAX_RELAY_TARGETS = 20;
+/** Overall deadline for one relay round (all targeted child frames). */
+const RELAY_DEADLINE_MS = 12_000;
+/**
+ * postMessage type the parent frame sends into a child frame to hand it a
+ * relay token. The type string is public by necessity (cross-origin), which
+ * is safe: the token is the only authority, and only the background can mint
+ * or verify one (runtime.sendMessage is unreachable for page scripts).
+ */
+const CAPTURE_RELAY_MESSAGE = "manta-capture-relay";
 
 const L = navigator.language.startsWith("zh")
   ? {
@@ -1138,12 +1172,122 @@ async function handoffToBridge(
 
 // ---------- programmatic (agent) capture ----------
 
-export interface AgentCaptureRequest {
-  selector?: string;
-  point?: { x: number; y: number };
-  box?: { x: number; y: number; w: number; h: number };
-  all?: boolean;
-  maxElements?: number;
+/**
+ * Content-box origin of an iframe/frame (its child viewport's origin in THIS
+ * frame's viewport coordinates), or null when `host` is not a relayable
+ * browsing-context host (no contentWindow — about to navigate away, or not a
+ * frame element at all). Border + padding offset the child viewport; CSS
+ * transforms/zoom on the host would break the linear map (accepted
+ * limitation, shared by every coordinate-based tool).
+ */
+function frameContentOrigin(host: Element): { x: number; y: number } | null {
+  const win = (host as HTMLIFrameElement).contentWindow;
+  if (!win) return null;
+  const r = host.getBoundingClientRect();
+  const cs = getComputedStyle(host);
+  return {
+    x: r.left + host.clientLeft + (parseFloat(cs.paddingLeft) || 0),
+    y: r.top + host.clientTop + (parseFloat(cs.paddingTop) || 0),
+  };
+}
+
+const isFrameHost = (el: Element) => FRAME_HOST_TAGS.has(el.tagName.toLowerCase());
+
+function nextFrame(): Promise<void> {
+  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+}
+
+/**
+ * Relay a capture request into ONE child frame: mint a token bound to the
+ * (already child-translated) request, post it into the frame, then wait for
+ * the child's result on the token-bound background channel. Resolves null on
+ * any failure (background gone, frame gone, deadline, token rejected) — the
+ * caller falls back to capturing the iframe shell.
+ */
+function relayCaptureToFrame(
+  host: Element,
+  req: AgentCaptureRequest,
+  deadline: number,
+): Promise<AgentCaptureResult | null> {
+  const win = (host as HTMLIFrameElement).contentWindow;
+  if (!win) return Promise.resolve(null);
+  return (async () => {
+    let token: string;
+    try {
+      ({ token } = await sendMessage("INSPECTOR_CAPTURE_RELAY_MINT", { req }));
+    } catch {
+      return null;
+    }
+    if (!token) return null;
+    try {
+      // targetOrigin "*": the child's origin is unknown (cross-origin iframes
+      // are the whole point). Nothing secret rides on this message — the
+      // token is only usable through runtime.sendMessage, which page scripts
+      // cannot call.
+      win.postMessage({ type: CAPTURE_RELAY_MESSAGE, token }, "*");
+    } catch {
+      return null;
+    }
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) return null;
+    try {
+      return await Promise.race([
+        sendMessage("INSPECTOR_CAPTURE_RELAY_AWAIT", { token }),
+        new Promise<null>((resolve) => setTimeout(resolve, remaining)),
+      ]);
+    } catch {
+      return null;
+    }
+  })();
+}
+
+/**
+ * Relay into SEVERAL child frames (document order) and return the first
+ * successful result. Relays are minted in parallel; results are awaited in
+ * document order so the outermost frame with a match wins — the same
+ * outermost-first semantics as document.querySelector. Losers that finish
+ * after a winner may still have persisted their (identical-intent) capture
+ * into history — harmless, the history list is capped and evicted.
+ */
+async function relayCaptureToFrames(
+  hosts: Element[],
+  buildReq: (host: Element) => AgentCaptureRequest | null,
+): Promise<AgentCaptureResult | null> {
+  const deadline = Date.now() + RELAY_DEADLINE_MS;
+  const attempts: Promise<AgentCaptureResult | null>[] = [];
+  for (const host of hosts.slice(0, MAX_RELAY_TARGETS)) {
+    const req = buildReq(host);
+    if (req) attempts.push(relayCaptureToFrame(host, req, deadline));
+  }
+  for (const attempt of attempts) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) break;
+    const result = await Promise.race([
+      attempt,
+      new Promise<null>((resolve) => setTimeout(resolve, remaining)),
+    ]);
+    if (result?.ok) return result;
+  }
+  return null;
+}
+
+/**
+ * Every iframe/frame in this frame's document, including hosts inside shadow
+ * roots (same queue walk as collectIntersecting). Order is document order,
+ * which relayCaptureToFrames relies on for outermost-first preference.
+ */
+function collectFrameHosts(): Element[] {
+  const hosts: Element[] = [];
+  if (!document.body) return hosts;
+  const queue: Element[] = [...document.body.children];
+  for (let i = 0; i < queue.length && i < 50_000; i++) {
+    const el = queue[i]!;
+    if (isFrameHost(el)) hosts.push(el);
+    for (const child of el.children) queue.push(child);
+    const root = shadowRootOf(el);
+    if (root) for (const child of root.children) queue.push(child);
+  }
+  return hosts;
 }
 
 /**
@@ -1155,22 +1299,29 @@ export interface AgentCaptureRequest {
  *  - `selector`: `document.querySelector` → describeSubtree (the click-pick
  *    semantic: the element plus its visible subtree). With `all`, every
  *    visible match becomes one sibling forest (the box-select semantic).
- *  - `point`: elementAt(x, y) — shadow-DOM aware for free.
- *  - `box`: collectIntersecting → nestAsForest.
+ *    No match in this frame → the request is relayed into this frame's
+ *    iframes (recursively, relayDepth-capped), so iframe content is
+ *    reachable with a selector written from INSIDE that frame.
+ *  - `point`: elementAt(x, y) — shadow-DOM aware for free. A hit on an
+ *    iframe is relayed into that frame (the point translated to the child's
+ *    viewport), so the INNER element is captured, not the shell; if the
+ *    relay fails the shell is captured instead.
+ *  - `box`: collectIntersecting → nestAsForest. When the box only covers
+ *    iframe shells, it is relayed into them the same way.
+ *
+ * `coordinates` picks the space of point/box: "viewport" (default) or "page"
+ * (document space, e.g. coordinates read off a full-page screenshot). When
+ * unset, coordinates outside the viewport are auto-treated as page space.
+ * Page-space targets are scrolled to the viewport center first (sticky
+ * elements mostly live at the edges; virtualized lists render nothing below
+ * the fold) and the original scroll position is restored once serialized.
  *
  * Persistence reuses handoffToBridge (content scripts only see the PAGE's
  * IndexedDB) with preview disabled, so the flow stays silent end to end.
  */
 export async function captureElementsProgrammatic(
   req: AgentCaptureRequest,
-): Promise<{
-  ok: boolean;
-  captureId?: string;
-  elementCount?: number;
-  page?: { url: string; title: string };
-  capturedAt?: string;
-  error?: string;
-}> {
+): Promise<AgentCaptureResult> {
   const modes = [req.selector, req.point, req.box].filter(
     (v) => v !== undefined && v !== null && v !== "",
   );
@@ -1183,29 +1334,100 @@ export async function captureElementsProgrammatic(
   const budget = {
     left: Math.min(Math.max(req.maxElements ?? 100, 1), MAX_ELEMENTS),
   };
+  const depth = req.relayDepth ?? 0;
+  const canRelay = depth < MAX_RELAY_DEPTH;
+
+  // Coordinate space: explicit, or inferred for out-of-viewport targets
+  // (those can never be valid viewport coordinates; in-viewport ones stay
+  // viewport — the common case, coords read off a visible screenshot).
+  const vp = { w: window.innerWidth, h: window.innerHeight };
+  let space: CoordinateSpace = req.coordinates ?? "viewport";
+  if (req.coordinates === undefined) {
+    if (req.point) space = inferPointSpace(req.point, vp);
+    else if (req.box) space = inferBoxSpace(req.box, vp);
+  }
+
+  // Page-space targets need a scroll first; the original position is
+  // restored in the finally below — but only AFTER serialization, because
+  // describeElement reads rects live (viewport-relative).
+  const originalScroll: ScrollOffset = {
+    x: window.scrollX,
+    y: window.scrollY,
+  };
+  let scrolled = false;
+  const settleScroll = async (target: ScrollOffset) => {
+    window.scrollTo({ left: target.x, top: target.y, behavior: "instant" });
+    scrolled = true;
+    // Two frames: one for the scroll to apply, one for scroll-driven
+    // layout/lazy loads to settle.
+    await nextFrame();
+    await nextFrame();
+  };
 
   let elements: ElementDescription[] = [];
   let box: Box | null = null;
   try {
-    if (req.box) {
-      box = {
-        left: req.box.x,
-        top: req.box.y,
-        right: req.box.x + req.box.w,
-        bottom: req.box.y + req.box.h,
-        x: req.box.x,
-        y: req.box.y,
-        width: req.box.w,
-        height: req.box.h,
-      };
-      const hits = collectIntersecting(box);
-      elements = nestAsForest(hits);
-    } else if (req.point) {
-      const el = elementAt(req.point.x, req.point.y);
+    if (req.point) {
+      if (space === "page") await settleScroll(scrollForPagePoint(req.point, vp));
+      const scroll: ScrollOffset = { x: window.scrollX, y: window.scrollY };
+      const vpPoint =
+        space === "page" ? pagePointToViewport(req.point, scroll) : req.point;
+      const el = elementAt(vpPoint.x, vpPoint.y);
       if (!el) return { ok: false, error: "no element at the given point" };
+      if (canRelay && isFrameHost(el)) {
+        const origin = frameContentOrigin(el);
+        if (origin) {
+          const relayed = await relayCaptureToFrame(
+            el,
+            {
+              ...req,
+              point: pointIntoFrame(vpPoint, origin),
+              coordinates: "viewport",
+              relayDepth: depth + 1,
+            },
+            Date.now() + RELAY_DEADLINE_MS,
+          );
+          if (relayed?.ok) return relayed;
+          // Relay failed (frame gone / no content script / point in dead
+          // area): fall through and capture the iframe shell.
+        }
+      }
       const desc = describeSubtree(el, budget);
       if (!desc) return { ok: false, error: "element could not be described" };
       elements = [desc];
+    } else if (req.box) {
+      if (space === "page") await settleScroll(scrollForPageBox(req.box, vp));
+      const scroll: ScrollOffset = { x: window.scrollX, y: window.scrollY };
+      const vpBox =
+        space === "page" ? pageBoxToViewport(req.box, scroll) : req.box;
+      const frameBox: Box = {
+        left: vpBox.x,
+        top: vpBox.y,
+        right: vpBox.x + vpBox.w,
+        bottom: vpBox.y + vpBox.h,
+        x: vpBox.x,
+        y: vpBox.y,
+        width: vpBox.w,
+        height: vpBox.h,
+      };
+      const hits = collectIntersecting(frameBox);
+      // The box covers nothing but iframe shells → the interesting content
+      // lives inside the frame(s); relay the translated box into them.
+      if (canRelay && hits.length > 0 && hits.every(isFrameHost)) {
+        const relayed = await relayCaptureToFrames(hits, (host) => {
+          const origin = frameContentOrigin(host);
+          if (!origin) return null;
+          return {
+            ...req,
+            box: boxIntoFrame(vpBox, origin),
+            coordinates: "viewport",
+            relayDepth: depth + 1,
+          };
+        });
+        if (relayed?.ok) return relayed;
+      }
+      elements = nestAsForest(hits);
+      box = frameBox;
     } else {
       const selector = req.selector as string;
       if (req.all) {
@@ -1213,24 +1435,41 @@ export async function captureElementsProgrammatic(
           (el) =>
             !el.hasAttribute(UI_MARKER) && isVisible(el),
         );
-        if (!hits.length) {
-          return { ok: false, error: `no visible match for "${selector}"` };
-        }
         elements = nestAsForest(hits);
       } else {
         const el = document.querySelector(selector);
-        if (!el) return { ok: false, error: `no match for "${selector}"` };
-        const desc = describeSubtree(el, budget);
-        if (!desc) {
-          return { ok: false, error: "element could not be described" };
+        if (el) {
+          const desc = describeSubtree(el, budget);
+          if (desc) elements = [desc];
         }
-        elements = [desc];
+      }
+      if (!elements.length) {
+        // No (visible) match in THIS frame — try the child frames before
+        // giving up, so iframe content is selectable too.
+        if (canRelay) {
+          const relayed = await relayCaptureToFrames(
+            collectFrameHosts(),
+            (host) => ({ ...req, relayDepth: depth + 1 }),
+          );
+          if (relayed?.ok) return relayed;
+        }
+        return req.all
+          ? { ok: false, error: `no visible match for "${selector}"` }
+          : { ok: false, error: `no match for "${selector}"` };
       }
     }
   } catch (err) {
     // querySelector with a malformed selector throws SyntaxError — surface it
     // instead of crashing the content-script listener.
     return { ok: false, error: String(err) };
+  } finally {
+    if (scrolled) {
+      window.scrollTo({
+        left: originalScroll.x,
+        top: originalScroll.y,
+        behavior: "instant",
+      });
+    }
   }
 
   if (!elements.length) return { ok: false, error: "capture produced no elements" };
@@ -1461,6 +1700,41 @@ function deactivate() {
 // ---------- init ----------
 
 /**
+ * Child-frame side of the capture relay (see relayCaptureToFrame): a parent
+ * frame posts { type, token } into this frame; the token is verified against
+ * the background (page forgeries fail — mint/use are runtime.sendMessage
+ * only) and the bound request captured here. The result goes back through
+ * the background too, never via postMessage: the child PAGE could observe a
+ * postMessage reply and forge one itself.
+ */
+async function onRelayRequest(e: MessageEvent) {
+  const msg = e.data as { type?: string; token?: string };
+  if (msg?.type !== CAPTURE_RELAY_MESSAGE || typeof msg.token !== "string") {
+    return;
+  }
+  let req: AgentCaptureRequest | undefined;
+  try {
+    const res = await sendMessage("INSPECTOR_CAPTURE_RELAY_USE", {
+      token: msg.token,
+    });
+    if (res.ok) req = res.req;
+  } catch {
+    /* background unreachable — report failure below */
+  }
+  const result: AgentCaptureResult = req
+    ? await captureElementsProgrammatic(req)
+    : { ok: false, error: "capture relay token rejected" };
+  try {
+    await sendMessage("INSPECTOR_CAPTURE_RELAY_RESULT", {
+      token: msg.token,
+      result,
+    });
+  } catch {
+    /* minting parent is gone; the token TTL cleans up */
+  }
+}
+
+/**
  * Wire the capture module into the content script. `registerInvalidated` lets
  * the caller pass the WXT ContentScriptContext's hook so a page reload /
  * script re-injection can never leak a stale active state.
@@ -1477,11 +1751,15 @@ export function initInspectorCapture(
   // mouseup only ever lands in the focused frame.
   registerInvalidated?.(() => {
     document.removeEventListener("keydown", onKeydown, true);
+    window.removeEventListener("message", onRelayRequest);
     deactivate();
     cancelCaptureFx();
   });
 
   document.addEventListener("keydown", onKeydown, true);
+  // Every frame is a potential relay TARGET (nested iframes capture their own
+  // sub-frames the same way). Cheap: the listener filters on the message type.
+  window.addEventListener("message", onRelayRequest);
 
   browser.runtime.onMessage.addListener((msg: unknown) => {
     if (

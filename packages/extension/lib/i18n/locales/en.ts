@@ -410,7 +410,7 @@ export const en = {
       "Screenshot the active tab (visible area or full page via scroll-and-stitch); returns a downscaled image to the agent and saves the original to the screenshot history",
     capture_elementLabel: "Capture element",
     capture_elementDesc:
-      "Serialize a page element to a structured description (tag/attrs/text/computed styles) by selector, screen point, or box — without user interaction; returns a lean tree, full detail via get_element_capture",
+      "Serialize a page element to a structured description (tag/attrs/text/computed styles) by selector, point, or box — without user interaction; pierces into iframes and accepts page coordinates (fullPage screenshots) via coordinates:'page'; returns a lean tree, full detail via get_element_capture",
     start_gif_recordingLabel: "Start GIF recording",
     start_gif_recordingDesc:
       "Ask the user (via a confirmation window) to allow recording the active tab; blocking until approved, denied, or timed out",
@@ -454,6 +454,22 @@ export const en = {
     captureFxTitle: "Animation effects",
     captureFxDesc:
       "In-page animations played during element captures and screenshots",
+    dataTitle: "Data",
+    dataDesc: "Back up or restore actions and recordings",
+    dataExportTitle: "Export data",
+    dataActionsLabel: "Action library",
+    dataRecordingsLabel: "API recordings",
+    dataExport: "Export",
+    dataImport: "Import",
+    dataNothingToExport: "No data to export in the selected categories",
+    dataExportDone:
+      "Exported {{actions}} actions, {{recordings}} recordings",
+    dataImportConfirmTitle: "Import data?",
+    dataImportConfirmContent:
+      "This file contains {{actions}} actions, {{recordings}} recordings ({{calls}} calls). Entries with the same ID will be overwritten.",
+    dataImportDone: "Imported {{actions}} actions, {{recordings}} recordings",
+    dataImportInvalid: "Invalid file — not a Manta Action Kit data export",
+    dataImportEmpty: "The file contains no importable data",
     connectorTitle: "Connector",
     connectorDesc:
       "Connection status of the local MCP service and tool switches",

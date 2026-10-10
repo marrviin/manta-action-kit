@@ -6,11 +6,13 @@
  * live settings.
  *
  * The MCP server is published as a public package, so every environment runs it
- * via `npx -y <MCP_PACKAGE>`.
+ * via `npx -y <MCP_PACKAGE>@latest` — unpinned, so each launch picks up the
+ * newest published version. A prewarm tip in the prompt absorbs the one-off
+ * cold-cache download that would otherwise look like a failed install.
  */
 import { settings } from '@/lib/storage';
 
-/** Published package name run via `npx -y <pkg>`. */
+/** Published package name run via `npx -y <pkg>@latest`. */
 export const MCP_PACKAGE = '@manta-action-kit/mcp';
 
 /**
@@ -32,11 +34,22 @@ export function buildInstallPrompt(
   proxyPort: number,
   token: string,
 ): string {
-  const args = ['-y', MCP_PACKAGE];
+  // Match the ecosystem convention (Playwright MCP, chrome-devtools-mcp, …):
+  // an unpinned `npx -y pkg@latest` config, so every launch resolves the
+  // newest published version and upgrades happen without any user action.
+  // The prewarm tip handles the one-time cold-cache download, which is the
+  // main cause of "install seems slow / failed" first-run reports.
+  const args = ['-y', `${MCP_PACKAGE}@latest`];
+  const env = `{ "MANTA_WS_PORT": "${port}", "MANTA_PROXY_PORT": "${proxyPort}", "MANTA_TOKEN": "${token}" }`;
 
   return `Install this MCP service into your MCP config:
 - name: manta-action-kit
 - command: npx
 - args: ${JSON.stringify(args)}
-- env: { "MANTA_WS_PORT": "${port}", "MANTA_PROXY_PORT": "${proxyPort}", "MANTA_TOKEN": "${token}" }`;
+- env: ${env}
+
+The first launch downloads the package, so it may take a minute. If the
+server fails to connect on first use, run this once to prewarm the cache,
+then retry:
+npx -y ${MCP_PACKAGE}@latest`;
 }

@@ -54,6 +54,17 @@ interface TemplateContext {
 }
 
 /**
+ * Built-in template helpers for values a replay cannot take from the recording
+ * because they MUST be fresh: timestamps and one-shot ids. A declared param or
+ * step output of the same name wins, so these never hijack user params.
+ */
+const TEMPLATE_HELPERS: Record<string, () => string> = {
+  nowMs: () => String(Date.now()),
+  nowSec: () => String(Math.floor(Date.now() / 1000)),
+  uuid: () => crypto.randomUUID(),
+};
+
+/**
  * Resolve a template string. Every placeholder must resolve — an unknown param
  * name or a reference to a missing/not-yet-produced output throws (the caller
  * treats it as a step failure, aborting the run).
@@ -78,6 +89,8 @@ function resolveTemplate(tpl: string, ctx: TemplateContext): string {
     }
     const v = ctx.params[raw];
     if (v !== undefined) return v;
+    const helper = TEMPLATE_HELPERS[raw];
+    if (helper) return helper();
     throw new Error(`Template references unknown parameter "${raw}"`);
   });
 }
@@ -112,7 +125,7 @@ function getByPath(node: unknown, path: string): unknown {
 
 /** Set a value inside a (mutable) JSON tree by dotted/bracketed path, creating parents. */
 function setByPath(
-  root: Record<string, unknown>,
+  root: Record<string, unknown> | unknown[],
   path: string,
   value: unknown,
 ): void {
@@ -172,7 +185,7 @@ function setByPath(
  *     can inject arrays/objects into new paths by passing JSON text.
  */
 function coerceBodyValue(
-  root: Record<string, unknown>,
+  root: Record<string, unknown> | unknown[],
   path: string,
   value: string,
 ): unknown {
@@ -214,6 +227,54 @@ function coerceBodyValue(
     }
   }
   return value;
+}
+
+/**
+ * Form-encoded bodies that carry a URL-encoded JSON object in one of their
+ * fields (JD-style `appid=...&body=%7B...%7D`) are common on some gateways:
+ * treat that embedded JSON object (field "body" preferred) as the override
+ * root; the caller re-encodes the form after the edit. A single-segment
+ * toPath naming an EXISTING top-level form field (e.g. a fresh sign/timestamp)
+ * still addresses the form field, not the embedded JSON (the caller checks);
+ * for a plain form without an embedded JSON object, only whole-field overrides
+ * make sense — a single-segment toPath sets (or creates) that field as a
+ * string. Returns null when the body does not look like a form at all (the
+ * first pair must have a plausible field name — this keeps XML/text bodies
+ * that merely contain "=" out of the form path, so they still fail with the
+ * clear "not JSON" error instead of being mangled by a re-encode).
+ */
+const FORM_FIELD_START = /^[A-Za-z0-9_.\-[\]%]+=/;
+
+function parseFormBody(
+  body: string,
+  toPath: string,
+): {
+  params: URLSearchParams;
+  jsonKey?: string;
+  root?: Record<string, unknown> | unknown[];
+} | null {
+  if (!body.includes("=") || !FORM_FIELD_START.test(body.trim())) return null;
+  const params = new URLSearchParams(body);
+  if (![...params.keys()].length) return null;
+  const jsonKeys = [...params.keys()].filter((k) =>
+    (params.get(k) ?? "").trim().startsWith("{"),
+  );
+  const key = jsonKeys.includes("body") ? "body" : jsonKeys[0];
+  if (key === undefined) {
+    if (tokenizePath(toPath).length !== 1) {
+      throw new Error(
+        "Body override: form bodies without an embedded JSON object support only top-level field overrides (single-segment toPath)",
+      );
+    }
+    return { params };
+  }
+  try {
+    const root = JSON.parse(params.get(key)!);
+    if (root === null || typeof root !== "object") return null;
+    return { params, jsonKey: key, root };
+  } catch {
+    return null;
+  }
 }
 
 /** Clone a recorded call into a clean GatewayRequest template. */
@@ -266,28 +327,57 @@ function applyOverride(
       return;
     }
     case "body": {
-      let parsed: unknown;
+      let root: Record<string, unknown> | unknown[];
+      let form: URLSearchParams | null = null;
+      let formJsonKey: string | undefined;
       if (req.body) {
+        let parsed: unknown;
+        let isJson = true;
         try {
           parsed = JSON.parse(req.body);
         } catch {
-          throw new Error("Body override: recorded request body is not JSON");
+          isJson = false;
+        }
+        if (isJson) {
+          if (parsed === null || typeof parsed !== "object") {
+            throw new Error(
+              "Body override: recorded request body must be a JSON object or array",
+            );
+          }
+          root = parsed as Record<string, unknown> | unknown[];
+        } else {
+          const f = parseFormBody(req.body, ov.toPath);
+          if (!f)
+            throw new Error(
+              "Body override: recorded request body is not JSON",
+            );
+          // Escape hatch: a single-segment toPath naming an existing
+          // top-level form field addresses the FORM, not the embedded JSON —
+          // otherwise such fields (sign, t, appid…) could never be overridden
+          // once the form carries an embedded JSON object.
+          if (
+            f.root === undefined ||
+            (tokenizePath(ov.toPath).length === 1 && f.params.has(ov.toPath))
+          ) {
+            // Whole-field override, done.
+            f.params.set(ov.toPath, value);
+            req.body = f.params.toString();
+            return;
+          }
+          form = f.params;
+          formJsonKey = f.jsonKey;
+          root = f.root;
         }
       } else {
-        parsed = {};
+        root = {};
       }
-      if (
-        parsed === null ||
-        typeof parsed !== "object" ||
-        Array.isArray(parsed)
-      ) {
-        throw new Error(
-          "Body override: recorded request body must be a JSON object",
-        );
-      }
-      const root = parsed as Record<string, unknown>;
       setByPath(root, ov.toPath, coerceBodyValue(root, ov.toPath, value));
-      req.body = JSON.stringify(root);
+      if (form && formJsonKey !== undefined) {
+        form.set(formJsonKey, JSON.stringify(root));
+        req.body = form.toString();
+      } else {
+        req.body = JSON.stringify(root);
+      }
       return;
     }
   }

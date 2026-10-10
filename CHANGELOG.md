@@ -7,6 +7,84 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-10
+
+### Added
+
+#### Element capture pierces into iframes and accepts page coordinates
+
+- `capture_element` now reaches INSIDE `<iframe>`s: a selector with no match in
+  the top frame is relayed into the page's child frames (selector written as
+  seen from inside the frame); a point hit on an iframe captures the inner
+  element instead of the shell; a box covering only iframe shells captures the
+  frames' content. Relay uses one-shot, tab-bound tokens verified by the
+  background (unusable by page scripts), with a depth cap of 3 and an
+  outermost-frame-first preference.
+- New `coordinates` parameter (`"viewport"` | `"page"`): coordinates read off a
+  `mode=fullPage` screenshot can be passed as `coordinates:'page'` — the page
+  is scrolled to the target (and the scroll restored after serialization).
+  Coordinates falling outside the viewport are auto-treated as page space when
+  `coordinates` is unset.
+
+#### Data transfer: back up / restore actions and recordings
+
+- New settings "Data" section: export the action library and the API-recording
+  archive (with per-category selection) as one JSON file, and import it back.
+  Ids are preserved verbatim so cross-references (actions → recordings →
+  calls) survive the roundtrip; an actions-only export always carries the
+  source recordings and calls, and the import restores them. Entries with the
+  same id are overwritten. The export contains NO cookies — browser cookies
+  are never stored and are injected fresh from the local browser at replay
+  time.
+
+#### Replay: form-encoded bodies, array roots and fresh-value templates
+
+- Body overrides now handle form-encoded bodies: an embedded URL-encoded JSON
+  envelope (`appid=…&body=%7B…%7D`) is addressed by JSON path and re-encoded
+  after the edit; plain forms accept whole-field overrides; a single-segment
+  path naming an existing top-level form field (fresh `sign`/`t`) overrides
+  the form field itself, not an embedded JSON object.
+- Array-root JSON bodies accept indexed overrides (`[1].qty`).
+- New built-in template helpers for values that must be fresh at replay time:
+  `{{nowMs}}`, `{{nowSec}}`, `{{uuid}}` (a declared param of the same name
+  wins).
+
+#### Bridge resilience: keepalive on both sides
+
+- The extension bridge sends an app-level `ping` every 20s while connected —
+  since Chrome 116 active WebSocket traffic keeps the MV3 service worker
+  alive indefinitely; the chrome.alarms re-dial remains as fallback.
+- The MCP server heartbeats each socket every 30s and terminates half-open
+  connections (sleep/wake, network switch) instead of letting calls hang.
+
+### Changed
+
+#### MCP install config is now unpinned (`@latest`)
+
+- `buildInstallPrompt` emits `npx -y @manta-action-kit/mcp@latest` so every
+  launch picks up the newest published version with no user action. The
+  install prompt includes a prewarm tip for the one-off cold-cache download.
+
+#### `create_action` / `update_action` no longer show a native confirmation prompt
+
+- The `anthropic/requiresUserInteraction` meta was removed from both tools:
+  writing a persistent, replayable flow is a standing capability of this
+  server, and the extra prompt got in the way of agent-driven flows. Review
+  the action's name/description before running it.
+
+### Fixed
+
+- A form body's top-level fields are reachable again when an embedded JSON
+  envelope exists (single-segment toPath prefers an existing form field), and
+  bodies that are neither JSON nor urlencoded (e.g. XML) fail with the clear
+  "not JSON" error instead of being mangled by a form re-encode.
+- `capture_element`'s MCP-side timeout raised to 45s to cover the worst-case
+  iframe relay chain (3 nested relays × 12s deadline + base capture).
+- The settings import flow toasts an error (and keeps the modal open) when the
+  write fails instead of failing silently.
+- Partitioned (CHIPS) cookies are merged into forwarded requests'
+  `Cookie` headers with browser-consistent ordering and dedup.
+
 ## [0.4.2] - 2026-10-08
 
 ### Fixed

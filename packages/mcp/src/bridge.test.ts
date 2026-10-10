@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { WebSocket } from 'ws';
 import { startBridge, type Bridge } from './bridge.js';
 import { dialAsExtension, type DialedSocket } from './test-helpers.js';
@@ -152,6 +152,60 @@ describe('bridge rpc', () => {
     const frame = await second.nextFrame();
     second.ws.send(JSON.stringify({ type: 'rpc-result', id: frame.id, ok: true, result: 'ok' }));
     await expect(pending).resolves.toBe('ok');
+  });
+});
+
+describe('bridge heartbeat', () => {
+  /** Only the heartbeat interval is virtual — socket I/O and awaits stay real. */
+  function fakeHeartbeatClock() {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+  }
+
+  it('answers an app-level ping frame with pong (browsers cannot send WS ping control frames)', async () => {
+    const { bridge, client } = await setup(TOKEN);
+    client.ws.send(JSON.stringify({ type: 'ping' }));
+    await expect(client.nextFrame()).resolves.toMatchObject({ type: 'pong' });
+    expect(bridge.isConnected()).toBe(true);
+  });
+
+  it('keeps a live (pong-answering) socket connected across many heartbeat intervals', async () => {
+    fakeHeartbeatClock();
+    try {
+      const { bridge, client } = await setup(TOKEN);
+      // Each interval pings; the ws client answers the protocol-level pong
+      // automatically, and the pong (async I/O) marks the socket alive again
+      // before the NEXT interval — hence one advance + one real beat per round.
+      for (let i = 0; i < 3; i++) {
+        vi.advanceTimersByTime(30_000);
+        await new Promise((r) => setTimeout(r, 20));
+      }
+      expect(bridge.isConnected()).toBe(true);
+      void client;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('terminates a socket that stops answering the heartbeat (half-open peer)', async () => {
+    fakeHeartbeatClock();
+    try {
+      const bridge = await start(TOKEN);
+      const client = dialExisting(bridge, bridgePort(bridge), TOKEN);
+      dialed.push(client);
+      await client.authed;
+      // Simulate a half-open peer: stop reading frames → no protocol pongs.
+      // (A paused ws client never processes the teardown either, so the
+      // assertion watches the SERVER-side connection state, not the client's
+      // close event.)
+      client.ws.pause();
+      vi.advanceTimersByTime(30_000); // ping #1 goes out, no pong will come
+      await new Promise((r) => setTimeout(r, 20));
+      vi.advanceTimersByTime(30_000); // next tick: dead → terminate
+      await vi.waitFor(() => expect(bridge.isConnected()).toBe(false));
+      client.ws.resume(); // let the client drain before afterEach cleanup
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
