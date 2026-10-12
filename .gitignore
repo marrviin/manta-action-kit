@@ -38,6 +38,9 @@ Thumbs.db
 # CodeGraph index (machine-generated, rebuildable)
 .codegraph/
 
+# archify diagrams (machine-generated, rebuildable from candidate.json)
+.archify/
+
 # Claude Code — local config; shared skill 的源码在 packages/skills/，安装方式见其 README
 .claude/
 CLAUDE.md
@@ -52,3 +55,7 @@ coverage/
 *.onnx.data
 # 本机发布配置（发布源钉 npmjs），勿提交
 packages/protocol/.npmrc
+
+# 本地架构文档草稿，不入库；README 只引用其中的 PNG 截图
+docs/architecture/*
+!docs/architecture/*.png

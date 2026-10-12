@@ -25,23 +25,9 @@ single credential.
 
 ## How it works
 
-```
- You operate the site once              Your agent (Claude Code, Codex, Cursor, …)
-        │                                        │
-        ▼                                        │ MCP over stdio
- ┌──────────────────────┐                  ┌──────▼───────────────┐
- │  Manta extension     │◀─── local WS ───│  @manta-action-kit/  │
- │  hooks fetch/XHR,    │  (mutually      │  mcp                 │
- │  records every API   │   authenticated)└──────────────────────┘
- │  call to IndexedDB   │
- └──────────┬───────────┘
-            │  injects YOUR cookies at the network layer,
-            │  only when YOU approve
-            ▼
-      Target site API   ← request goes out from your browser, with your session
-```
+![manta-action-kit System Architecture](docs/architecture/manta-action-kit.en.png)
 
-1. **Record** — click *Start* in the popup, use the site normally, click *Stop*.
+1. **Record** — click _Start_ in the popup, use the site normally, click _Stop_.
    The extension captures every `fetch`/`XHR` (requests **and** responses,
    including SSE streams) into a local, inspectable call chain.
 2. **Distill** — your agent reads the recording through MCP and distills it
@@ -57,22 +43,22 @@ Credentials live in your browser and **never travel to the AI** — that's the
 whole point, and it's enforced at several layers:
 
 - **Cookie injection at the trust boundary** — the extension reads cookies via
-  `chrome.cookies` and injects them as a network-layer header. Cookie *values*
+  `chrome.cookies` and injects them as a network-layer header. Cookie _values_
   never appear in any tool result, transcript, or log.
 - **Human-in-the-loop gate** — every new target host pops an extension-side
   confirmation window showing method/URL/body. For recorded actions
   (`execute_action`) you approve once per host per run; direct calls
   (`proxy_fetch`/`proxy_sse`) confirm per request by default. Deny or ignore
   and the call never goes out. The gate is on by default (you can adjust it in
-  the extension's sandbox settings) and works on *every* path (agent calls and
+  the extension's sandbox settings) and works on _every_ path (agent calls and
   script-driven calls alike), independent of MCP client behavior.
 - **SSRF guard** — loopback, private-network, link-local and cloud-metadata
-  addresses (`169.254.169.254` included) are refused *before* any other policy,
+  addresses (`169.254.169.254` included) are refused _before_ any other policy,
   on every path.
 - **Domain policy you own** — deny-list blocks outright, allow-list flows
   silently. The agent has **no tools** to read or change these.
 - **Per-tool kill switch** — toggle any MCP tool off from the extension UI.
-- **Audit log** — every forwarded call is logged locally. Cookie *names* are
+- **Audit log** — every forwarded call is logged locally. Cookie _names_ are
   logged; values never.
 - **Mutually-authenticated local bridge** — the loopback WebSocket does a
   two-way challenge-response (`HMAC(token, …)` in both directions; the token
@@ -88,12 +74,12 @@ Recordings are the raw material; **Actions are the product**. A distilled
 action is a parameterized, replayable flow — your agent lists and runs them
 like any other tool:
 
-| Area | Tools |
-| --- | --- |
+| Area            | Tools                                                                                              |
+| --------------- | -------------------------------------------------------------------------------------------------- |
 | Read recordings | `list_recordings` · `get_recording` · `get_call` · `get_flow` · `get_endpoints` (redacted schemas) |
-| Actions | `list_actions` · `search_actions` · `create_action` · `execute_action` … |
-| Sandbox proxy | `proxy_fetch` · `proxy_sse` (with your login state) |
-| Ops | `health` · proxy-rule management |
+| Actions         | `list_actions` · `search_actions` · `create_action` · `execute_action` …                           |
+| Sandbox proxy   | `proxy_fetch` · `proxy_sse` (with your login state)                                                |
+| Ops             | `health` · proxy-rule management                                                                   |
 
 > The full tool table (23 tools, incl. element-capture reads and proxy-rule
 > management) lives in [`packages/mcp/README.md`](packages/mcp/README.md).
@@ -105,7 +91,7 @@ like any other tool:
 
 Example of what an action looks like from the agent's side:
 
-> `search_actions("track shipment")` → *track-order-shipment* — params:
+> `search_actions("track shipment")` → _track-order-shipment_ — params:
 > `orderId`. Steps: fetch order → pass `{{steps[0].outputs[id]}}` into the
 > tracking call → `execute_action({ actionId, params: { orderId: "A1002" } })`
 > → done, through your logged-in session, one confirmation popup, full audit.
@@ -116,8 +102,8 @@ Example of what an action looks like from the agent's side:
 [Chrome Web Store](https://chromewebstore.google.com/detail/manta-action-kit/pghddhbhbnlcehlmgnnalgaephllkeel).
 
 **2. Copy the install prompt** — click the extension's toolbar icon and open
-its side panel (via the popup's *Open side panel* entry) → *Action* tab →
-*Copy install prompt*. It embeds your personal bridge token (`MANTA_TOKEN`).
+its side panel (via the popup's _Open side panel_ entry) → _Action_ tab →
+_Copy install prompt_. It embeds your personal bridge token (`MANTA_TOKEN`).
 
 **3. Add the MCP server to your agent.** Requires [Node.js](https://nodejs.org)
 (≥ 18). Paste the prompt into Claude Code / Codex / any MCP client (for Claude
@@ -148,8 +134,8 @@ troubleshooting: [`packages/mcp/README.md`](packages/mcp/README.md).
 
 **4. Use it.** Record a flow on your site, then ask your agent:
 
-> *"I just recorded the order-tracking flow. Turn it into an action and tell
-> me where order A1002 is."*
+> _"I just recorded the order-tracking flow. Turn it into an action and tell
+> me where order A1002 is."_
 
 The bridge runs 100% on `127.0.0.1` — nothing leaves your machine except the
 API calls you approved.
@@ -157,7 +143,7 @@ API calls you approved.
 ## Page capture toolkit
 
 Beyond the agent flow, the extension bundles a local page-capture toolkit in
-the side panel's *Page capture* tab: **element capture** (pick any element →
+the side panel's _Page capture_ tab: **element capture** (pick any element →
 full computed-style JSON, shadow-DOM aware, copied to your clipboard),
 **screenshots** (visible area / full page), and **GIF recording** of a tab.
 Everything stays local — this is what the `clipboardWrite`, `debugger`,
@@ -183,7 +169,7 @@ and `packages/skills` (an agent skill that teaches clients how to drive the
 toolkit). See
 [CONTRIBUTING.md](CONTRIBUTING.md) and
 [CLAUDE.md](CLAUDE.md) for architecture and conventions — including why the
-MV3 service worker dials *out* as a WebSocket client, and why cookie injection
+MV3 service worker dials _out_ as a WebSocket client, and why cookie injection
 goes through `declarativeNetRequest` instead of `fetch credentials`.
 
 ## License
