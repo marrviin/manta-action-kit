@@ -27,6 +27,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { createServer } from "node:net";
 import { createRequire } from "node:module";
+import { realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { startBridge, type Bridge } from "./bridge.js";
@@ -1512,11 +1513,23 @@ async function shutdown() {
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
 
-// Auto-run only when executed directly (node dist/index.js); a bare import
-// (the test suite) must get the registered tool surface WITHOUT binding ports.
-const isDirectRun =
-  !!process.argv[1] &&
-  import.meta.url === pathToFileURL(process.argv[1]).href;
+// Auto-run only when executed directly (node dist/index.js, or via a bin
+// symlink as npx/npm-global launchers do); a bare import (the test suite)
+// must get the registered tool surface WITHOUT binding ports. Both sides are
+// realpathed: npx and `npm i -g` expose the bin through .bin symlinks, so a
+// naive argv[1] comparison never matches import.meta.url and main() would
+// silently never run (the MCP client just sees CONNECTION_CLOSED).
+const isDirectRun = (() => {
+  if (!process.argv[1]) return false;
+  try {
+    return (
+      import.meta.url ===
+      pathToFileURL(realpathSync(process.argv[1])).href
+    );
+  } catch {
+    return false;
+  }
+})();
 if (isDirectRun) {
   main().catch((err) => {
     console.error("[manta-action-kit-mcp] fatal", err);
