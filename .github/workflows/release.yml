@@ -146,10 +146,14 @@ jobs:
             exit 1
           fi
           ls -lh "${ZIPS[@]}"
+      # .output/ 在 .gitignore 里，upload-artifact@v4 会遵循 gitignore 排除文件——
+      # 先拷到非忽略目录再上传
+      - name: Stage zip for upload
+        run: mkdir -p dist-extension && cp packages/extension/.output/*.zip dist-extension/
       - uses: actions/upload-artifact@v4
         with:
           name: chrome-extension-zip
-          path: packages/extension/.output/*.zip
+          path: dist-extension/*.zip
           if-no-files-found: error
 
   github-release:
