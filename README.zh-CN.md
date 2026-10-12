@@ -32,56 +32,6 @@ agent 说"这个你做不了"。
 3. **执行** —— `execute_action` 或 `proxy_fetch` 经沙箱网关重放流程。扩展在
    转发时注入你的会话 Cookie；AI 自始至终只发过 `method/url/headers/body`。
 
-## 为什么它是安全的
-
-凭证留在浏览器里、**永远到不了 AI**——这是整个产品的核心，而且在多层强制执行：
-
-- **凭证在信任边界注入** —— 扩展经 `chrome.cookies` 读取 Cookie，在网络层
-  注入请求头。Cookie 的**值**不出现在任何工具返回、对话记录或日志里。
-- **人在环闸门** —— 每个新目标 host 都会弹出扩展侧确认窗口（展示
-  method/URL/body）。录制的动作（`execute_action`）按 host 每次运行只需确认
-  一次；直接调用（`proxy_fetch`/`proxy_sse`）默认逐请求确认。拒绝或无视，
-  请求就发不出去。闸门默认开启（可在扩展沙箱设置里调整），**所有路径**
-  （agent 调用与脚本驱动调用）都过这道闸，不依赖 MCP 客户端的行为。
-- **SSRF 防护** —— loopback、私网、link-local、云元数据地址（含
-  `169.254.169.254`）在任何其他策略**之前**直接拒绝，无一例外。
-- **你说了算的域名策略** —— 拒绝域名直接拦、允许域名静默放行。agent **没有
-  任何工具**能读取或修改这两张名单。
-- **按工具 kill switch** —— 扩展设置里可单独关闭任意 MCP 工具。
-- **审计日志** —— 每条转发调用都本地留痕；只记 Cookie **名称**，绝不记值。
-- **双向认证的本地桥接** —— 环回 WebSocket 握手做双向 challenge-response
-  （两侧各算 `HMAC(token, …)`；token 本身永不上线）。未认证连接直接断开，
-  携带网页 Origin 连 `ws://127.0.0.1` 的直接拒绝，没配 token 服务端
-  fail closed。
-- **数据全部本地** —— IndexedDB + `chrome.storage`。无埋点、无外部服务器、
-  无远程代码。见 [PRIVACY.md](PRIVACY.md)。
-
-## 你的 agent 能拿到什么
-
-录制是素材，**Action 才是产物**。蒸馏出的动作是可参数化、可重放的流程，
-agent 像用其他工具一样列出并执行它们：
-
-| 领域     | 工具                                                                                           |
-| -------- | ---------------------------------------------------------------------------------------------- |
-| 读取录制 | `list_recordings` · `get_recording` · `get_call` · `get_flow` · `get_endpoints`（脱敏 Schema） |
-| Action   | `list_actions` · `search_actions` · `create_action` · `execute_action` 等                      |
-| 沙箱代理 | `proxy_fetch` · `proxy_sse`（带你的登录态）                                                    |
-| 运维     | `health` · 代理规则管理                                                                        |
-
-> 完整工具表（23 个，含元素捕获读取与代理规则管理）见
-> [`packages/mcp/README.md`](packages/mcp/README.md)。
->
-> **代理规则（proxy rule）**把一个脚本前缀映射到真实 base URL，让非 MCP
-> 的脚本也能走同一条沙箱网关（同样的 Cookie 注入、同样的确认闸门）。
-> 允许/拒绝域名名单只存在于扩展 UI——agent 没有任何工具能碰。
-
-从 agent 视角看一个 Action 是这样的：
-
-> `search_actions("track shipment")` → _track-order-shipment_ —— 参数
-> `orderId`；步骤：查订单 → 把 `{{steps[0].outputs[id]}}` 传进物流接口 →
-> `execute_action({ actionId, params: { orderId: "A1002" } })` → 搞定。全程
-> 走你的登录态、一次确认弹窗、完整审计。
-
 ## 快速开始
 
 **1. 安装扩展**：从
@@ -136,6 +86,56 @@ skill 是可选的——上面的 MCP 服务才是 agent 必需的。
 
 桥接 100% 跑在 `127.0.0.1` 上——除了你批准的 API 调用，没有任何数据离开
 你的机器。
+
+## 你的 agent 能拿到什么
+
+录制是素材，**Action 才是产物**。蒸馏出的动作是可参数化、可重放的流程，
+agent 像用其他工具一样列出并执行它们：
+
+| 领域     | 工具                                                                                           |
+| -------- | ---------------------------------------------------------------------------------------------- |
+| 读取录制 | `list_recordings` · `get_recording` · `get_call` · `get_flow` · `get_endpoints`（脱敏 Schema） |
+| Action   | `list_actions` · `search_actions` · `create_action` · `execute_action` 等                      |
+| 沙箱代理 | `proxy_fetch` · `proxy_sse`（带你的登录态）                                                    |
+| 运维     | `health` · 代理规则管理                                                                        |
+
+> 完整工具表（23 个，含元素捕获读取与代理规则管理）见
+> [`packages/mcp/README.md`](packages/mcp/README.md)。
+>
+> **代理规则（proxy rule）**把一个脚本前缀映射到真实 base URL，让非 MCP
+> 的脚本也能走同一条沙箱网关（同样的 Cookie 注入、同样的确认闸门）。
+> 允许/拒绝域名名单只存在于扩展 UI——agent 没有任何工具能碰。
+
+从 agent 视角看一个 Action 是这样的：
+
+> `search_actions("track shipment")` → _track-order-shipment_ —— 参数
+> `orderId`；步骤：查订单 → 把 `{{steps[0].outputs[id]}}` 传进物流接口 →
+> `execute_action({ actionId, params: { orderId: "A1002" } })` → 搞定。全程
+> 走你的登录态、一次确认弹窗、完整审计。
+
+## 为什么它是安全的
+
+凭证留在浏览器里、**永远到不了 AI**——这是整个产品的核心，而且在多层强制执行：
+
+- **凭证在信任边界注入** —— 扩展经 `chrome.cookies` 读取 Cookie，在网络层
+  注入请求头。Cookie 的**值**不出现在任何工具返回、对话记录或日志里。
+- **人在环闸门** —— 每个新目标 host 都会弹出扩展侧确认窗口（展示
+  method/URL/body）。录制的动作（`execute_action`）按 host 每次运行只需确认
+  一次；直接调用（`proxy_fetch`/`proxy_sse`）默认逐请求确认。拒绝或无视，
+  请求就发不出去。闸门默认开启（可在扩展沙箱设置里调整），**所有路径**
+  （agent 调用与脚本驱动调用）都过这道闸，不依赖 MCP 客户端的行为。
+- **SSRF 防护** —— loopback、私网、link-local、云元数据地址（含
+  `169.254.169.254`）在任何其他策略**之前**直接拒绝，无一例外。
+- **你说了算的域名策略** —— 拒绝域名直接拦、允许域名静默放行。agent **没有
+  任何工具**能读取或修改这两张名单。
+- **按工具 kill switch** —— 扩展设置里可单独关闭任意 MCP 工具。
+- **审计日志** —— 每条转发调用都本地留痕；只记 Cookie **名称**，绝不记值。
+- **双向认证的本地桥接** —— 环回 WebSocket 握手做双向 challenge-response
+  （两侧各算 `HMAC(token, …)`；token 本身永不上线）。未认证连接直接断开，
+  携带网页 Origin 连 `ws://127.0.0.1` 的直接拒绝，没配 token 服务端
+  fail closed。
+- **数据全部本地** —— IndexedDB + `chrome.storage`。无埋点、无外部服务器、
+  无远程代码。见 [PRIVACY.md](PRIVACY.md)。
 
 ## 页面采集工具箱
 
