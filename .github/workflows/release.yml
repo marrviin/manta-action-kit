@@ -25,7 +25,16 @@ jobs:
       - run: pnpm --filter @manta-action-kit/protocol build
       # 注意：npm OIDC 无法创建全新包（trusted publisher 配置挂在包的 Settings 页上），
       # protocol 首个版本需手动本地发布一次并在 npmjs.com 配置 trusted publisher，之后 CI 才能发。
-      - run: pnpm --filter @manta-action-kit/protocol publish --no-git-checks --provenance --access public
+      # 已发布同版本则跳过：publish 链任一 job 失败后，重跑（re-run / 重推同 tag）不会
+      # 因 npm 拒绝重复版本而卡死整条链。
+      - name: Publish (skip if version already on npm)
+        run: |
+          PKG=$(node -p "require('./packages/protocol/package.json').version")
+          if npm view "@manta-action-kit/protocol@$PKG" version >/dev/null 2>&1; then
+            echo "@manta-action-kit/protocol@$PKG already on npm — skipping"
+          else
+            pnpm --filter @manta-action-kit/protocol publish --no-git-checks --provenance --access public
+          fi
 
   publish-mcp:
     needs: publish-protocol
@@ -51,15 +60,30 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm compile && pnpm test
       - run: pnpm build:mcp
-      # pnpm pack 负责把 workspace:* 解析成实际版本号，npm publish 走已验证可用的 npm OIDC 通道
-      - run: pnpm --filter @manta-action-kit/mcp pack
-      - run: npm publish manta-action-kit-mcp-*.tgz --provenance --access public
+      # pnpm pack 负责把 workspace:* 解析成实际版本号，npm publish 走已验证可用的 npm OIDC 通道；
+      # 已发布同版本则跳过（见 publish-protocol 里的说明）
+      - name: Publish (skip if version already on npm)
+        run: |
+          PKG=$(node -p "require('./packages/mcp/package.json').version")
+          if npm view "@manta-action-kit/mcp@$PKG" version >/dev/null 2>&1; then
+            echo "@manta-action-kit/mcp@$PKG already on npm — skipping"
+          else
+            pnpm --filter @manta-action-kit/mcp pack
+            npm publish manta-action-kit-mcp-*.tgz --provenance --access public
+          fi
 
   publish-mcp-py:
     needs: publish-mcp
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
@@ -75,6 +99,7 @@ jobs:
         working-directory: packages/mcp-py
         run: |
           pnpm install --frozen-lockfile --ignore-scripts || true # 对拍测试需要 node_modules 里的 ws
+          pnpm --filter @manta-action-kit/protocol build # mcp 的 src/protocol.ts re-export 之，冷 checkout 无 dist 会 TS2307
           pnpm --filter @manta-action-kit/mcp build
           uv sync
           uv run pytest -q
@@ -84,11 +109,16 @@ jobs:
       #   project: manta-action-kit-mcp, owner: marrviin, repo: manta-action-kit,
       #   workflow: release.yml, environment: 留空）
       # 之后首版即可由本 job 直接发布并自动绑定 trusted publisher。
-      - name: Build and publish to PyPI
+      - name: Build and publish to PyPI (skip if version already there)
         working-directory: packages/mcp-py
         run: |
-          uv build
-          uv publish
+          PKG=$(sed -n 's/^version = "\(.*\)"$/\1/p' pyproject.toml | head -1)
+          if curl -fsSL "https://pypi.org/pypi/manta-action-kit-mcp/$PKG/json" >/dev/null 2>&1; then
+            echo "manta-action-kit-mcp@$PKG already on PyPI — skipping"
+          else
+            uv build
+            uv publish
+          fi
 
   # 扩展 zip 挂到 GitHub Release（不上架 Web Store，仅作为产物分发）。
   # 注意：extension 与 mcp/mcp-py 版本号不强制同步，故不做 tag 一致性校验。
@@ -105,8 +135,9 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # wxt zip 会先完整构建再打包（产出 .output/<name>-<version>-chrome.zip）
-      - run: pnpm --filter @manta-action-kit/extension zip
+      # wxt zip 会先完整构建再打包（产出 .output/<name>-<version>-chrome.zip）；
+      # extension 依赖 protocol 的构建产物，须先构建
+      - run: pnpm --filter @manta-action-kit/protocol build && pnpm --filter @manta-action-kit/extension zip
       - name: Check zip output exists
         run: |
           ZIPS=(packages/extension/.output/*.zip)
@@ -115,10 +146,14 @@ jobs:
             exit 1
           fi
           ls -lh "${ZIPS[@]}"
+      # .output/ 在 .gitignore 里，upload-artifact@v4 会遵循 gitignore 排除文件——
+      # 先拷到非忽略目录再上传
+      - name: Stage zip for upload
+        run: mkdir -p dist-extension && cp packages/extension/.output/*.zip dist-extension/
       - uses: actions/upload-artifact@v4
         with:
           name: chrome-extension-zip
-          path: packages/extension/.output/*.zip
+          path: dist-extension/*.zip
           if-no-files-found: error
 
   github-release:

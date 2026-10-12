@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.4] - 2026-10-12
+
+### Added
+
+#### Python MCP server (`packages/mcp-py`)
+
+- New `manta-action-kit-mcp` on PyPI: a Python port of the Node MCP server,
+  bridged to the Chrome extension over the same authenticated WebSocket
+  protocol — pick either runtime, the tool surface is identical.
+- Node-parity is enforced by contract tests: `packages/mcp/scripts/export-tool-contract.mjs`
+  exports the real Node tool registration surface to a JSON fixture, and the
+  Python suite (`test_tool_contract.py` / `test_node_parity.py`) runs against
+  a real built Node server to catch drift. Versions ship in lockstep (both
+  0.5.3 here).
+- Documented the Node/Python sync workflow in CONTRIBUTING.md.
+
+#### Release pipeline
+
+- `publish-mcp-py` CI job: tag-vs-version check, Python test suite against a
+  freshly built Node server, then `uv build` + `uv publish` via PyPI Trusted
+  Publishing (OIDC, no token; provenance attested).
+- `publish-extension` CI job: build the MV3 bundle with `wxt zip` (models
+  excluded) and attach the zip to the GitHub Release. Protocol is built first —
+  a cold checkout has no `dist` for the extension build to resolve.
+
+### Fixed
+
+- v0.5.1/v0.5.2 (npm only, never changelogged): direct-run guard resolves
+  `argv[1]` through realpath so npx/npm-global bins start, with an
+  `MCP_NO_AUTORUN` opt-out.
+
 ## [0.5.0] - 2026-10-10
 
 ### Added

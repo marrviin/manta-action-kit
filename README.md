@@ -37,65 +37,6 @@ single credential.
    sandbox gateway. The extension injects your session cookies at forward time;
    the AI only ever sent `method/url/headers/body`.
 
-## Why it's safe
-
-Credentials live in your browser and **never travel to the AI** — that's the
-whole point, and it's enforced at several layers:
-
-- **Cookie injection at the trust boundary** — the extension reads cookies via
-  `chrome.cookies` and injects them as a network-layer header. Cookie _values_
-  never appear in any tool result, transcript, or log.
-- **Human-in-the-loop gate** — every new target host pops an extension-side
-  confirmation window showing method/URL/body. For recorded actions
-  (`execute_action`) you approve once per host per run; direct calls
-  (`proxy_fetch`/`proxy_sse`) confirm per request by default. Deny or ignore
-  and the call never goes out. The gate is on by default (you can adjust it in
-  the extension's sandbox settings) and works on _every_ path (agent calls and
-  script-driven calls alike), independent of MCP client behavior.
-- **SSRF guard** — loopback, private-network, link-local and cloud-metadata
-  addresses (`169.254.169.254` included) are refused _before_ any other policy,
-  on every path.
-- **Domain policy you own** — deny-list blocks outright, allow-list flows
-  silently. The agent has **no tools** to read or change these.
-- **Per-tool kill switch** — toggle any MCP tool off from the extension UI.
-- **Audit log** — every forwarded call is logged locally. Cookie _names_ are
-  logged; values never.
-- **Mutually-authenticated local bridge** — the loopback WebSocket does a
-  two-way challenge-response (`HMAC(token, …)` in both directions; the token
-  itself never crosses the wire). Unauthenticated peers get dropped, web pages
-  dialing `ws://127.0.0.1` are rejected, and without a token the server fails
-  closed.
-- **All data stays local** — IndexedDB + `chrome.storage`. No analytics, no
-  external servers, no remote code. See [PRIVACY.md](PRIVACY.md).
-
-## What your agent gets
-
-Recordings are the raw material; **Actions are the product**. A distilled
-action is a parameterized, replayable flow — your agent lists and runs them
-like any other tool:
-
-| Area            | Tools                                                                                              |
-| --------------- | -------------------------------------------------------------------------------------------------- |
-| Read recordings | `list_recordings` · `get_recording` · `get_call` · `get_flow` · `get_endpoints` (redacted schemas) |
-| Actions         | `list_actions` · `search_actions` · `create_action` · `execute_action` …                           |
-| Sandbox proxy   | `proxy_fetch` · `proxy_sse` (with your login state)                                                |
-| Ops             | `health` · proxy-rule management                                                                   |
-
-> The full tool table (23 tools, incl. element-capture reads and proxy-rule
-> management) lives in [`packages/mcp/README.md`](packages/mcp/README.md).
->
-> A **proxy rule** maps a script prefix to a real base URL, so non-MCP scripts
-> can also route calls through the same sandbox gateway (same cookie injection,
-> same confirmation gate). Allow/deny domain lists live only in the extension
-> UI — the agent has no tools for them.
-
-Example of what an action looks like from the agent's side:
-
-> `search_actions("track shipment")` → _track-order-shipment_ — params:
-> `orderId`. Steps: fetch order → pass `{{steps[0].outputs[id]}}` into the
-> tracking call → `execute_action({ actionId, params: { orderId: "A1002" } })`
-> → done, through your logged-in session, one confirmation popup, full audit.
-
 ## Quick start
 
 **1. Install the extension** from the
@@ -132,13 +73,86 @@ settings, and `MANTA_PROXY_PORT` (default 8788) is the local HTTP port of the
 sandbox proxy. All env vars are optional if you keep the defaults. Details and
 troubleshooting: [`packages/mcp/README.md`](packages/mcp/README.md).
 
-**4. Use it.** Record a flow on your site, then ask your agent:
+**4. (Optional) Install the agent skill.** A packaged usage guide —
+environment checks, connection troubleshooting, and tool recipes — that your
+agent loads on demand, so phrases like _"check environment"_, _"can't
+connect"_, or _"what actions do I have"_ just work:
+
+```bash
+npx skills add marrviin/manta-action-kit -g -a claude-code -y   # global, Claude Code
+```
+
+Drop `-g -a claude-code -y` for an interactive install (choose any supported
+agent and project/global scope). Update later by re-running the same command,
+or `npx skills update -g`. The skill is optional — the MCP server above is all
+an agent strictly needs.
+
+**5. Use it.** Record a flow on your site, then ask your agent:
 
 > _"I just recorded the order-tracking flow. Turn it into an action and tell
 > me where order A1002 is."_
 
 The bridge runs 100% on `127.0.0.1` — nothing leaves your machine except the
 API calls you approved.
+
+## What your agent gets
+
+Recordings are the raw material; **Actions are the product**. A distilled
+action is a parameterized, replayable flow — your agent lists and runs them
+like any other tool:
+
+| Area            | Tools                                                                                              |
+| --------------- | -------------------------------------------------------------------------------------------------- |
+| Read recordings | `list_recordings` · `get_recording` · `get_call` · `get_flow` · `get_endpoints` (redacted schemas) |
+| Actions         | `list_actions` · `search_actions` · `create_action` · `execute_action` …                           |
+| Sandbox proxy   | `proxy_fetch` · `proxy_sse` (with your login state)                                                |
+| Ops             | `health` · proxy-rule management                                                                   |
+
+> The full tool table (23 tools, incl. element-capture reads and proxy-rule
+> management) lives in [`packages/mcp/README.md`](packages/mcp/README.md).
+>
+> A **proxy rule** maps a script prefix to a real base URL, so non-MCP scripts
+> can also route calls through the same sandbox gateway (same cookie injection,
+> same confirmation gate). Allow/deny domain lists live only in the extension
+> UI — the agent has no tools for them.
+
+Example of what an action looks like from the agent's side:
+
+> `search_actions("track shipment")` → _track-order-shipment_ — params:
+> `orderId`. Steps: fetch order → pass `{{steps[0].outputs[id]}}` into the
+> tracking call → `execute_action({ actionId, params: { orderId: "A1002" } })`
+> → done, through your logged-in session, one confirmation popup, full audit.
+
+## Why it's safe
+
+Credentials live in your browser and **never travel to the AI** — that's the
+whole point, and it's enforced at several layers:
+
+- **Cookie injection at the trust boundary** — the extension reads cookies via
+  `chrome.cookies` and injects them as a network-layer header. Cookie _values_
+  never appear in any tool result, transcript, or log.
+- **Human-in-the-loop gate** — every new target host pops an extension-side
+  confirmation window showing method/URL/body. For recorded actions
+  (`execute_action`) you approve once per host per run; direct calls
+  (`proxy_fetch`/`proxy_sse`) confirm per request by default. Deny or ignore
+  and the call never goes out. The gate is on by default (you can adjust it in
+  the extension's sandbox settings) and works on _every_ path (agent calls and
+  script-driven calls alike), independent of MCP client behavior.
+- **SSRF guard** — loopback, private-network, link-local and cloud-metadata
+  addresses (`169.254.169.254` included) are refused _before_ any other policy,
+  on every path.
+- **Domain policy you own** — deny-list blocks outright, allow-list flows
+  silently. The agent has **no tools** to read or change these.
+- **Per-tool kill switch** — toggle any MCP tool off from the extension UI.
+- **Audit log** — every forwarded call is logged locally. Cookie _names_ are
+  logged; values never.
+- **Mutually-authenticated local bridge** — the loopback WebSocket does a
+  two-way challenge-response (`HMAC(token, …)` in both directions; the token
+  itself never crosses the wire). Unauthenticated peers get dropped, web pages
+  dialing `ws://127.0.0.1` are rejected, and without a token the server fails
+  closed.
+- **All data stays local** — IndexedDB + `chrome.storage`. No analytics, no
+  external servers, no remote code. See [PRIVACY.md](PRIVACY.md).
 
 ## Page capture toolkit
 

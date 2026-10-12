@@ -12,7 +12,10 @@ description: >-
   actions are available", "call the API with my login state", "proxy_fetch",
   "show element captures / compare element captures", "screenshot this page /
   capture this element", "record my screen / record a GIF", "check
-  environment", "initialize environment", "can't connect", etc.
+  environment", "initialize environment", "can't connect", etc. Chinese
+  triggers: 「查录制」「看调用链路」「创建 action」「执行 action」「用我的登录态调这个接口」
+  「截个图」「整页截图」「录个 GIF」「检查环境」「连不上」. A Chinese quick-start
+  reference lives at [references/zh-CN.md](references/zh-CN.md).
 ---
 
 # manta-action-kit Suite Usage Guide
