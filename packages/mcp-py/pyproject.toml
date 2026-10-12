@@ -12,7 +12,7 @@ authors = [{ name = "marrviin" }]
 # Kept in lockstep with packages/mcp/package.json — the two servers ship the
 # same protocol/tool surface and are released together. Pinned by
 # tests/test_node_parity.py::test_version_matches_node_server.
-version = "0.5.2"
+version = "0.5.3"
 requires-python = ">=3.11"
 dependencies = [
   "mcp>=2,<3",
