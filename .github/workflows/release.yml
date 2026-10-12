@@ -105,8 +105,9 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # wxt zip 会先完整构建再打包（产出 .output/<name>-<version>-chrome.zip）
-      - run: pnpm --filter @manta-action-kit/extension zip
+      # wxt zip 会先完整构建再打包（产出 .output/<name>-<version>-chrome.zip）；
+      # extension 依赖 protocol 的构建产物，须先构建
+      - run: pnpm --filter @manta-action-kit/protocol build && pnpm --filter @manta-action-kit/extension zip
       - name: Check zip output exists
         run: |
           ZIPS=(packages/extension/.output/*.zip)
