@@ -117,7 +117,19 @@ Code 也可以跑 `claude mcp add` 按引导添加），或手动加进 MCP 配�
 8788）是沙箱代理的本地 HTTP 端口。保持默认值时这些变量都可以省略。详细
 说明与排障见 [`packages/mcp/README.md`](packages/mcp/README.md)。
 
-**4. 用起来。** 在你的网站上录制一段流程，然后对 agent 说：
+**4.（可选）安装 agent skill。** 一份随用随加载的打包使用指南——环境检查、
+连接排障、工具用法——装上之后 agent 听到「检查环境」「连不上」「有哪些
+action」这类话就能直接自查：
+
+```bash
+npx skills add marrviin/manta-action-kit -g -a claude-code -y   # 全局，Claude Code
+```
+
+去掉 `-g -a claude-code -y` 则进入交互式安装（可选任意支持的 agent 和
+项目/全局作用域）。以后升级重跑同一条命令，或 `npx skills update -g`。
+skill 是可选的——上面的 MCP 服务才是 agent 必需的。
+
+**5. 用起来。** 在你的网站上录制一段流程，然后对 agent 说：
 
 > _"我刚录了订单物流查询的流程。把它变成一个 action，然后查一下订单
 > A1002 到哪了。"_

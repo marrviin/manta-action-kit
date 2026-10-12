@@ -132,7 +132,21 @@ settings, and `MANTA_PROXY_PORT` (default 8788) is the local HTTP port of the
 sandbox proxy. All env vars are optional if you keep the defaults. Details and
 troubleshooting: [`packages/mcp/README.md`](packages/mcp/README.md).
 
-**4. Use it.** Record a flow on your site, then ask your agent:
+**4. (Optional) Install the agent skill.** A packaged usage guide —
+environment checks, connection troubleshooting, and tool recipes — that your
+agent loads on demand, so phrases like _"check environment"_, _"can't
+connect"_, or _"what actions do I have"_ just work:
+
+```bash
+npx skills add marrviin/manta-action-kit -g -a claude-code -y   # global, Claude Code
+```
+
+Drop `-g -a claude-code -y` for an interactive install (choose any supported
+agent and project/global scope). Update later by re-running the same command,
+or `npx skills update -g`. The skill is optional — the MCP server above is all
+an agent strictly needs.
+
+**5. Use it.** Record a flow on your site, then ask your agent:
 
 > _"I just recorded the order-tracking flow. Turn it into an action and tell
 > me where order A1002 is."_
