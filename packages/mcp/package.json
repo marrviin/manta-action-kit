@@ -1,7 +1,7 @@
 {
   "name": "@manta-action-kit/mcp",
   "description": "MCP server for Manta Action Kit — exposes recorded API calls to agents, bridged to the Chrome extension over a local WebSocket",
-  "version": "0.5.0",
+  "version": "0.5.2",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -41,7 +41,8 @@
     "dev": "tsc -p tsconfig.json --watch",
     "compile": "tsc -p tsconfig.json --noEmit",
     "prepublishOnly": "tsc -p tsconfig.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "contract:export": "node scripts/export-tool-contract.mjs > ../mcp-py/tests/fixtures/tool-contract.json"
   },
   "dependencies": {
     "@manta-action-kit/protocol": "workspace:*",

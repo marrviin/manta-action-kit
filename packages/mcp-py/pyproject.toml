@@ -1,0 +1,64 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "manta-action-kit-mcp"
+description = "Python MCP server for Manta Action Kit — exposes the Chrome extension's recorded API calls to agents, bridged to the extension over a local WebSocket"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "marrviin" }]
+# Kept in lockstep with packages/mcp/package.json — the two servers ship the
+# same protocol/tool surface and are released together. Pinned by
+# tests/test_node_parity.py::test_version_matches_node_server.
+version = "0.5.2"
+requires-python = ">=3.11"
+dependencies = [
+  "mcp>=2,<3",
+  "websockets>=13",
+]
+
+keywords = [
+  "mcp",
+  "model-context-protocol",
+  "chrome-extension",
+  "ai-agent",
+  "api-recording",
+  "claude",
+  "cursor",
+]
+
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Operating System :: MacOS",
+  "Operating System :: Microsoft :: Windows",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+[project.urls]
+Repository = "https://github.com/marrviin/manta-action-kit"
+Issues = "https://github.com/marrviin/manta-action-kit/issues"
+Changelog = "https://github.com/marrviin/manta-action-kit/blob/main/CHANGELOG.md"
+
+[project.scripts]
+manta-action-kit-mcp = "manta_action_kit_mcp.__main__:main"
+
+[dependency-groups]
+dev = [
+  "pytest>=8",
+  "pytest-asyncio>=0.24",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/manta_action_kit_mcp"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

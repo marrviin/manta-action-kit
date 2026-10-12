@@ -1,6 +1,18 @@
 ---
 name: manta-action-kit
-description: Usage guide for the manta-action-kit suite (Chrome extension + MCP server): environment checks and initialization, extension/MCP/connection troubleshooting, recording APIs, and action management — creating actions from recordings, searching and executing actions, cookie-injecting proxy forwarding, and agent-driven page capture (screenshots, element serialization, GIF tab recording). Use when the user says "manta", "check recordings", "view call chains", "create an action / turn a recording into an action", "execute an action / run that action", "search actions / what actions are available", "call the API with my login state", "proxy_fetch", "show element captures / compare element captures", "screenshot this page / capture this element", "record my screen / record a GIF", "check environment", "initialize environment", "can't connect", etc.
+description: >-
+  Usage guide for the manta-action-kit suite (Chrome extension + MCP server):
+  environment checks and initialization, extension/MCP/connection
+  troubleshooting, recording APIs, and action management — creating actions
+  from recordings, searching and executing actions, cookie-injecting proxy
+  forwarding, and agent-driven page capture (screenshots, element
+  serialization, GIF tab recording). Use when the user says "manta", "check
+  recordings", "view call chains", "create an action / turn a recording into
+  an action", "execute an action / run that action", "search actions / what
+  actions are available", "call the API with my login state", "proxy_fetch",
+  "show element captures / compare element captures", "screenshot this page /
+  capture this element", "record my screen / record a GIF", "check
+  environment", "initialize environment", "can't connect", etc.
 ---
 
 # manta-action-kit Suite Usage Guide
@@ -12,7 +24,8 @@ The suite consists of two parts; see the repo root `CLAUDE.md` for how they coll
   process); sandboxed proxy gateway (injects cookies when forwarding — cookies are never exposed to
   the agent).
 - **MCP server** (`packages/mcp`, stdio): provides the tools in this file. Tool names carry the
-  prefix `mcp__manta-action-kit__`. **"manta" is the user-facing short alias** for it.
+  prefix `mcp__manta-action-kit__`. **"manta" is the user-facing short alias** for it. A Python
+  port lives in `packages/mcp-py` (same tool surface, versioned in lockstep — see section 6).
 
 > **Path note.** `packages/...` paths below are relative to the manta-action-kit repo root — they
 > apply when working inside that repo. If this skill was installed into another project, locate the
@@ -34,7 +47,7 @@ performs a full authenticated probe.
 
 **How to get `MANTA_TOKEN`:** run `claude mcp get manta-action-kit` (its output shows the server's
 `env` block), or read your MCP client's config file. If you can't retrieve it, ask the user to
-re-copy the install prompt from the extension (Action tab → *Copy install prompt*) — the token is
+re-copy the install prompt from the extension (Action tab → _Copy install prompt_) — the token is
 embedded there.
 
 The script covers steps 1–3 below (including an end-to-end probe as a peer, distinguishing "bridge
@@ -190,11 +203,11 @@ styles (including custom properties and `::before`/`::after` rules), and a sourc
 available. Captures are stored locally (up to 20, oldest evicted) and the user can diff any two of
 them in the extension's preview tab.
 
-| User says                                                      | Tool                     | Notes                                                                       |
-| -------------------------------------------------------------- | ------------------------ | --------------------------------------------------------------------------- |
-| "list element captures / what UI snapshots do I have"          | `list_element_captures`  | Summaries only (page, title, element count) — pick an id here first         |
-| "show that capture / how is this component built"              | `get_element_capture`    | Full element tree with computed styles                                      |
-| "compare these two captures / why do the styles differ"        | `diff_element_captures`  | Returns a text report of property-level changes per DOM path + an `identical` flag |
+| User says                                               | Tool                    | Notes                                                                              |
+| ------------------------------------------------------- | ----------------------- | ---------------------------------------------------------------------------------- |
+| "list element captures / what UI snapshots do I have"   | `list_element_captures` | Summaries only (page, title, element count) — pick an id here first                |
+| "show that capture / how is this component built"       | `get_element_capture`   | Full element tree with computed styles                                             |
+| "compare these two captures / why do the styles differ" | `diff_element_captures` | Returns a text report of property-level changes per DOM path + an `identical` flag |
 
 Typical use cases: the user rebuilt a UI and wants you to check it, they reference another project's
 module when building a new one, or a component renders differently standalone vs. as a micro-app
@@ -202,7 +215,7 @@ child (capture both, then diff).
 
 Consuming a capture to recreate UI: build semantic HTML and clean CSS rules from the snapshot —
 **do not copy the inlined computed styles verbatim**. Each node inlines the full computed style of
-the moment; treat it as ground truth for *what it should look like*, not as the stylesheet to ship.
+the moment; treat it as ground truth for _what it should look like_, not as the stylesheet to ship.
 Pay attention to custom properties and pseudo-element rules, which are emitted in a `<style>` block.
 
 ### Page capture (agent-driven: screenshots / live element serialization / GIF recording)
@@ -212,21 +225,26 @@ no success notifications — outcomes come back in the tool result). Element cap
 cannot run on `chrome://` pages, but screenshots CAN (they fall back to a CDP render there) — only
 Chrome-protected targets such as the Web Store still refuse (`screenshot:protected-page`).
 
-| User says                                                       | Tool                     | Notes                                                                        |
-| --------------------------------------------------------------- | ------------------------ | ---------------------------------------------------------------------------- |
-| "screenshot this page / full-page screenshot"                   | `capture_screenshot`     | `visible` or `fullPage` (scroll-and-stitch); returns a downscaled image + `historyId` |
-| "grab this element from the page / serialize the nav bar"       | `capture_element`        | selector / `point` / `box` (exactly one); returns a lean tree — full detail via `get_element_capture(captureId)` |
-| "record my screen as a GIF / record this tab"                   | `start_gif_recording`    | ⚠️ Blocks up to ~2 min on a confirmation popup the USER must Allow (that click is Chrome's required gesture for tab capture); 5-min auto-stop |
-| "stop the recording"                                            | `stop_gif_recording`     | Returns the WebM `draftId` (if briefly absent, read `lastResult.draftId` from the status tool) |
-| "pause / resume the recording"                                  | `pause_gif_recording` / `resume_gif_recording` | —                                                            |
-| "is it recording?"                                              | `get_gif_recording_status` | Current state + how the last recording ended (`lastResult`)                |
-| "list my recordings"                                            | `list_gif_history`       | WebM drafts (metadata only)                                                  |
+| User says                                                 | Tool                                           | Notes                                                                                                                                                                                                                                      |
+| --------------------------------------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| "screenshot this page / full-page screenshot"             | `capture_screenshot`                           | `visible` or `fullPage` (scroll-and-stitch); returns a downscaled image + `historyId`                                                                                                                                                      |
+| "grab this element from the page / serialize the nav bar" | `capture_element`                              | selector / `point` / `box` (exactly one) + optional `coordinates` (`"viewport"` default / `"page"` — pass `"page"` for coordinates read off a fullPage screenshot); returns a lean tree — full detail via `get_element_capture(captureId)` |
+| "record my screen as a GIF / record this tab"             | `start_gif_recording`                          | ⚠️ Blocks up to ~2 min on a confirmation popup the USER must Allow (that click is Chrome's required gesture for tab capture); 5-min auto-stop                                                                                              |
+| "stop the recording"                                      | `stop_gif_recording`                           | Returns the WebM `draftId` (if briefly absent, read `lastResult.draftId` from the status tool)                                                                                                                                             |
+| "pause / resume the recording"                            | `pause_gif_recording` / `resume_gif_recording` | —                                                                                                                                                                                                                                          |
+| "is it recording?"                                        | `get_gif_recording_status`                     | Current state + how the last recording ended (`lastResult`)                                                                                                                                                                                |
+| "list my recordings"                                      | `list_gif_history`                             | WebM drafts (metadata only)                                                                                                                                                                                                                |
 
 Notes:
 
 - `capture_screenshot` fails with `screenshot:debugger-conflict` if DevTools is attached to the tab —
   tell the user to close DevTools. On a recording tab, the CDP fallback may leave Chrome's
   "being debugged" infobar inside the shot.
+- `capture_element` pierces into iframes (up to depth 3): the page's iframes are searched when the
+  top frame has no match (write the selector as seen INSIDE the frame), a `point` hit on an
+  `<iframe>` captures the inner element, and a `box` covering only an iframe captures that frame's
+  content. Timeout is 45s to cover the worst-case relay chain — don't give up early on a slow
+  first response.
 - GIF drafts are **pre-transcode WebM**: WebM→GIF/MP4 conversion runs inside the extension's preview
   tab and cannot be triggered remotely — after `stop_gif_recording`, tell the user to open the draft
   from the side panel's capture tab to transcode/download it.
@@ -251,13 +269,19 @@ About `proxy_fetch` / `proxy_sse`:
 
 About `create_action` / `execute_action`:
 
-- These also pass the **extension's confirmation popup** (creating/updating shows the action name
-  and description; executing confirms once per target host for the whole run, so the user can
-  verify before approving).
+- **Confirmation behavior**: creating/updating/deleting an action is silent (validation only — no
+  popup on either the MCP or the extension side). The human gate lives at replay time:
+  `execute_action` runs through the extension gateway, whose confirmation popup fires **once per
+  target host for the whole run**, so the user can verify before approving.
 - Action steps only reference recorded callIds and **contain no credentials**; during replay the
   extension gateway injects the user's cookies, and inter-step dependencies (upstream response
   values → downstream request fields) are resolved automatically by `execute_action` — no manual
   orchestration needed.
+- **Template overrides** support the built-in fresh-value helpers `{{nowMs}}` / `{{nowSec}}` /
+  `{{uuid}}` (a declared param of the same name wins) — use them for timestamps, nonces and
+  one-shot ids a replay cannot reuse from the recording; never hardcode those. Form-encoded
+  bodies can be overridden too, including an embedded URL-encoded JSON envelope (paths address
+  the embedded JSON, e.g. `data[0].id`), and array-root bodies are overridden by index.
 
 ## 4. Debugging Workflow (when modifying `packages/mcp` source)
 
@@ -270,13 +294,13 @@ About `create_action` / `execute_action`:
 
 ## 5. Troubleshooting Quick Reference
 
-| Symptom                                      | Cause                                      | Fix                                                                                 |
-| -------------------------------------------- | ------------------------------------------ | ----------------------------------------------------------------------------------- |
-| `claude mcp list` missing this server or ✘   | Not registered / dist missing              | Section 1, steps 1 and 2                                                            |
+| Symptom                                      | Cause                                          | Fix                                                                                 |
+| -------------------------------------------- | ---------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `claude mcp list` missing this server or ✘   | Not registered / dist missing                  | Section 1, steps 1 and 2                                                            |
 | Tool reports `No Chrome extension connected` | Chrome closed / port mismatch / token mismatch | Section 1, step 3's three items                                                     |
-| Tool reports `RPC ... timed out`             | Service worker dormant / just reloaded     | Wake the extension, then retry                                                      |
-| Startup fatal: port conflict                 | 8787/8788 occupied                         | `lsof -nP -iTCP:<port>` to find the holder; kill it or change the port on both ends |
-| Source changes not taking effect             | tsc watch doesn't hot-restart              | `/mcp` reconnect or restart the session                                             |
+| Tool reports `RPC ... timed out`             | Service worker dormant / just reloaded         | Wake the extension, then retry                                                      |
+| Startup fatal: port conflict                 | 8787/8788 occupied                             | `lsof -nP -iTCP:<port>` to find the holder; kill it or change the port on both ends |
+| Source changes not taking effect             | tsc watch doesn't hot-restart                  | `/mcp` reconnect or restart the session                                             |
 
 ## 6. Repository Context
 
@@ -284,5 +308,9 @@ About `create_action` / `execute_action`:
 - MCP source: `packages/mcp/src/` (`index.ts` tool definitions, `bridge.ts` WS bridge and error
   messages). Frame protocol and port constants 8787/8788 live in `packages/protocol/src/`
   (`@manta-action-kit/protocol`); `packages/mcp/src/protocol.ts` is just a re-export.
+- A **Python port** of the MCP server lives in `packages/mcp-py` (`manta-action-kit-mcp` on PyPI,
+  versioned in lockstep with the Node package, same tool surface and WS handshake). Kept in sync
+  by contract tests that compare it against a JSON fixture exported from the real Node tool
+  registration (`packages/mcp/scripts` → `contract:export`).
 - Extension source: `packages/extension/` (`lib/gateway/` gateway, `lib/action/` action types and
   replay engine, `lib/mcp/handlers.ts` per-tool toggles, `components/action/` action tab UI).

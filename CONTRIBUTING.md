@@ -43,6 +43,39 @@ via `/mcp` in Claude Code (or restart the session) to pick up changes. See
 [`packages/mcp/README.md`](packages/mcp/README.md) for architecture and the
 tool inventory.
 
+### Keeping the Node and Python MCP servers in sync
+
+`packages/mcp-py` is a Python port of `packages/mcp`. The tool surface is kept
+in sync by a contract fixture exported from the REAL Node registration path:
+
+```bash
+pnpm --filter @manta-action-kit/mcp build            # dist must be current
+pnpm --filter @manta-action-kit/mcp contract:export  # regenerates the fixture
+```
+
+This rewrites `packages/mcp-py/tests/fixtures/tool-contract.json` (tool names,
+descriptions, input schemas, `_meta`). The Python suite then fails on any
+drift:
+
+```bash
+cd packages/mcp-py && uv run pytest tests/test_tool_contract.py tests/test_node_parity.py
+```
+
+When you add or change a tool in `packages/mcp/src/index.ts`:
+
+1. `pnpm --filter @manta-action-kit/mcp contract:export`
+2. Port the change to `packages/mcp-py/src/manta_action_kit_mcp/server.py`
+   (descriptions are compared byte-for-byte — copy the text from the fixture)
+3. `uv run pytest` in `packages/mcp-py` until green
+
+Anything that must legitimately diverge is declared in the test's
+`ALLOWED_MISSING` / `ALLOWED_DESCRIPTION_OVERRIDES` tables with a reason.
+Version numbers are lockstep: bump `packages/mcp/package.json` and
+`packages/mcp-py/pyproject.toml` together (guarded by `test_node_parity.py`).
+The handshake/wire bytes are pinned independently by live cross-language
+tests (`packages/mcp-py/tests/test_cross_node_bridge.py`, requires the Node
+`dist/` to be built; they skip otherwise).
+
 ## Pre-submit checks
 
 Run all of these before opening a change; they must pass:

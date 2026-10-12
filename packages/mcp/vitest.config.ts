@@ -7,5 +7,8 @@ export default defineConfig({
   test: {
     include: ['**/*.test.ts'],
     environment: 'node',
+    // The suite bare-imports src/index.ts for the registered tool surface;
+    // this flag keeps that import from binding the bridge/proxy ports.
+    env: { MCP_NO_AUTORUN: '1' },
   },
 });

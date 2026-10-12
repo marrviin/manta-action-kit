@@ -27,7 +27,6 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { createServer } from "node:net";
 import { createRequire } from "node:module";
-import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { startBridge, type Bridge } from "./bridge.js";
 import { startPeerClient, type PeerClient } from "./peer-client.js";
@@ -1512,12 +1511,14 @@ async function shutdown() {
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
 
-// Auto-run only when executed directly (node dist/index.js); a bare import
-// (the test suite) must get the registered tool surface WITHOUT binding ports.
-const isDirectRun =
-  !!process.argv[1] &&
-  import.meta.url === pathToFileURL(process.argv[1]).href;
-if (isDirectRun) {
+// Auto-run unless explicitly suppressed (MCP_NO_AUTORUN=1, set by the test
+// suite so a bare import gets the registered tool surface WITHOUT binding
+// ports). Unlike argv[1] comparisons, an env switch makes no assumptions
+// about the launch path: npx, npm-global bins, pnpm dlx and bunx all hand
+// the process a different argv[1] (runner script, shim, or symlink), which
+// is exactly what silently defeated the previous direct-run guard under
+// npm 12's non-pinned exec path (the MCP client just sees CONNECTION_CLOSED).
+if (process.env.MCP_NO_AUTORUN !== "1") {
   main().catch((err) => {
     console.error("[manta-action-kit-mcp] fatal", err);
     process.exit(1);

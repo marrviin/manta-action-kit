@@ -23,20 +23,7 @@ agent 说"这个你做不了"。
 
 ## 工作原理
 
-```
-   你操作一次页面                  你的 agent（Claude Code / Codex / Cursor / …）
-        │                                        │
-        ▼                                        │ MCP over stdio
- ┌──────────────────────┐                  ┌──────▼───────────────┐
- │  Manta 扩展           │◀─── 本地 WS ────│  @manta-action-kit/  │
- │  hook fetch/XHR，     │  （双向认证）    │  mcp                 │
- │  逐条记录 API 调用到   │                 └──────────────────────┘
- │  IndexedDB            │
- └──────────┬───────────┘
-            │  仅在你批准时，于网络层注入你的 Cookie
-            ▼
-      目标站点 API   ← 请求从你的浏览器发出，带着你的登录态
-```
+![manta-action-kit 系统架构](docs/architecture/manta-action-kit.zh-CN.png)
 
 1. **录制** —— popup 里点"开始"，正常操作页面，点"结束"。扩展捕获每一条
    `fetch`/`XHR`（请求**和**响应，含 SSE 流式响应），沉淀成可逐条查看的调用链。
@@ -74,12 +61,12 @@ agent 说"这个你做不了"。
 录制是素材，**Action 才是产物**。蒸馏出的动作是可参数化、可重放的流程，
 agent 像用其他工具一样列出并执行它们：
 
-| 领域 | 工具 |
-| --- | --- |
+| 领域     | 工具                                                                                           |
+| -------- | ---------------------------------------------------------------------------------------------- |
 | 读取录制 | `list_recordings` · `get_recording` · `get_call` · `get_flow` · `get_endpoints`（脱敏 Schema） |
-| Action | `list_actions` · `search_actions` · `create_action` · `execute_action` 等 |
-| 沙箱代理 | `proxy_fetch` · `proxy_sse`（带你的登录态） |
-| 运维 | `health` · 代理规则管理 |
+| Action   | `list_actions` · `search_actions` · `create_action` · `execute_action` 等                      |
+| 沙箱代理 | `proxy_fetch` · `proxy_sse`（带你的登录态）                                                    |
+| 运维     | `health` · 代理规则管理                                                                        |
 
 > 完整工具表（23 个，含元素捕获读取与代理规则管理）见
 > [`packages/mcp/README.md`](packages/mcp/README.md)。
@@ -90,7 +77,7 @@ agent 像用其他工具一样列出并执行它们：
 
 从 agent 视角看一个 Action 是这样的：
 
-> `search_actions("track shipment")` → *track-order-shipment* —— 参数
+> `search_actions("track shipment")` → _track-order-shipment_ —— 参数
 > `orderId`；步骤：查订单 → 把 `{{steps[0].outputs[id]}}` 传进物流接口 →
 > `execute_action({ actionId, params: { orderId: "A1002" } })` → 搞定。全程
 > 走你的登录态、一次确认弹窗、完整审计。
@@ -102,7 +89,7 @@ agent 像用其他工具一样列出并执行它们：
 安装。
 
 **2. 复制安装提示词**：点击扩展工具栏图标，打开侧边栏（popup 里有「打开
-侧边栏」入口）→ *Action* 标签页 → *复制安装提示词*。里面嵌着你的专属桥接
+侧边栏」入口）→ _Action_ 标签页 → _复制安装提示词_。里面嵌着你的专属桥接
 token（`MANTA_TOKEN`）。
 
 **3. 把 MCP 服务加进你的 agent。** 需要 [Node.js](https://nodejs.org)
@@ -132,8 +119,8 @@ Code 也可以跑 `claude mcp add` 按引导添加），或手动加进 MCP 配�
 
 **4. 用起来。** 在你的网站上录制一段流程，然后对 agent 说：
 
-> *"我刚录了订单物流查询的流程。把它变成一个 action，然后查一下订单
-> A1002 到哪了。"*
+> _"我刚录了订单物流查询的流程。把它变成一个 action，然后查一下订单
+> A1002 到哪了。"_
 
 桥接 100% 跑在 `127.0.0.1` 上——除了你批准的 API 调用，没有任何数据离开
 你的机器。
