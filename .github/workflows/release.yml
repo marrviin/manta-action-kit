@@ -55,8 +55,43 @@ jobs:
       - run: pnpm --filter @manta-action-kit/mcp pack
       - run: npm publish manta-action-kit-mcp-*.tgz --provenance --access public
 
+  publish-mcp-py:
+    needs: publish-mcp
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Verify tag matches package version
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG=$(sed -n 's/^version = "\(.*\)"$/\1/p' packages/mcp-py/pyproject.toml | head -1)
+          if [ "$TAG" != "$PKG" ]; then
+            echo "Tag v$TAG does not match packages/mcp-py version $PKG"
+            exit 1
+          fi
+      - name: Run the Python test suite
+        working-directory: packages/mcp-py
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts || true # 对拍测试需要 node_modules 里的 ws
+          pnpm --filter @manta-action-kit/mcp build
+          uv sync
+          uv run pytest -q
+      # PyPI Trusted Publishing（OIDC）：无需 token。注意与 npm 同样的限制 —
+      # 全新项目首版无法由 OIDC 创建，需先在 pypi.org 上把 pending publisher
+      # 配置好（Account settings → Publishing：
+      #   project: manta-action-kit-mcp, owner: marrviin, repo: manta-action-kit,
+      #   workflow: release.yml, environment: 留空）
+      # 之后首版即可由本 job 直接发布并自动绑定 trusted publisher。
+      - name: Build and publish to PyPI
+        working-directory: packages/mcp-py
+        run: |
+          uv build
+          uv publish
+
   github-release:
-    needs: [publish-protocol, publish-mcp]
+    needs: [publish-protocol, publish-mcp, publish-mcp-py]
     runs-on: ubuntu-latest
     permissions:
       contents: write # 创建 Release 需要
