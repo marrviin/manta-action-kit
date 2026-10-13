@@ -25,6 +25,7 @@ const h = vi.hoisted(() => ({
   runGatewayFetch: vi.fn(),
   runGatewaySse: vi.fn(),
   requestGatewayConfirmation: vi.fn(),
+  collectCookiesForUrl: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({ getCalls: h.getCalls }));
@@ -48,6 +49,10 @@ vi.mock("@/lib/gateway/run", () => {
 
 vi.mock("@/lib/gateway/confirm", () => ({
   requestGatewayConfirmation: h.requestGatewayConfirmation,
+}));
+
+vi.mock("@/lib/gateway/dnr", () => ({
+  collectCookiesForUrl: h.collectCookiesForUrl,
 }));
 
 import { runAction, resolveActionParams } from "./replay";
@@ -292,6 +297,38 @@ describe("runAction: template resolution", () => {
     expect(run.steps[0]!.errorText).toMatch(/unknown parameter "nope"/);
     expect(h.runGatewayFetch).not.toHaveBeenCalled();
     expect(run.steps).toHaveLength(1);
+  });
+
+  it("empty-string optional params resolve (default or runtime) instead of vanishing", async () => {
+    calls = [makeCall("c1"), makeCall("c2")];
+    const action = makeAction(
+      [
+        makeStep("c1", { overrides: [ov("query", "k", "{{kw}}")] }),
+        makeStep("c2", { overrides: [ov("query", "k2", "{{kw}}")] }),
+      ],
+      [
+        { name: "kw", type: "string", required: false, default: "" },
+        { name: "kw2", type: "string", required: false, default: "preset" },
+      ],
+    );
+    // Default "" is applied and the template resolves to the empty string.
+    await runAction(action, undefined);
+    expect(new URL(forwardedReq(0).url).searchParams.get("k")).toBe("");
+    // An explicit runtime "" overrides a non-empty default.
+    await runAction(action, { kw: "", kw2: "" });
+    expect(new URL(forwardedReq(1).url).searchParams.get("k2")).toBe("");
+  });
+
+  it("required param with empty default still fails as missing", async () => {
+    calls = [makeCall("c1")];
+    const action = makeAction(
+      [makeStep("c1", { overrides: [ov("query", "id", "{{id}}")] })],
+      [{ name: "id", type: "string", required: true, default: "" }],
+    );
+    await expect(runAction(action, undefined)).rejects.toThrow(
+      /Missing required param "id"/,
+    );
+    expect(h.runGatewayFetch).not.toHaveBeenCalled();
   });
 
   it("referencing an output that produced no value aborts with a precise error", async () => {
@@ -672,5 +709,196 @@ describe("runAction: run semantics", () => {
     const run = await runAction(makeAction([makeStep("c1")]), undefined);
     expect(run.steps[0]!.truncated).toBe(true);
     expect(run.steps[0]!.bodyPreview).toHaveLength(2000);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// runAction — {{cookie:NAME}} templates
+// ---------------------------------------------------------------------------
+
+describe("runAction: {{cookie:NAME}} templates", () => {
+  beforeEach(() => {
+    h.collectCookiesForUrl.mockResolvedValue([
+      { name: "session", value: "sess-abc123", domain: "api.example.com" },
+      { name: "XSRF-TOKEN", value: "fresh-token-42", domain: "api.example.com" },
+    ]);
+  });
+
+  it("resolves a header override to the LIVE cookie value at replay time", async () => {
+    calls = [makeCall("c1")];
+    const action = makeAction([
+      makeStep("c1", {
+        overrides: [ov("header", "X-XSRF-TOKEN", "{{cookie:XSRF-TOKEN}}")],
+      }),
+    ]);
+    await runAction(action, undefined);
+    // Cookies are read from the RECORDED call's url, fresh per run.
+    expect(h.collectCookiesForUrl).toHaveBeenCalledWith("https://api.example.com/c1");
+    expect(forwardedReq().headers?.["X-XSRF-TOKEN"]).toBe("fresh-token-42");
+    // The stale recorded value must be gone.
+    expect(JSON.stringify(forwardedReq())).not.toContain("stale");
+  });
+
+  it("supports a cookie value embedded in a larger header (Bearer-style)", async () => {
+    calls = [makeCall("c1")];
+    const action = makeAction([
+      makeStep("c1", {
+        overrides: [ov("header", "Authorization", "Bearer {{cookie:session}}")],
+      }),
+    ]);
+    await runAction(action, undefined);
+    expect(forwardedReq().headers?.["Authorization"]).toBe("Bearer sess-abc123");
+  });
+
+  it("rejects cookie templates outside header overrides", async () => {
+    calls = [makeCall("c1")];
+    const action = makeAction([
+      makeStep("c1", { overrides: [ov("query", "t", "{{cookie:XSRF-TOKEN}}")] }),
+    ]);
+    const run = await runAction(action, undefined);
+    expect(run.steps[0]!.outcome).toBe("error");
+    expect(run.steps[0]!.errorText).toMatch(/only allowed in header overrides/);
+    expect(h.runGatewayFetch).not.toHaveBeenCalled();
+  });
+
+  it("fails the step when the cookie is not present for the recorded url", async () => {
+    calls = [makeCall("c1")];
+    h.collectCookiesForUrl.mockResolvedValue([
+      { name: "other", value: "unrelated-1", domain: "api.example.com" },
+    ]);
+    const action = makeAction([
+      makeStep("c1", {
+        overrides: [ov("header", "X-XSRF-TOKEN", "{{cookie:XSRF-TOKEN}}")],
+      }),
+    ]);
+    const run = await runAction(action, undefined);
+    expect(run.steps[0]!.outcome).toBe("error");
+    expect(run.steps[0]!.errorText).toMatch(
+      /cookie "XSRF-TOKEN", which the browser would not send/,
+    );
+  });
+
+  it("reads cookies fresh for every step (no stale cross-step reuse)", async () => {
+    calls = [makeCall("c1"), makeCall("c2")];
+    const action = makeAction([
+      makeStep("c1", { overrides: [ov("header", "X-XSRF-TOKEN", "{{cookie:XSRF-TOKEN}}")] }),
+      makeStep("c2", { overrides: [ov("header", "X-XSRF-TOKEN", "{{cookie:XSRF-TOKEN}}")] }),
+    ]);
+    h.collectCookiesForUrl
+      .mockResolvedValueOnce([{ name: "XSRF-TOKEN", value: "token-1", domain: "" }])
+      .mockResolvedValueOnce([{ name: "XSRF-TOKEN", value: "token-2", domain: "" }]);
+    await runAction(action, undefined);
+    expect(forwardedReq(0).headers?.["X-XSRF-TOKEN"]).toBe("token-1");
+    expect(forwardedReq(1).headers?.["X-XSRF-TOKEN"]).toBe("token-2");
+  });
+
+  it("duplicate cookie names resolve like the Cookie header: last wins", async () => {
+    calls = [makeCall("c1")];
+    h.collectCookiesForUrl.mockResolvedValue([
+      { name: "XSRF-TOKEN", value: "shadowed-value", domain: ".example.com" },
+      { name: "XSRF-TOKEN", value: "host-wins-value", domain: "api.example.com" },
+    ]);
+    const action = makeAction([
+      makeStep("c1", { overrides: [ov("header", "X-XSRF-TOKEN", "{{cookie:XSRF-TOKEN}}")] }),
+    ]);
+    await runAction(action, undefined);
+    expect(forwardedReq().headers?.["X-XSRF-TOKEN"]).toBe("host-wins-value");
+  });
+
+  it("invalid cookie names fail loudly", async () => {
+    calls = [makeCall("c1")];
+    const action = makeAction([
+      makeStep("c1", { overrides: [ov("header", "X-X", "{{cookie:bad/name}}")] }),
+    ]);
+    const run = await runAction(action, undefined);
+    expect(run.steps[0]!.outcome).toBe("error");
+    expect(run.steps[0]!.errorText).toMatch(/Invalid cookie name/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// runAction — continueOnError
+// ---------------------------------------------------------------------------
+
+describe("runAction: continueOnError", () => {
+  beforeEach(() => {
+    calls = [makeCall("c1"), makeCall("c2"), makeCall("c3")];
+  });
+
+  it("default: stops at the first failed step (unchanged semantics)", async () => {
+    h.runGatewayFetch
+      .mockResolvedValueOnce(gwRes({ ok: true }))
+      .mockRejectedValueOnce(new Error("step 2 dies"));
+    const run = await runAction(
+      makeAction([makeStep("c1"), makeStep("c2"), makeStep("c3")]),
+      undefined,
+    );
+    expect(run.endReason).toBe("aborted");
+    expect(run.failedStep).toBe(2);
+    expect(run.steps).toHaveLength(2);
+    expect(h.runGatewayFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("continueOnError: every step is attempted, endReason reports the errors", async () => {
+    h.runGatewayFetch
+      .mockResolvedValueOnce(gwRes({ ok: true }))
+      .mockRejectedValueOnce(new Error("step 2 dies"))
+      .mockResolvedValueOnce(gwRes({ ok: true }));
+    const run = await runAction(
+      makeAction([makeStep("c1"), makeStep("c2"), makeStep("c3")]),
+      undefined,
+      { continueOnError: true },
+    );
+    expect(run.endReason).toBe("completed-with-errors");
+    expect(run.failedStep).toBe(2);
+    expect(run.failure).toBe("error");
+    expect(run.steps).toHaveLength(3);
+    expect(run.steps[1]!.outcome).toBe("error");
+    expect(run.steps[2]!.outcome).toBe("ok");
+    expect(h.runGatewayFetch).toHaveBeenCalledTimes(3);
+  });
+
+  it("continueOnError: a failed step's missing outputs fail later templates precisely", async () => {
+    calls = [
+      makeCall("c1", { resBody: JSON.stringify({ id: "x1" }) }),
+      makeCall("c2"),
+    ];
+    h.runGatewayFetch
+      .mockRejectedValueOnce(new Error("bootstrap dies"))
+      .mockResolvedValueOnce(gwRes({ ok: true }));
+    const action = makeAction([
+      makeStep("c1", { outputs: { id: "id" } }),
+      makeStep("c2", { overrides: [ov("body", "orderId", "{{steps[0].outputs[id]}}")] }),
+    ]);
+    const run = await runAction(action, undefined, { continueOnError: true });
+    expect(run.endReason).toBe("completed-with-errors");
+    expect(run.failedStep).toBe(1);
+    expect(run.steps[1]!.outcome).toBe("error");
+    expect(run.steps[1]!.errorText).toMatch(/steps\[0\]\.outputs\[id\], which produced no value/);
+  });
+
+  it("continueOnError with all steps ok stays 'complete'", async () => {
+    const run = await runAction(
+      makeAction([makeStep("c1"), makeStep("c2")]),
+      undefined,
+      { continueOnError: true },
+    );
+    expect(run.endReason).toBe("complete");
+    expect(run.failedStep).toBeUndefined();
+  });
+
+  it("continueOnError: first failure anchors failedStep even when later ones differ", async () => {
+    const { GatewayRefusedError } = await import("@/lib/gateway/run");
+    h.runGatewayFetch
+      .mockRejectedValueOnce(new GatewayRefusedError("blocked", "blocked"))
+      .mockRejectedValueOnce(new Error("transport"));
+    const run = await runAction(
+      makeAction([makeStep("c1"), makeStep("c2")]),
+      undefined,
+      { continueOnError: true },
+    );
+    expect(run.endReason).toBe("completed-with-errors");
+    expect(run.failedStep).toBe(1);
+    expect(run.failure).toBe("refused");
   });
 });

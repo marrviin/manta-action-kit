@@ -153,6 +153,8 @@ export const zhCN: Messages = {
     valueTooltip: "值：{{value}}",
     response: "响应",
     consumes: "{{target}} ← 步骤 #{{fromSeq}} 的 {{fromField}}",
+    // "{{target}} ← cookie {{from}}" — 来自浏览器 cookie 的依赖
+    consumesCookie: "{{target}} ← cookie {{from}}",
     produces: "响应 {{fromPath}} → 步骤 #{{toSeq}} 的{{target}}",
     depUnlikely: "疑似巧合",
   },
@@ -206,6 +208,7 @@ export const zhCN: Messages = {
     items: "元素",
     inputsFrom: "值来源",
     inputFromLabel: "{{to}} ← {{from}} 的 {{fromPath}}",
+    inputFromCookie: "{{to}} ← cookie {{from}}",
     inputUnlikely: "疑似巧合",
   },
   gateway: {
@@ -377,6 +380,9 @@ export const zhCN: Messages = {
     rebind_proxyLabel: "代理端口自愈",
     rebind_proxyDesc:
       "端口冲突时自动将本地代理迁移至空闲端口并同步给插件（服务内置能力，不受开关控制）",
+    extension_infoLabel: "扩展信息",
+    extension_infoDesc:
+      "内部能力：上报本扩展版本号，供 MCP 服务做版本偏差检查（非 Agent 工具）",
     capture_screenshotLabel: "捕获截图",
     capture_screenshotDesc:
       "截取活动标签页（可见区域或滚动拼接整页）；返回给 Agent 一张降采样压缩图，原图存入截图历史",
@@ -440,6 +446,14 @@ export const zhCN: Messages = {
     dataImportEmpty: "文件中没有可导入的数据",
     connectorTitle: "连接器",
     connectorDesc: "与本地 MCP 服务的连接状态和工具开关",
+    mcpServerVersionLabel: "MCP 服务 {{version}}",
+    mcpServerVersionUnknown: "MCP 服务版本未知",
+    mcpVersionSkewServerNewer:
+      "MCP 服务（{{server}}）比本扩展（{{extension}}）新，新功能可能不生效。请在 Chrome 商店更新扩展（自动更新），或删除后重新安装。",
+    mcpVersionSkewExtensionNewer:
+      "本扩展（{{extension}}）比 MCP 服务（{{server}}）新，新功能可能缺失。请更新 MCP 服务：重新运行安装提示里的 npx 安装命令，或 pip install -U manta-action-kit-mcp。",
+    mcpVersionSkewServerOutdated:
+      "已连接的 MCP 服务版本较旧，不支持版本比对。请更新：重新运行安装提示里的 npx 安装命令，或 pip install -U manta-action-kit-mcp。",
     mcpPackageDesc:
       "配合本扩展使用的本地 MCP 服务：以 stdio 协议对接 AI Agent，经本地 WebSocket 桥接读取接口录制、回放动作并经沙箱代理转发请求",
     docsTitle: "使用文档",

@@ -38,18 +38,25 @@ export default defineConfig({
       ],
       thresholds: {
         // Floors sit just under the measured baseline of the current suite
-        // (global 45/44/43/46) — mostly held down by the laya model runtime in
+        // (global 55/51/53/57) — mostly held down by the laya model runtime in
         // lib/ai and deferred orchestration (relevance-run, capture-flow).
         // Raise as coverage grows; never lower without a reason.
-        statements: 44,
-        branches: 42,
-        functions: 42,
-        lines: 45,
+        statements: 52,
+        branches: 49,
+        functions: 50,
+        lines: 54,
         // Security-critical + most-complex modules carry higher floors.
-        'lib/gateway/**': { statements: 80, branches: 80, functions: 72, lines: 80 },
-        'lib/mcp/**': { statements: 60, branches: 65, functions: 45, lines: 60 },
-        'lib/db.ts': { statements: 70, branches: 45, functions: 60, lines: 78 },
-        'lib/recording/**': { statements: 88, branches: 78, lines: 90 },
+        'lib/gateway/**': { statements: 81, branches: 82, functions: 74, lines: 81 },
+        'lib/mcp/**': { statements: 84, branches: 75, functions: 85, lines: 88 },
+        'lib/db.ts': { statements: 85, branches: 60, functions: 72, lines: 92 },
+        'lib/recording/**': { statements: 90, branches: 83, lines: 93 },
+        'lib/utils.ts': { statements: 85, branches: 79, functions: 88, lines: 83 },
+        'lib/screenshot/capture-flow.ts': {
+          statements: 100,
+          branches: 80,
+          functions: 100,
+          lines: 100,
+        },
       },
     },
   },

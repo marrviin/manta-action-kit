@@ -42,6 +42,12 @@ export interface Bridge {
   /** Is an extension currently connected? */
   isConnected(): boolean;
   /**
+   * The connected extension's self-declared version (from its hello frame), or
+   * null when nothing is connected. Diagnostic only — the authoritative probe
+   * is the `extension_info` RPC.
+   */
+  extensionVersion(): string | null;
+  /**
    * Resolves once the WS server is listening; rejects if the port can't be bound
    * (e.g. EADDRINUSE — another server instance is already running). A rejected
    * bridge is useless, so callers should treat this as fatal.
@@ -65,12 +71,21 @@ function makeIdGen() {
  *   config injects). Clients prove knowledge of it during the handshake (see
  *   auth.ts) — the token itself never crosses the wire. `undefined` (env not
  *   set) means every client is rejected; `call()` then explains the fix.
+ * @param serverVersion This server's version, echoed to clients in the welcome
+ *   frame so the extension can detect a version skew (see WelcomeFrame.version).
  */
-export function startBridge(port: number, token: string | undefined, host = '127.0.0.1'): Bridge {
+export function startBridge(
+  port: number,
+  token: string | undefined,
+  host = '127.0.0.1',
+  serverVersion?: string,
+): Bridge {
   const wss = new WebSocketServer({ port, host });
   const pending = new Map<string, Pending>();
   const nextId = makeIdGen();
   let active: WebSocket | null = null;
+  /** The active extension's hello.version (diagnostic; see extensionVersion()). */
+  let activeExtensionVersion: string | null = null;
   let listening = false;
 
   // Log to stderr — stdout is reserved for the MCP stdio transport.
@@ -136,6 +151,8 @@ export function startBridge(port: number, token: string | undefined, host = '127
     // authenticated. Only 'authed' sockets may speak the business frames below.
     let stage: 'hello' | 'auth' | 'authed' = 'hello';
     let serverNonce = '';
+    /** The client's self-declared version from its hello (see WelcomeFrame.version). */
+    let clientVersion: string | null = null;
     const stageTimer = setTimeout(() => {
       if (stage !== 'authed') {
         log('handshake timed out — dropping client');
@@ -172,6 +189,7 @@ export function startBridge(port: number, token: string | undefined, host = '127
           // Remember the declared role now; it only takes EFFECT after the
           // auth challenge below succeeds.
           role = hello.role;
+          clientVersion = typeof hello.version === 'string' ? hello.version : null;
           if (typeof hello.nonce !== 'string' || hello.nonce.length === 0) {
             log('hello without nonce — dropping client');
             ws.terminate();
@@ -184,6 +202,9 @@ export function startBridge(port: number, token: string | undefined, host = '127
               type: 'welcome',
               proof: welcomeProof(token, hello.nonce),
               nonce: serverNonce,
+              // Optional (old clients ignore it): lets the extension detect a
+              // version skew with this server and surface a fix hint.
+              ...(serverVersion ? { version: serverVersion } : {}),
             }),
           );
           return;
@@ -198,6 +219,7 @@ export function startBridge(port: number, token: string | undefined, host = '127
             if (role === 'extension') {
               log('extension authenticated');
               active = ws;
+              activeExtensionVersion = clientVersion;
             } else {
               log('peer authenticated');
             }
@@ -263,7 +285,10 @@ export function startBridge(port: number, token: string | undefined, host = '127
       sockets.delete(ws);
       if (role === 'extension') {
         log('extension disconnected');
-        if (active === ws) active = null;
+        if (active === ws) {
+          active = null;
+          activeExtensionVersion = null;
+        }
       } else if (role === 'peer') {
         log('peer disconnected');
       }
@@ -334,6 +359,7 @@ export function startBridge(port: number, token: string | undefined, host = '127
 
   return {
     isConnected: () => !!active && active.readyState === active.OPEN,
+    extensionVersion: () => activeExtensionVersion,
     whenReady: () => ready,
     call,
     close,

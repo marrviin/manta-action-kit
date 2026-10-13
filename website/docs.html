@@ -109,9 +109,9 @@
       <section class="doc-section" id="quickstart">
         <h2 data-i18n="docs.qs.h">Quick start</h2>
         <ol>
-          <li data-i18n="docs.qs.s1"><strong>Install the extension</strong> from the <a href="https://chromewebstore.google.com/detail/manta-action-kit/pghddhbhbnlcehlmgnnalgaephllkeel">Chrome Web Store</a> (requires Chrome 116+; Firefox is not supported).</li>
-          <li data-i18n="docs.qs.s2"><strong>Copy the install prompt</strong> — click the extension's toolbar icon, open the side panel → Action tab → Copy install prompt. It embeds your personal bridge token (<code>MANTA_TOKEN</code>).</li>
-          <li data-i18n="docs.qs.s3"><strong>Add the MCP server</strong> to your agent (requires <a href="https://nodejs.org">Node.js</a> ≥ 18) — paste the prompt, or use the config below.</li>
+          <li data-i18n="docs.qs.s1"><strong>Install the extension</strong> from the <a href="https://chromewebstore.google.com/detail/manta-action-kit/pghddhbhbnlcehlmgnnalgaephllkeel">Chrome Web Store</a> (requires Chrome 116+; Firefox is not supported), then log into the site you want the agent to call.</li>
+          <li data-i18n="docs.qs.s2"><strong>Copy the install prompt</strong> — click the extension's toolbar icon, open the side panel → Action tab → Copy install prompt. It embeds your personal bridge token (<code>MANTA_TOKEN</code>). Can't see the toolbar icon? Chrome tucks new extensions behind the puzzle-piece menu next to the address bar — open it and pin Manta Action Kit.</li>
+          <li data-i18n="docs.qs.s3"><strong>Add the MCP server</strong> to your agent (requires <a href="https://nodejs.org">Node.js</a> ≥ 18 — check with <code>node -v</code>) — paste the prompt, or use the config below.</li>
           <li data-i18n="docs.qs.s4"><strong>Record a flow</strong> on your site, then ask your agent to turn it into an action and run it.</li>
         </ol>
         <pre>{
@@ -522,7 +522,7 @@ GET http://127.0.0.1:8788/gh-api/repos/marrviin/manta-action-kit
   ~/.claude/skills/manta-action-kit</pre>
         <p data-i18n="docs.skills.p2">
           It includes <code>check-env.mjs</code>, a one-shot authenticated health check
-          for the bridge (requires Node.js ≥ 22 for its native WebSocket):
+          for the bridge (requires Node.js ≥ 18 — native <code>WebSocket</code> on Node ≥ 22, a built-in raw-socket fallback on older versions):
         </p>
         <pre>MANTA_TOKEN=&lt;from the extension&gt; node check-env.mjs</pre>
       </section>
@@ -677,7 +677,7 @@ pnpm test             # vitest unit suite (security-critical pure modules)</pre>
 }</pre>
         <p data-i18n="docs.dev.p2">
           Deeper architecture notes live in the repo's
-          <a href="https://github.com/marrviin/manta-action-kit/blob/main/CLAUDE.md">CLAUDE.md</a>
+          <a href="https://github.com/marrviin/manta-action-kit/blob/main/CONTRIBUTING.md">CONTRIBUTING.md</a>
           and <a href="https://github.com/marrviin/manta-action-kit/blob/main/packages/mcp/README.md">MCP README</a>.
         </p>
       </section>
@@ -751,9 +751,9 @@ pnpm test             # vitest unit suite (security-critical pure modules)</pre>
     "docs.intro.p3": "MCP 服务只是一个桥——自身不持有任何数据。请先安装扩展；服务启动后扩展会自动拨入连接。",
 
     "docs.qs.h": "快速开始",
-    "docs.qs.s1": "<strong>安装扩展</strong>：从 <a href=\"https://chromewebstore.google.com/detail/manta-action-kit/pghddhbhbnlcehlmgnnalgaephllkeel\">Chrome Web Store</a> 安装（需要 Chrome 116+；不支持 Firefox）。",
-    "docs.qs.s2": "<strong>复制安装提示词</strong>：点击扩展工具栏图标打开侧边栏 → Action 标签页 → 复制安装提示词。其中已内嵌你的个人桥接 token（<code>MANTA_TOKEN</code>）。",
-    "docs.qs.s3": "<strong>把 MCP 服务加进 agent</strong>（需要 <a href=\"https://nodejs.org\">Node.js</a> ≥ 18）：直接粘贴提示词，或使用下方配置。",
+    "docs.qs.s1": "<strong>安装扩展</strong>：从 <a href=\"https://chromewebstore.google.com/detail/manta-action-kit/pghddhbhbnlcehlmgnnalgaephllkeel\">Chrome Web Store</a> 安装（需要 Chrome 116+；不支持 Firefox），然后登录你想让 agent 调用的那个网站。",
+    "docs.qs.s2": "<strong>复制安装提示词</strong>：点击扩展工具栏图标打开侧边栏 → Action 标签页 → 复制安装提示词。其中已内嵌你的个人桥接 token（<code>MANTA_TOKEN</code>）。工具栏看不到图标？Chrome 会把新装的扩展折叠进地址栏旁的拼图菜单——点开它，把 Manta Action Kit 图钉固定即可。",
+    "docs.qs.s3": "<strong>把 MCP 服务加进 agent</strong>（需要 <a href=\"https://nodejs.org\">Node.js</a> ≥ 18，用 <code>node -v</code> 自查）：直接粘贴提示词，或使用下方配置。",
     "docs.qs.envNote": "<code>MANTA_TOKEN</code> <strong>必填</strong>——它是桥接的认证密钥；未配置时服务端会拒绝所有客户端。<code>MANTA_WS_PORT</code>（默认 <code>8787</code>）需与扩展设置里的 MCP 端口一致；<code>MANTA_PROXY_PORT</code>（默认 <code>8788</code>）是沙箱代理的本地 HTTP 端口。两个端口保持默认值时可省略。",
     "docs.qs.verNote": "版本兼容：请使用与扩展版本匹配的 <code>@manta-action-kit/mcp</code>（扩展设置的「关于」里两者都有显示）。扩展更新后若工具调用开始报错，刷新 npm 包：<code>npx -y @manta-action-kit/mcp@latest</code>。",
     "docs.qs.s4": "<strong>录制一个流程</strong>：在你的网站上录一次，然后让 agent 把它变成 action 并执行。",
@@ -867,7 +867,7 @@ pnpm test             # vitest unit suite (security-critical pure modules)</pre>
 
     "docs.skills.h": "Agent Skill",
     "docs.skills.p1": "仓库自带一个 Claude Code Skill（<code>@manta-action-kit/skills</code>），教你的 agent 使用整套工具——排障、环境检查、录制 / Action 工作流。装进任意项目：",
-    "docs.skills.p2": "其中包含 <code>check-env.mjs</code>，一条命令对桥接做带认证的健康检查（需要 Node.js ≥ 22，用于原生 WebSocket）：",
+    "docs.skills.p2": "其中包含 <code>check-env.mjs</code>，一条命令对桥接做带认证的健康检查（需要 Node.js ≥ 18——Node ≥ 22 用原生 <code>WebSocket</code>，更旧版本走内置 raw-socket 降级实现）：",
 
     "docs.tools.h": "MCP 工具参考",
     "docs.tools.recH": "录制（读取 + 一个写入）",
@@ -903,7 +903,7 @@ pnpm test             # vitest unit suite (security-critical pure modules)</pre>
 
     "docs.dev.h": "开发",
     "docs.dev.p1": "本地开发 MCP 时，把 agent 配置指向本地构建的服务而不是已发布的包：",
-    "docs.dev.p2": "更深入的架构说明见仓库的 <a href=\"https://github.com/marrviin/manta-action-kit/blob/main/CLAUDE.md\">CLAUDE.md</a> 与 <a href=\"https://github.com/marrviin/manta-action-kit/blob/main/packages/mcp/README.md\">MCP README</a>。",
+    "docs.dev.p2": "更深入的架构说明见仓库的 <a href=\"https://github.com/marrviin/manta-action-kit/blob/main/CONTRIBUTING.md\">CONTRIBUTING.md</a> 与 <a href=\"https://github.com/marrviin/manta-action-kit/blob/main/packages/mcp/README.md\">MCP README</a>。",
 
     "footer.docs": "文档",
     "footer.changelog": "更新日志",

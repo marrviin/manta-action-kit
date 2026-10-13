@@ -30,6 +30,7 @@ import type {
 import { IDLE_RECORDING_STATE } from './types';
 import { isBlacklisted } from './filter';
 import { inferDependencies } from './infer-deps';
+import { inferCookieDependencies } from './cookie-deps';
 import { attachPrecedingInteractions } from './interaction';
 
 /** Minimal async KV the state machine needs (satisfied by WXT storage items). */
@@ -53,6 +54,13 @@ export interface SessionDeps extends SessionStores {
   newId(): string;
   /** epoch ms clock. */
   now(): number;
+  /**
+   * Cookies the browser would send to a URL ({name, value}), used at stop()
+   * for cookie-source dependency detection (see cookie-deps.ts). Optional:
+   * absent (tests, or hosts without the API) simply skips that pass — the
+   * response-body flow inference is unaffected.
+   */
+  cookieLookup?: (url: string) => Promise<Array<{ name: string; value: string }>>;
 }
 
 export interface StopResult {
@@ -296,7 +304,14 @@ export function createSession(deps: SessionDeps) {
         // Auto-infer the flow (field dependencies between calls) at save time so an
         // agent reading this recording gets the call chain, not just isolated calls.
         // Pure/deterministic (no LLM); the user can refine these in the detail view.
-        deps: inferDependencies(calls),
+        // Cookie-sourced edges (CSRF headers fed by cookies — no producer call)
+        // are appended by the second pass when a cookie lookup is wired.
+        deps: [
+          ...inferDependencies(calls),
+          ...(deps.cookieLookup
+            ? await inferCookieDependencies(calls, deps.cookieLookup)
+            : []),
+        ],
         // Keep the raw interaction timeline on the recording (Phase 2 feeds it to
         // laya). Omit when empty so old recordings and interaction-less ones compare equal.
         ...(ints.length > 0 ? { interactions: [...ints] } : {}),

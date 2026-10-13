@@ -152,4 +152,33 @@ describe('attachDependencies', () => {
     const payEp = withInputs.find((e) => e.pathKey === '/orders/:id/pay');
     expect(payEp?.inputsFrom).toHaveLength(1);
   });
+
+  it('re-keys a cookie-sourced dependency with fromCookie (no fromEndpointKey)', () => {
+    const eps = aggregateEndpoints(calls);
+    const withInputs = attachDependencies(eps, calls, [
+      dep({
+        id: 'd-cookie',
+        fromSeq: -1,
+        fromPath: 'cookie:XSRF-TOKEN',
+        toLocation: 'header',
+        toPath: 'X-XSRF-TOKEN',
+      }),
+    ]);
+    const payEp = withInputs.find((e) => e.pathKey === '/orders/:id/pay');
+    expect(payEp?.inputsFrom).toHaveLength(1);
+    expect(payEp?.inputsFrom?.[0]).toMatchObject({
+      toLocation: 'header',
+      toPath: 'X-XSRF-TOKEN',
+      fromCookie: 'XSRF-TOKEN',
+    });
+    expect(payEp?.inputsFrom?.[0]?.fromEndpointKey).toBeUndefined();
+  });
+
+  it('a cookie edge to an unknown consuming seq is dropped, not crash-surfaced', () => {
+    const eps = aggregateEndpoints(calls);
+    const withInputs = attachDependencies(eps, calls, [
+      dep({ id: 'd-ghost', fromSeq: -1, fromPath: 'cookie:XSRF-TOKEN', toSeq: 99 }),
+    ]);
+    expect(withInputs.every((e) => !e.inputsFrom?.some((i) => i.fromCookie))).toBe(true);
+  });
 });

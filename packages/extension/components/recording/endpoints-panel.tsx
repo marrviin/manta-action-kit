@@ -136,11 +136,13 @@ function EndpointBody({ ep }: { ep: EndpointSummary }) {
                   type={unlikely ? 'secondary' : undefined}
                   className={cn('font-mono text-[12px]! leading-5', unlikely && 'opacity-60')}
                 >
-                  {t('endpoints.inputFromLabel', {
-                    to,
-                    from: inp.fromEndpointKey,
-                    fromPath: inp.fromPath || '(body)',
-                  })}
+                  {inp.fromCookie
+                    ? t('endpoints.inputFromCookie', { to, from: inp.fromCookie })
+                    : t('endpoints.inputFromLabel', {
+                        to,
+                        from: inp.fromEndpointKey ?? '',
+                        fromPath: inp.fromPath || '(body)',
+                      })}
                   {unlikely ? ` · ${t('endpoints.inputUnlikely')}` : ''}
                 </Text>
               );

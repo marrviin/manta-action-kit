@@ -18,6 +18,7 @@ import logging
 from typing import Any
 
 from .bridge import Bridge, BridgeNotReady
+from ._compat import compat_verdict
 from .peer_client import PeerClient
 
 logger = logging.getLogger("manta.mcp")
@@ -58,15 +59,36 @@ class Runtime:
             return self.peer is not None and self.peer.is_connected()
         return False
 
-    def health_snapshot(self) -> dict[str, Any]:
+    async def extension_version(self) -> str | None:
+        """The connected extension's version, via the `extension_info` RPC
+        (works from the peer role too — the owner forwards it). None when the
+        extension is unreachable or predates the probe (older install)."""
+        if not self.extension_connected():
+            return None
+        try:
+            res = await self.call("extension_info", {}, timeout_ms=5_000)
+        except Exception:
+            # Old extension without extension_info — the caller treats this
+            # as "unknown" (no compat hint, versions still reported).
+            return None
+        version = res.get("version") if isinstance(res, dict) else None
+        return version if isinstance(version, str) else None
+
+    async def health_snapshot(self) -> dict[str, Any]:
         # The Python port hosts no script-driven HTTP proxy (yet), so
         # proxyListening is always false regardless of role.
+        extension_version = await self.extension_version()
+        verdict = compat_verdict(self.version, extension_version)
         return {
             "role": self.role,
             "wsPort": self.ws_port,
             "proxyPort": None,
             "proxyListening": False,
             "extensionConnected": self.extension_connected(),
+            "serverVersion": self.version,
+            "extensionVersion": extension_version,
+            "versionMatch": verdict["match"],
+            "compatHint": verdict["hint"],
         }
 
     # ── election ───────────────────────────────────────────────────────────
@@ -94,7 +116,7 @@ class Runtime:
             self._electing = False
 
     async def _try_become_owner(self) -> bool:
-        bridge = Bridge(self.ws_port, self.token)
+        bridge = Bridge(self.ws_port, self.token, server_version=self.version)
         try:
             await bridge.start()
         except OSError:

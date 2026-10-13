@@ -31,6 +31,7 @@ function fakeBridge(result: unknown): { bridge: Bridge; call: ReturnType<typeof 
   return {
     bridge: {
       isConnected: () => true,
+      extensionVersion: () => null,
       whenReady: () => Promise.resolve(),
       call: call as unknown as CallFn,
       close: () => Promise.resolve(),

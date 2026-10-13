@@ -163,6 +163,8 @@ export const en = {
     response: "response",
     // "{{target}} ← step #{{fromSeq}} {{fromField}}"
     consumes: "{{target}} ← step #{{fromSeq}} {{fromField}}",
+    // "{{target}} ← cookie {{from}}" — dep sourced from a browser cookie
+    consumesCookie: "{{target}} ← cookie {{from}}",
     // "response {{fromPath}} → step #{{toSeq}} {{target}}"
     produces: "response {{fromPath}} → step #{{toSeq}} {{target}}",
     depUnlikely: "likely coincidental",
@@ -219,6 +221,7 @@ export const en = {
     items: "items",
     inputsFrom: "Value sources",
     inputFromLabel: "{{to}} ← {{from}} {{fromPath}}",
+    inputFromCookie: "{{to}} ← cookie {{from}}",
     inputUnlikely: "likely coincidental",
   },
   gateway: {
@@ -405,6 +408,9 @@ export const en = {
     rebind_proxyLabel: "Proxy port self-heal",
     rebind_proxyDesc:
       "On a port conflict, automatically move the local proxy to a free port and sync it to the extension (built-in capability, not affected by the switches)",
+    extension_infoLabel: "Extension info",
+    extension_infoDesc:
+      "Internal capability that reports this extension's version for the MCP server's version-skew checks (not an agent-facing tool)",
     capture_screenshotLabel: "Capture screenshot",
     capture_screenshotDesc:
       "Screenshot the active tab (visible area or full page via scroll-and-stitch); returns a downscaled image to the agent and saves the original to the screenshot history",
@@ -473,6 +479,14 @@ export const en = {
     connectorTitle: "Connector",
     connectorDesc:
       "Connection status of the local MCP service and tool switches",
+    mcpServerVersionLabel: "MCP server {{version}}",
+    mcpServerVersionUnknown: "MCP server version unknown",
+    mcpVersionSkewServerNewer:
+      "The MCP server ({{server}}) is newer than this extension ({{extension}}) — newer features may silently not work. Update the extension from the Chrome Web Store (auto-update), or remove and re-install it.",
+    mcpVersionSkewExtensionNewer:
+      "This extension ({{extension}}) is newer than the MCP server ({{server}}) — newer features may be missing. Update the MCP server: re-run the npx install command from the install prompt, or pip install -U manta-action-kit-mcp.",
+    mcpVersionSkewServerOutdated:
+      "The connected MCP server predates the version handshake and is outdated. Update it: re-run the npx install command from the install prompt, or pip install -U manta-action-kit-mcp.",
     mcpPackageDesc:
       "Local MCP service paired with this extension: speaks stdio to AI agents and bridges over a local WebSocket to read recordings, run actions, and forward requests through the sandbox proxy",
     docsTitle: "Documentation",

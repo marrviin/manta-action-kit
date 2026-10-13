@@ -12,7 +12,7 @@ import type { ApiCall, FieldDependency, DependencyLocation } from './types';
 import { uuid } from '@/lib/utils';
 
 /** A leaf value discovered in a JSON tree, with its dotted/bracketed path. */
-interface Leaf {
+export interface Leaf {
   path: string;
   value: string;
 }
@@ -20,8 +20,9 @@ interface Leaf {
 /**
  * Values shorter than this are too ambiguous to treat as a dependency (e.g. "1",
  * "true", small enums collide across unrelated calls and create noise).
+ * Exported for the cookie-deps pass, which applies the same noise floor.
  */
-const MIN_VALUE_LEN = 6;
+export const MIN_VALUE_LEN = 6;
 
 /**
  * A bare hostname/domain is an ENDPOINT POINTER, not a chained parameter: a
@@ -53,8 +54,9 @@ function tryParse(text: string | null): unknown {
 /**
  * Flatten a JSON value into leaf (path,value) pairs. Arrays use bracket indices,
  * objects use dotted keys — matching the FieldDependency path convention.
+ * Exported for the cookie-deps pass (same leaf convention over request bodies).
  */
-function flatten(node: unknown, prefix: string, out: Leaf[]): void {
+export function flatten(node: unknown, prefix: string, out: Leaf[]): void {
   if (isLinkable(node)) {
     out.push({ path: prefix, value: String(node) });
     return;

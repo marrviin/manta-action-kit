@@ -5,7 +5,7 @@
  * shared workspace package @manta-action-kit/protocol — the single source of
  * truth consumed by BOTH this extension and packages/mcp. This module re-exports
  * them under the extension's `@/lib/mcp/protocol` import path and keeps only the
- * extension-specific piece: the i18n key builders for the MCP tab's tool list
+ * extension-specific piece: the i18n key builders for the Connector card's tool list
  * (the labels are UI strings, they don't belong in the wire protocol).
  */
 export * from '@manta-action-kit/protocol';
@@ -13,7 +13,7 @@ export * from '@manta-action-kit/protocol';
 import type { ToolName } from '@manta-action-kit/protocol';
 
 /**
- * i18n key builders for a tool's user-facing label/description in the MCP tab.
+ * i18n key builders for a tool's user-facing label/description in the Connector card.
  * The catalog namespace is `mcpTools` with `<method>Label` / `<method>Desc` keys
  * (see lib/i18n/locales/*). These are what the USER sees and follow the UI
  * language; the tool definitions the AGENT sees live in packages/mcp/src/index.ts

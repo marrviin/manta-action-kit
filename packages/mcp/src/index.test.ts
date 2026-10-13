@@ -22,6 +22,7 @@ function stubBridge(
   );
   _test.setBridge({
     isConnected: () => true,
+    extensionVersion: () => null,
     whenReady: () => Promise.resolve(),
     call: call as unknown as CallFn,
     close: () => Promise.resolve(),
@@ -94,6 +95,7 @@ describe('read tools', () => {
     const call = vi.fn<CallFn>().mockRejectedValue(new Error('No authenticated Chrome extension connected.'));
     _test.setBridge({
       isConnected: () => false,
+      extensionVersion: () => null,
       whenReady: () => Promise.resolve(),
       call: call as unknown as CallFn,
       close: () => Promise.resolve(),
@@ -135,6 +137,51 @@ describe('action tools', () => {
     expect(call).toHaveBeenCalledWith('execute_action', { id: 'a1', params: { userId: '42' } }, 130000);
     const text = (res.content as { type: string; text: string }[])[0]!.text;
     expect(JSON.parse(text).runId).toBe('run1');
+  });
+
+  it('execute_action flags a version skew when continueOnError ends aborted', async () => {
+    // On a current extension, continueOnError:true can never produce
+    // 'aborted' — this signature means the old extension ignored the param.
+    stubBridge((_m) => ({ run: { runId: 'run1', endReason: 'aborted' } }));
+    const c = await connect();
+    const res = await c.callTool({
+      name: 'execute_action',
+      arguments: { id: 'a1', continueOnError: true },
+    });
+    const body = JSON.parse((res.content as { text: string }[])[0]!.text) as {
+      endReason: string;
+      compatWarning?: string;
+    };
+    expect(body.endReason).toBe('aborted');
+    expect(body.compatWarning).toContain('continueOnError');
+  });
+
+  it('execute_action leaves a plain abort untouched', async () => {
+    stubBridge((_m) => ({ run: { runId: 'run1', endReason: 'aborted' } }));
+    const c = await connect();
+    const res = await c.callTool({ name: 'execute_action', arguments: { id: 'a1' } });
+    const body = JSON.parse((res.content as { text: string }[])[0]!.text) as {
+      compatWarning?: string;
+    };
+    expect(body.compatWarning).toBeUndefined();
+  });
+
+  it('health reports both versions and a skew hint', async () => {
+    stubBridge((m) => {
+      expect(m).toBe('extension_info');
+      return { version: '0.0.9' };
+    });
+    const c = await connect();
+    const res = await c.callTool({ name: 'health', arguments: {} });
+    const body = JSON.parse((res.content as { text: string }[])[0]!.text) as {
+      serverVersion: string;
+      extensionVersion: string | null;
+      versionMatch: boolean;
+      compatHint: string | null;
+    };
+    expect(body.extensionVersion).toBe('0.0.9');
+    expect(body.versionMatch).toBe(false);
+    expect(body.compatHint).toContain('extension');
   });
 
   it('create_action relays the definition and returns the created action', async () => {

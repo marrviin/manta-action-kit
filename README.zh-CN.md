@@ -36,15 +36,18 @@ agent 说"这个你做不了"。
 
 **1. 安装扩展**：从
 [Chrome Web Store](https://chromewebstore.google.com/detail/manta-action-kit/pghddhbhbnlcehlmgnnalgaephllkeel)
-安装。
+安装，然后登录你想让 agent 调用的那个网站——第 5 步要从那里录制。
 
 **2. 复制安装提示词**：点击扩展工具栏图标，打开侧边栏（popup 里有「打开
 侧边栏」入口）→ _Action_ 标签页 → _复制安装提示词_。里面嵌着你的专属桥接
-token（`MANTA_TOKEN`）。
+token（`MANTA_TOKEN`）。工具栏看不到图标？Chrome 会把新装的扩展折叠进地址栏
+旁的拼图菜单——点开它，把 Manta Action Kit 图钉固定即可。
 
-**3. 把 MCP 服务加进你的 agent。** 需要 [Node.js](https://nodejs.org)
-（≥ 18）。直接把提示词粘贴给 Claude Code / Codex / 任意 MCP 客户端（Claude
-Code 也可以跑 `claude mcp add` 按引导添加），或手动加进 MCP 配置：
+**3. 把 MCP 服务加进你的 agent。** MCP 是 AI agent 接入外部工具的标准插口
+——不用弄懂原理，照着做即可。需要 [Node.js](https://nodejs.org)（≥ 18，
+用 `node -v` 自查；没装就去 nodejs.org 下 LTS 安装包）。安装提示词是
+客户端无关的——直接粘给 Claude Code、Codex 或任意 MCP 客户端，agent 会把
+服务注册进自己的配置；也可以手动加进 MCP 配置：
 
 ```json
 {
@@ -65,7 +68,23 @@ Code 也可以跑 `claude mcp add` 按引导添加），或手动加进 MCP 配�
 `MANTA_TOKEN` 必须与扩展一致（它是桥接的认证密钥）；`MANTA_WS_PORT`
 （默认 8787）需与扩展设置里的 MCP 端口一致；`MANTA_PROXY_PORT`（默认
 8788）是沙箱代理的本地 HTTP 端口。保持默认值时这些变量都可以省略。详细
-说明与排障见 [`packages/mcp/README.md`](packages/mcp/README.md)。
+说明见 [`packages/mcp/README.md`](packages/mcp/README.md)，排障见
+[`docs/claude-code.zh-CN.md`](docs/claude-code.zh-CN.md)。
+
+> **想看 Claude Code 完整教程？** 见
+> [`docs/claude-code.zh-CN.md`](docs/claude-code.zh-CN.md)。
+
+> **用 WorkBuddy？** 它的 MCP 配置位于 `~/.workbuddy/mcp.json`，并且多一步
+> —— 需要在连接器界面里「信任」该服务。见
+> [`docs/workbuddy.zh-CN.md`](docs/workbuddy.zh-CN.md)。
+
+> **用 JoyCode？** 它的 MCP 配置位于 `~/.joycode/joycode-mcp.json`（手动编辑，
+> 保存后重启应用生效）。见 [`docs/joycode.zh-CN.md`](docs/joycode.zh-CN.md)。
+
+> **用其他 MCP 客户端？** 任何能启动 stdio MCP 服务的客户端（Codex、Cursor、
+> Claude Desktop 等）都能用上面的手动 JSON 配置——`command`/`args`/`env`
+> 结构相同。Codex / Cursor / Claude Desktop 未逐一验证过，但安装提示词里
+> 已包含它们所需的全部信息。
 
 **4.（可选）安装 agent skill。** 一份随用随加载的打包使用指南——环境检查、
 连接排障、工具用法——装上之后 agent 听到「检查环境」「连不上」「有哪些
@@ -84,6 +103,11 @@ skill 是可选的——上面的 MCP 服务才是 agent 必需的。
 > _"我刚录了订单物流查询的流程。把它变成一个 action，然后查一下订单
 > A1002 到哪了。"_
 
+> **第一次录制提示**：点「开始」前先确认已登录（点「结束」时也还在登录态
+> ——中途 session 过期会把一堆 401 录进调用链）；录制期间别在站内乱逛，
+> 埋点和轮询请求会污染链路；跨多个站点的流程在执行时每个 host 会弹一次
+> 确认框。
+
 桥接 100% 跑在 `127.0.0.1` 上——除了你批准的 API 调用，没有任何数据离开
 你的机器。
 
@@ -99,8 +123,8 @@ agent 像用其他工具一样列出并执行它们：
 | 沙箱代理 | `proxy_fetch` · `proxy_sse`（带你的登录态）                                                    |
 | 运维     | `health` · 代理规则管理                                                                        |
 
-> 完整工具表（23 个，含元素捕获读取与代理规则管理）见
-> [`packages/mcp/README.md`](packages/mcp/README.md)。
+> 完整工具表（30+ 个，含页面采集——元素捕获、截图、GIF——与代理规则管理）
+> 见 [`packages/mcp/README.md`](packages/mcp/README.md)。
 >
 > **代理规则（proxy rule）**把一个脚本前缀映射到真实 base URL，让非 MCP
 > 的脚本也能走同一条沙箱网关（同样的 Cookie 注入、同样的确认闸门）。
@@ -161,8 +185,7 @@ Tailwind v4，Manifest V3）、`packages/mcp`
 ([`@manta-action-kit/mcp`](packages/mcp/README.md)，Node MCP 服务）、
 `packages/protocol`（两侧共用的 WS 桥接协议与领域类型）和 `packages/skills`
 （教 agent 使用整套工具箱的 skill）。架构与约定见
-[CONTRIBUTING.md](CONTRIBUTING.md) 与
-[CLAUDE.md](CLAUDE.md)——包括为什么 MV3 service worker 要**反方向**当
+[CONTRIBUTING.md](CONTRIBUTING.md)——包括为什么 MV3 service worker 要**反方向**当
 WebSocket 客户端、为什么 Cookie 注入走 `declarativeNetRequest` 而不是
 `fetch credentials`。
 

@@ -30,7 +30,7 @@ import {
   updateProxyRuleContent,
 } from "@/lib/gateway/manage-rules";
 import { settings } from "@/lib/storage";
-import type { ApiCall } from "@/lib/recording/types";
+import type { ApiCall, Recording } from "@/lib/recording/types";
 import { inferDependencies } from "@/lib/recording/infer-deps";
 import {
   aggregateEndpoints,
@@ -38,7 +38,11 @@ import {
 } from "@/lib/recording/aggregate";
 import { attachDynamism } from "@/lib/ai/field-dynamism";
 import type { GatewayRequest } from "@/lib/gateway/types";
-import { runAction } from "@/lib/action/replay";
+import {
+  runAction,
+  cookieRefsOf,
+  COOKIE_NAME_RE,
+} from "@/lib/action/replay";
 import {
   pauseGifRecording,
   resumeGifRecording,
@@ -57,7 +61,7 @@ import {
   type ActionStep,
   type ActionSummary,
 } from "@/lib/action/types";
-import { isToolEnabled, type RpcMap, type RpcMethod } from "./protocol";
+import { isToolEnabled, type RpcMap, type RpcMethod, type RecordingSummary } from "./protocol";
 import { captureTabScreenshot, shotFilename } from "@/lib/screenshot/capture-flow";
 import { ScreenshotError } from "@/lib/screenshot/types";
 import { prepareAgentImage } from "@/lib/screenshot/agent-image";
@@ -116,13 +120,38 @@ function toActionSummary(a: Action): ActionSummary {
   };
 }
 
+/**
+ * Project a Recording into its wire summary for list results. The db row carries
+ * the full analysis payload — deps (with literal linking values), fieldDynamism,
+ * and up to ~300 interactions — which is exactly what get_flow / get_endpoints /
+ * get_recording exist to hand over per-recording. Forwarding it all here made a
+ * single list call ~50-90KB per recording, blowing past the agent's tool-output
+ * limit and spilling the response to disk (progressive disclosure, same as
+ * toActionSummary above).
+ */
+function toRecordingSummary(r: Recording): RecordingSummary {
+  return {
+    id: r.id,
+    name: r.name,
+    origin: r.origin,
+    url: r.url,
+    createdAt: r.createdAt,
+    callCount: r.callCount,
+    description: r.description,
+    descriptionUpdatedAt: r.descriptionUpdatedAt,
+    relevanceStatus: r.relevanceStatus,
+    interactionCount: r.interactions?.length ?? 0,
+  };
+}
+
 /** Dispatch one RPC method to its result. Throws on unknown method / bad params. */
 export async function handleRpc<M extends RpcMethod>(
   method: M,
   params: RpcMap[M]["params"],
 ): Promise<RpcMap[M]["result"]> {
   // Single choke point for the per-tool kill switches. A tool is on unless the
-  // user explicitly disabled it in the MCP tab (default = all on). `proxy_rule` is
+  // user explicitly disabled it in the Connector card (Settings tab; default = all
+  // on). `proxy_rule` is
   // NOT an agent-facing tool (it's the internal script-proxy tunnel), so it isn't in
   // the registry and is gated by each proxy rule's own `enabled` flag instead.
   // `set_proxy_port` is likewise internal (server→extension port sync on rebind).
@@ -138,7 +167,7 @@ export async function handleRpc<M extends RpcMethod>(
 
   switch (method) {
     case "list_recordings": {
-      const recordings = await listRecordings();
+      const recordings = (await listRecordings()).map(toRecordingSummary);
       return { recordings } as RpcMap[M]["result"];
     }
 
@@ -630,13 +659,23 @@ export async function handleRpc<M extends RpcMethod>(
     }
 
     case "execute_action": {
-      const { id, params: runtimeParams } =
+      const { id, params: runtimeParams, continueOnError } =
         params as RpcMap["execute_action"]["params"];
       if (!id) throw new Error('execute_action: missing "id"');
       const action = await getAction(id);
       if (!action) throw new Error(`execute_action: no action with id "${id}"`);
-      const run = await runAction(action, runtimeParams);
+      const run = await runAction(action, runtimeParams, {
+        continueOnError: continueOnError === true,
+      });
       return { run } as RpcMap[M]["result"];
+    }
+
+    case "extension_info": {
+      // Version probe for the MCP server's health tool and check-env — lets
+      // either side detect a version skew and point the user at the fix.
+      // Not agent-facing (not in TOOL_REGISTRY) and exempt from the kill
+      // switches above: version metadata is not recording data.
+      return { version: browser.runtime.getManifest().version } as RpcMap[M]["result"];
     }
 
     default:
@@ -735,6 +774,29 @@ async function validateActionSteps(
       throw new Error(
         `steps[${i}]: "waitMs" must be a number 0-${ACTION_MAX_WAIT_MS}`,
       );
+    }
+    // {{cookie:NAME}} templates resolve to the live cookie value at replay
+    // time. Header overrides only: request headers never surface in run
+    // results or the audit log, but a cookie value in a url/query/body would
+    // be echoed back to the agent (run.ts's runtime backstop enforces the
+    // same rule — this is the authoring-time guard with a clearer error).
+    for (const [j, ov] of (s.overrides ?? []).entries()) {
+      if (!ov || typeof ov.value !== "string") continue;
+      const refs = cookieRefsOf(ov.value);
+      if (!refs.length) continue;
+      if (ov.toLocation !== "header") {
+        throw new Error(
+          `steps[${i}].overrides[${j}]: {{cookie:...}} templates are only allowed in header overrides (got "${ov.toLocation}")`,
+        );
+      }
+      // Same name-shape rule replay.ts enforces at runtime — reject here so a
+      // bad name fails at creation with a step-scoped error, not on every run.
+      const badName = refs.find((name) => !COOKIE_NAME_RE.test(name));
+      if (badName) {
+        throw new Error(
+          `steps[${i}].overrides[${j}]: invalid cookie name "${badName}" in {{cookie:...}} template`,
+        );
+      }
     }
   }
   return steps.map((s) => ({

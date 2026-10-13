@@ -21,13 +21,17 @@ class FakeRuntime:
         self.calls.append((method, params, timeout_ms))
         return self.results[method]
 
-    def health_snapshot(self):
+    async def health_snapshot(self):
         return {
             "role": self.role,
             "wsPort": 8787,
             "proxyPort": None,
             "proxyListening": False,
             "extensionConnected": True,
+            "serverVersion": "0.0.0-test",
+            "extensionVersion": "0.0.0-test",
+            "versionMatch": True,
+            "compatHint": None,
         }
 
 

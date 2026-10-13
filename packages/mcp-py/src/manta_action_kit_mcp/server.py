@@ -23,6 +23,7 @@ from mcp.types import CallToolResult, ImageContent, TextContent
 from pydantic import BaseModel, ConfigDict, Field
 
 from .runtime import Runtime
+from ._compat import continue_on_error_hint
 
 logger = logging.getLogger("manta.mcp.server")
 
@@ -144,16 +145,23 @@ def build_server(runtime: Runtime, version: str):
         name="health",
         description=(
             "Report the MCP server's runtime health so an agent can detect and "
-            "recover from connection problems. Returns: role (owner hosts the "
-            "bridge; peer forwards to the owner process), wsPort (the WebSocket "
-            "bridge port), extensionConnected (whether the Chrome extension is "
-            "reachable over the bridge), and proxyPort/proxyListening (always "
-            "null/false in the Python port — the script-driven HTTP proxy is not "
-            "implemented here; use the Node server for proxy rules)."
+            "recover from connection problems and version skew. Returns: role "
+            "(owner hosts the bridge; peer forwards to the owner process), "
+            "wsPort (the WebSocket bridge port), extensionConnected (whether "
+            "the Chrome extension is reachable over the bridge), "
+            "proxyPort/proxyListening (always null/false in the Python port — "
+            "the script-driven HTTP proxy is not implemented here; use the "
+            "Node server for proxy rules), serverVersion/extensionVersion (the "
+            "two halves ship in lockstep — a mismatch means newer features may "
+            "silently not work), versionMatch, and compatHint (a fix "
+            "instruction when the versions skew; null when they match or are "
+            "unknown). Call this tool whenever other tools' results look "
+            "inconsistent with their documented behavior — a version skew is "
+            "the usual silent cause."
         ),
     )
     async def health() -> str:
-        return _dump(runtime.health_snapshot())
+        return _dump(await runtime.health_snapshot())
 
     # ── recordings: read + describe ────────────────────────────────────────
 
@@ -161,12 +169,14 @@ def build_server(runtime: Runtime, version: str):
         name="list_recordings",
         description=(
             "List all API recordings captured by the Manta Action Kit Chrome "
-            "extension (metadata only: id, name, origin, createdAt, callCount). "
-            "Recordings are SOURCE MATERIAL for actions: analyze a flow (get_flow "
-            "/ get_endpoints / get_recording), then distill it into a reusable, "
-            "parameterized action via create_action. When the goal is to RUN a "
-            "captured flow, execute the action via execute_action — do not replay "
-            "a recording's calls one by one via proxy_fetch."
+            "extension (per-recording summary only: id, name, origin, url, "
+            "createdAt, callCount, description, relevanceStatus, "
+            "interactionCount — no call bodies, deps or interactions). "
+            "Recordings are SOURCE MATERIAL for actions: analyze a flow "
+            "(get_flow / get_endpoints / get_recording), then distill it into "
+            "a reusable, parameterized action via create_action. When the goal "
+            "is to RUN a captured flow, execute the action via execute_action "
+            "— do not replay a recording's calls one by one via proxy_fetch."
         ),
     )
     async def list_recordings() -> str:
@@ -229,21 +239,26 @@ def build_server(runtime: Runtime, version: str):
             "Get a recording's FLOW: its calls as ordered lightweight steps "
             "(seq/method/url/status, no bodies) plus the inferred field "
             "dependencies linking them — i.e. which response value from an earlier "
-            "call feeds a later call's request. Deps may carry a `depCheck` mark: "
-            "`verdict: 'unlikely'` means the local model considers the edge a "
-            "coincidental value match (a colliding timestamp/nonce) rather than a "
-            "real data flow — do not build parameterization on it; an absent mark "
-            "means not analyzed. Steps may also carry a `relevance` mark "
-            "(`relevant` / `irrelevant` / `uncertain` — skip `irrelevant` calls as "
-            "background noise) and a `precedingInteraction` mark (the user "
-            "interaction, with its text and `deltaMs`, that most likely triggered "
-            "the call — direct consequences of user intent vs calls that merely "
-            "co-occur). Use this to understand how the calls chain together before "
-            "turning the flow into an action (create_action); use get_recording "
-            "for full request/response bodies. Running a captured flow goes "
-            "through execute_action — do not replay the chain's calls one by one "
-            "via proxy_fetch. Find the id via list_recordings."
-        ),
+            "call feeds a later call's request. Deps with `fromSeq: -1` carry "
+            "`fromPath: \"cookie:<NAME>\"` instead: that request field is fed by a "
+            "browser COOKIE (CSRF/XSRF double-submit), not by any recorded response "
+            "— when distilling an action, fill it with a `{{cookie:<NAME>}}` header "
+            "override so the replay uses the live cookie, never a stale recorded "
+            "token. Deps may carry a `depCheck` mark: `verdict: 'unlikely'` means "
+            "the local model considers the edge a coincidental value match (a "
+            "colliding timestamp/nonce) rather than a real data flow — do not build "
+            "parameterization on it; an absent mark means not analyzed. Steps may "
+            "also carry a `relevance` mark (`relevant` / `irrelevant` / `uncertain` "
+            "— skip `irrelevant` calls as background noise) and a "
+            "`precedingInteraction` mark (the user interaction, with its text and "
+            "`deltaMs`, that most likely triggered the call — direct consequences "
+            "of user intent vs calls that merely co-occur). Use this to understand "
+            "how the calls chain together before turning the flow into an action "
+            "(create_action); use get_recording for full request/response bodies. "
+            "Running a captured flow goes through execute_action — do not replay "
+            "the chain's calls one by one via proxy_fetch. Find the id via "
+            "list_recordings."
+                ),
     )
     async def get_flow(id: str) -> str:
         res = await call("get_flow", {"id": id})
@@ -255,7 +270,7 @@ def build_server(runtime: Runtime, version: str):
         name="get_endpoints",
         description=(
             "Get a recording's distinct ENDPOINTS: its calls collapsed by method + "
-            'normalized URL path (numeric ids / uuids become ":id") into one '
+            "normalized URL path (numeric ids / uuids become \":id\") into one "
             "contract each, with request/response bodies inferred into REDACTED "
             "schemas — field names, types, optional/nullable flags, and one masked "
             "example per scalar, but no real values or credentials. Use this to "
@@ -265,19 +280,22 @@ def build_server(runtime: Runtime, version: str):
             "body.orderId ← `GET /orders` response `.data[].id`) — so before "
             "calling an endpoint, resolve its inputsFrom by first calling the "
             "upstream endpoint and reading the value from there, instead of "
-            "guessing ids/tokens. inputsFrom carries only the source location, "
-            "never the literal value. Request fields may also carry a `dynamism` "
-            "mark (and query params a `queryDynamism` map): `verdict: 'varies'` "
-            "means the value would differ on a replay in a fresh session "
-            "(timestamp, session token, auto-generated id) and must become an "
-            "action parameter, while `stable` is safe to hardcode; `source: "
-            "'stats'` (multi-observation) outranks `'model'` "
-            "(single-observation). Use get_recording for concrete bodies, "
-            "get_flow for the raw per-call dependency chain. Find the id via "
+            "guessing ids/tokens. An input with `fromCookie: \"<NAME>\"` (no "
+            "fromEndpointKey) is instead fed by that browser cookie (CSRF "
+            "double-submit) — in an action, fill it with a `{{cookie:<NAME>}}` "
+            "HEADER override so the replay uses the live value. inputsFrom carries "
+            "only the source location, never the literal value. Request fields may "
+            "also carry a `dynamism` mark (and query params a `queryDynamism` map): "
+            "`verdict: 'varies'` means the value would differ on a replay in a "
+            "fresh session (timestamp, session token, auto-generated id) and must "
+            "become an action parameter, while `stable` is safe to hardcode; "
+            "`source: 'stats'` (multi-observation) outranks `'model'` "
+            "(single-observation). Use get_recording for concrete bodies, get_flow "
+            "for the raw per-call dependency chain. Find the id via "
             "list_recordings. Recordings are source material for actions: author "
             "the endpoint chain as an action (create_action) and run it via "
             "execute_action rather than replaying calls manually."
-        ),
+                ),
     )
     async def get_endpoints(id: str) -> str:
         res = await call("get_endpoints", {"id": id})
@@ -569,22 +587,27 @@ def build_server(runtime: Runtime, version: str):
             "referenced by callId, never embedded credentials). Per step, "
             "`overrides` rewrite the recorded request before replay with TEMPLATE "
             "values only (never recorded literals): toLocation is \"url\" (toPath "
-            'must be empty), "query" (toPath = query param name), "header" '
-            '(toPath = header name), or "body" (toPath = dotted/bracketed JSON '
-            "path like \"data[0].id\"; the body may be JSON, a form carrying an "
-            "embedded JSON object like `appid=...&body=%7B...%7D` (paths address "
-            "the embedded JSON), or a plain form (single-segment toPath = whole "
-            "form field)). Templates are `{{paramName}}`, `{{steps[N].outputs[name]}}`, "
-            "or the built-in helpers `{{nowMs}}`/`{{nowSec}}`/`{{uuid}}` for fresh "
-            "timestamps and one-shot ids (a declared param of the same name wins) "
-            "— the latter reads an output that step N declared. `outputs` (per "
-            "step) map output names to JSON paths into that step’s response "
-            "(parsed as JSON; for SSE steps each event’s data is tried). "
-            "`waitMs` pauses before a step (0-10000). Steps replay strictly in "
-            "order through the user’s browser session. Study the recording first "
+            "must be empty), \"query\" (toPath = query param name), \"header\" (toPath "
+            "= header name), or \"body\" (toPath = dotted/bracketed JSON path like "
+            "\"data[0].id\"; the body may be JSON, a form carrying an embedded JSON "
+            "object like `appid=...&body=%7B...%7D` (paths address the embedded "
+            "JSON), or a plain form (single-segment toPath = whole form field)). "
+            "Templates are `{{paramName}}`, `{{steps[N].outputs[name]}}`, the "
+            "built-in helpers `{{nowMs}}`/`{{nowSec}}`/`{{uuid}}` for fresh "
+            "timestamps and one-shot ids (a declared param of the same name wins), "
+            "and `{{cookie:NAME}}` for the LIVE value of a browser cookie at replay "
+            "time — use it when a request header is fed by a cookie (CSRF/XSRF "
+            "double-submit: `X-XSRF-TOKEN` header ← `XSRF-TOKEN` cookie; get_flow "
+            "marks such edges with fromPath \"cookie:<NAME>\", and get_endpoints "
+            "marks inputsFrom with fromCookie). Cookie templates are accepted in "
+            "HEADER overrides only, and the cookie value is never echoed back to "
+            "you. `outputs` (per step) map output names to JSON paths into that "
+            "step’s response (parsed as JSON; for SSE steps each event’s data is "
+            "tried). `waitMs` pauses before a step (0-10000). Steps replay strictly "
+            "in order through the user’s browser session. Study the recording first "
             "(get_flow, get_endpoints, get_recording), then build the action from "
             "it."
-        ),
+                ),
     )
     async def create_action(
         name: str,
@@ -639,28 +662,43 @@ def build_server(runtime: Runtime, version: str):
             "ones must be present; others fall back to their defaults). Each step "
             "replays through the extension's gateway with the user's cookies "
             "injected — you never see credentials. The run stops at the first "
-            "failed step (gateway-refused or transport error); a 4xx/5xx response "
-            "still counts as a completed step. Results carry per-step status, a "
-            "body/event preview (truncated), and the outputs extracted by declared "
-            "paths. This is the entry point for running a recorded flow — the "
-            "steps are orchestrated for you (same gateway channel as proxy_fetch, "
-            "with dependencies resolved and params templated in); do not "
-            "re-implement a recording's call chain by hand via proxy_fetch. "
-            "⚠️ The run passes the extension's sandbox gate: the user confirms "
-            "each target host via a confirmation popup in the browser (once per "
-            "host per run, unless the host is on the user's allowlist); a denied "
-            "host aborts the run with a refused step."
-        ),
+            "failed step (gateway-refused or transport error) unless you pass "
+            "continueOnError: true — then every step is attempted (later steps "
+            "whose templates consume a failed step's outputs fail with precise "
+            "template errors) and endReason becomes 'completed-with-errors'. Either "
+            "way a 4xx/5xx response still counts as a completed step. Results carry "
+            "per-step status, a body/event preview (truncated), and the outputs "
+            "extracted by declared paths. This is the entry point for running a "
+            "recorded flow — the steps are orchestrated for you (same gateway "
+            "channel as proxy_fetch, with dependencies resolved and params "
+            "templated in); do not re-implement a recording's call chain by hand "
+            "via proxy_fetch. For a diagnosis pass after a failure, re-run with "
+            "continueOnError: true — one run then reports every broken step, not "
+            "just the first. ⚠️ The run passes the extension's sandbox gate: the "
+            "user confirms each target host via a confirmation popup in the browser "
+            "(once per host per run, unless the host is on the user's allowlist); a "
+            "denied host aborts the run with a refused step."
+                ),
     )
     async def execute_action(
-        id: str, params: dict[str, str | int | bool] | None = None
+        id: str,
+        params: dict[str, str | int | bool] | None = None,
+        continueOnError: bool = False,
     ) -> str:
         # Multi-step replay can involve several network round-trips plus waits —
         # use the same generous budget as the Node server's execute_action.
         res = await call(
-            "execute_action", {"id": id, "params": params}, LONG_TIMEOUT_MS
+            "execute_action",
+            {"id": id, "params": params, "continueOnError": continueOnError},
+            LONG_TIMEOUT_MS,
         )
-        return _dump(res.get("run", res))
+        run = res.get("run", res)
+        # Version-skew sentinel (mirrors the Node server): on a current
+        # extension, continueOnError:true can never produce 'aborted' — this
+        # signature means the older extension silently ignored the param.
+        if continueOnError and isinstance(run, dict) and run.get("endReason") == "aborted":
+            run = {**run, "compatWarning": continue_on_error_hint()}
+        return _dump(run)
 
     # ── capture: screenshot + element + GIF recordings ─────────────────────
 

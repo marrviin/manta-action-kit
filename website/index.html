@@ -289,7 +289,8 @@
           <div class="step-body">
             <h3 data-i18n="qs.s1Title">Install the extension</h3>
             <p data-i18n="qs.s1Body">
-              Get it from the <a href="https://chromewebstore.google.com/detail/manta-action-kit/pghddhbhbnlcehlmgnnalgaephllkeel">Chrome Web Store</a>.
+              Get it from the <a href="https://chromewebstore.google.com/detail/manta-action-kit/pghddhbhbnlcehlmgnnalgaephllkeel">Chrome Web Store</a>,
+              then log into the site you want the agent to call — you'll record from it in step 4.
               Requires Chrome 116+ (no Firefox support).
             </p>
           </div>
@@ -300,7 +301,9 @@
             <h3 data-i18n="qs.s2Title">Copy the install prompt</h3>
             <p data-i18n="qs.s2Body">
               Open the extension's side panel → Action tab → Copy install prompt. It embeds
-              your personal bridge token (MANTA_TOKEN).
+              your personal bridge token (MANTA_TOKEN). Can't see the toolbar icon? Chrome
+              tucks new extensions behind the puzzle-piece menu next to the address bar —
+              open it and pin Manta Action Kit.
             </p>
           </div>
         </div>
@@ -309,9 +312,12 @@
           <div class="step-body">
             <h3 data-i18n="qs.s3Title">Add the MCP server to your agent</h3>
             <p data-i18n="qs.s3Body">
-              Paste the prompt into Claude Code / Codex / Cursor and follow its
-              instructions — that's the whole setup. Prefer editing config by hand?
-              Add the block below (requires <a href="https://nodejs.org">Node.js</a> ≥ 18):
+              MCP is the standard way AI agents plug in external tools — you don't need to
+              understand it, just follow along. Paste the prompt into Claude Code / Codex /
+              Cursor and follow its instructions — that's the whole setup. Prefer editing
+              config by hand? Add the block below. Requires
+              <a href="https://nodejs.org">Node.js</a> ≥ 18 (check with <code>node -v</code>;
+              if it's missing, grab the LTS installer from nodejs.org):
             </p>
             <pre>{
   "mcpServers": {
@@ -339,6 +345,8 @@
             <p data-i18n="qs.s4Body">
               Record a flow on your site, then ask your agent: “I just recorded the
               order-tracking flow. Turn it into an action and tell me where order A1002 is.”
+              Make sure you're logged in before you hit Start, and don't wander the site
+              while recording — tracking and polling calls pollute the chain.
             </p>
           </div>
         </div>
@@ -431,13 +439,13 @@
     "tools.row4Desc": "检查桥接连通性、管理沙箱代理",
     "qs.title": "快速开始",
     "qs.s1Title": "安装扩展",
-    "qs.s1Body": "从 <a href=\"https://chromewebstore.google.com/detail/manta-action-kit/pghddhbhbnlcehlmgnnalgaephllkeel\">Chrome Web Store</a> 安装。需要 Chrome 116+（不支持 Firefox）。",
+    "qs.s1Body": "从 <a href=\"https://chromewebstore.google.com/detail/manta-action-kit/pghddhbhbnlcehlmgnnalgaephllkeel\">Chrome Web Store</a> 安装，然后登录你想让 agent 调用的那个网站——第 4 步要从那里录制。需要 Chrome 116+（不支持 Firefox）。",
     "qs.s2Title": "复制安装提示词",
-    "qs.s2Body": "打开扩展侧边栏 → Action 标签页 → 复制安装提示词。其中已内嵌你的个人桥接 token（MANTA_TOKEN）。",
+    "qs.s2Body": "打开扩展侧边栏 → Action 标签页 → 复制安装提示词。其中已内嵌你的个人桥接 token（MANTA_TOKEN）。工具栏看不到图标？Chrome 会把新装的扩展折叠进地址栏旁的拼图菜单——点开它，把 Manta Action Kit 图钉固定即可。",
     "qs.s3Title": "把 MCP 服务加进你的 agent",
-    "qs.s3Body": "把提示词直接粘贴给 Claude Code / Codex / Cursor，按它的提示确认即可——这就是全部配置。喜欢手动改配置？把下面内容加进 MCP 配置（需要 <a href=\"https://nodejs.org\">Node.js</a> ≥ 18）：",
+    "qs.s3Body": "MCP 是 AI agent 接入外部工具的标准插口——不用弄懂原理，照着做即可。把提示词直接粘贴给 Claude Code / Codex / Cursor，按它的提示确认即可——这就是全部配置。喜欢手动改配置？把下面内容加进 MCP 配置。需要 <a href=\"https://nodejs.org\">Node.js</a> ≥ 18（用 <code>node -v</code> 自查；没装就去 nodejs.org 下 LTS 安装包）：",
     "qs.s4Title": "开始使用",
-    "qs.s4Body": "在你的网站上录一个流程，然后对 agent 说：“我刚录了查订单的流程，把它变成 action，然后告诉我订单 A1002 到哪了。”",
+    "qs.s4Body": "在你的网站上录一个流程，然后对 agent 说：“我刚录了查订单的流程，把它变成 action，然后告诉我订单 A1002 到哪了。”点「开始」前先确认已登录，录制期间别在站内乱逛——埋点和轮询请求会污染调用链。",
     "qs.tokenNote": "<code>MANTA_TOKEN</code> 为必填——从安装提示词里复制；未配置时服务端会拒绝所有客户端。",
     "footer.docs": "文档",
     "footer.changelog": "更新日志",

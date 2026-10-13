@@ -92,6 +92,21 @@ class PeerClient:
                     "Owner failed the handshake: token mismatch. Re-copy the install "
                     "prompt from the extension and update the MCP config env."
                 )
+            # The owner's self-declared version (WelcomeFrame.version).
+            # Diagnostic only — log the skew so the log shows a lead: a peer
+            # forwards to the owner, so the OWNER's version is what counts.
+            owner_version = welcome.get("version")
+            if (
+                isinstance(owner_version, str)
+                and self._version
+                and owner_version != self._version
+            ):
+                logger.info(
+                    "version skew: owner %s vs this server %s — the owner's "
+                    "version is what counts",
+                    owner_version,
+                    self._version,
+                )
             await self._ws.send(
                 json.dumps(
                     {"type": protocol.AUTH, "proof": auth_proof(self._token, welcome["nonce"])}
