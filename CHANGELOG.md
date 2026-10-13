@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-13
+
+### Added
+
+#### Cookie-sourced field dependencies
+
+- New cookie-deps pass detects request fields whose values originate from
+  `Set-Cookie` response headers (surface as a `fromSeq: -1` sentinel
+  dependency). Surfaced in the call chain (`{{target}} ← cookie NAME`) and in
+  the endpoints panel via `inputFromCookie` labels.
+- `{{cookie:NAME}}` templates in header-only overrides: resolved fresh from
+  live cookies at replay time (RFC 6265 token validation, last-match
+  resolution). Authoring-time guard in `create_action` mirrors the runtime
+  backstop.
+
+#### Version-skew compatibility (extension ↔ MCP server)
+
+- Hello/welcome version exchange on both bridges (Node + Python); the server
+  version is remembered in storage and shown in the settings Connector card.
+- `compat.ts` / `_compat.py` semver verdict helpers; `health` and
+  `execute_action` hint when versions skew; new `extension_info` RPC.
+- `use-mcp-server-version` hook for reactive UI pairing.
+
+### Changed
+
+#### check-env overhaul (skill)
+
+- Real WebSocket handshake + end-to-end `list_recordings` probe, MCP
+  registration detection (Claude Code / WorkBuddy / JoyCode / Codex / Cursor
+  config files), and a version-skew check. Raw-socket WS client re-arms the
+  upgrade-phase timeout; `exit 1` now reflects any ❌ finding, not just a
+  failed probe.
+
+#### Docs
+
+- Per-client install guides (Claude Code / JoyCode / WorkBuddy), a dev-setup
+  reference for the skill package, README quick-start lead, website updates.
+
+### Fixed
+
+- Aggregate / infer-deps hardening with new unit coverage (cookie-deps,
+  capture-flow, utils, MCP bridge).
+- Lint: give mcp-py `.mjs` helpers and MCP scripts Node globals (15 no-undef
+  errors failing CI).
+
 ## [0.5.4] - 2026-10-12
 
 ### Added
