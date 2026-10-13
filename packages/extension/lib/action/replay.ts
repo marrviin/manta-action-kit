@@ -14,6 +14,9 @@
  * Template grammar (see types.ts):
  *   {{paramName}}                       — runtime parameter value
  *   {{steps[N].outputs[outputName]}}    — named output of step N (0-based)
+ *   {{cookie:NAME}}                     — live cookie value at replay time
+ *                                         (header-located overrides only; see
+ *                                         prewarmCookieValues)
  *
  * Pure engine — persistence and RPC plumbing live in db.ts / mcp/handlers.ts.
  */
@@ -23,6 +26,7 @@ import {
   runGatewaySse,
   GatewayRefusedError,
 } from "@/lib/gateway/run";
+import { collectCookiesForUrl } from "@/lib/gateway/dnr";
 import { requestGatewayConfirmation } from "@/lib/gateway/confirm";
 import type {
   GatewayRequest,
@@ -51,6 +55,13 @@ interface TemplateContext {
   params: Record<string, string>;
   /** Outputs extracted from finished steps, keyed by 0-based step index. */
   stepOutputs: Record<number, Record<string, string>>;
+  /**
+   * Live cookie values for the current step's `{{cookie:NAME}}` references,
+   * prewarmed from the recorded call's URL before overrides apply. Never
+   * echoed into results: cookie templates are restricted to header overrides,
+   * and request headers don't surface in ActionStepResult or the audit log.
+   */
+  cookieValues: Record<string, string>;
 }
 
 /**
@@ -63,6 +74,70 @@ const TEMPLATE_HELPERS: Record<string, () => string> = {
   nowSec: () => String(Math.floor(Date.now() / 1000)),
   uuid: () => crypto.randomUUID(),
 };
+
+/** Matches `{{cookie:NAME}}` references in an override template. */
+const COOKIE_REF_RE = /\{\{\s*cookie:([^\s{}]+?)\s*\}\}/g;
+/** RFC 6265 token — the legal shape of a cookie name. */
+export const COOKIE_NAME_RE = /^[A-Za-z0-9!#$%&'*+\-.^_`|~]+$/;
+
+/** All cookie names referenced by a template value, in order (deduped). */
+export function cookieRefsOf(value: string): string[] {
+  const out: string[] = [];
+  for (const m of value.matchAll(COOKIE_REF_RE)) {
+    const name = m[1] ?? "";
+    if (!out.includes(name)) out.push(name);
+  }
+  return out;
+}
+
+/**
+ * Prewarm `{{cookie:NAME}}` values for one step. Cookies are read fresh here
+ * (NOT at action-creation time) — the whole point is replaying with the
+ * session's current token. The recorded call's URL decides the cookie scope:
+ * url overrides later in the same step can't change the host the CSRF cookie
+ * belongs to, and reading pre-override keeps the scope independent of template
+ * resolution order.
+ *
+ * Security envelope: cookie references are accepted in header-located
+ * overrides ONLY. Headers never surface in the run result, the audit log, or
+ * the confirmation popup — letting a template place a cookie value into the
+ * URL, query, or body would echo it into ActionStepResult.url / request-body
+ * previews, breaking the gateway's "cookie values never reach the agent"
+ * invariant. Authoring-time validation (mcp/handlers.ts) enforces the same
+ * rule; this is the runtime backstop.
+ */
+async function prewarmCookieValues(
+  step: ActionStep,
+  recordedUrl: string,
+  ctx: TemplateContext,
+): Promise<void> {
+  for (const ov of step.overrides ?? []) {
+    const refs = cookieRefsOf(ov.value);
+    if (!refs.length) continue;
+    if (ov.toLocation !== "header") {
+      throw new Error(
+        `{{cookie:...}} templates are only allowed in header overrides (got "${ov.toLocation}") — a cookie value must never be echoed into a url/query/body`,
+      );
+    }
+    const cookies = await collectCookiesForUrl(recordedUrl);
+    for (const name of refs) {
+      if (!COOKIE_NAME_RE.test(name)) {
+        throw new Error(`Invalid cookie name in template: "${name}"`);
+      }
+      if (ctx.cookieValues[name] !== undefined) continue;
+      // Duplicate names resolve like the server reads the Cookie header: the
+      // LAST occurrence wins (collectCookiesForUrl's order ≈ RFC 6265 §5.4).
+      const matches = cookies.filter((c) => c.name === name);
+      const hit = matches[matches.length - 1];
+      if (!hit) {
+        throw new Error(
+          `Template references cookie "${name}", which the browser would not send to ${recordedUrl}`,
+        );
+      }
+      ctx.cookieValues[name] = hit.value;
+    }
+  }
+}
 
 /**
  * Resolve a template string. Every placeholder must resolve — an unknown param
@@ -89,6 +164,16 @@ function resolveTemplate(tpl: string, ctx: TemplateContext): string {
     }
     const v = ctx.params[raw];
     if (v !== undefined) return v;
+    if (raw.startsWith("cookie:")) {
+      const name = raw.slice("cookie:".length).trim();
+      const value = ctx.cookieValues[name];
+      if (value === undefined) {
+        throw new Error(
+          `Template references cookie "${name}", which was not prewarmed for this step`,
+        );
+      }
+      return value;
+    }
     const helper = TEMPLATE_HELPERS[raw];
     if (helper) return helper();
     throw new Error(`Template references unknown parameter "${raw}"`);
@@ -475,7 +560,11 @@ export function resolveActionParams(
     }
     const given = typeof raw === "string" ? raw : String(raw);
     if (given === "") {
+      // Empty string is a legitimate value for an optional param (e.g. "no
+      // filter") — keep it so `{{param}}` templates resolve. Required params
+      // still treat "" as missing.
       if (p.required) throw new Error(`Missing required param "${p.name}"`);
+      out[p.name] = given;
       continue;
     }
     if (p.type === "number" && Number.isNaN(Number(given))) {
@@ -495,10 +584,18 @@ export function resolveActionParams(
  * Run an action end to end. Throws on pre-flight problems (bad params, missing
  * recorded calls, out-of-range shape) — those are caller errors, not run
  * results. Once running, failures land in the returned ActionRunResult.
+ *
+ * With `opts.continueOnError`, a failed step no longer stops the run: every
+ * step is attempted, and endReason becomes 'completed-with-errors' when any
+ * step failed (failedStep/failure still describe the FIRST failure). Later
+ * steps whose templates consume a failed step's outputs fail with the engine's
+ * precise template errors — which is exactly the diagnostic value: one run
+ * reports every broken step instead of just the first.
  */
 export async function runAction(
   action: Action,
   runtimeParams: Record<string, string | number | boolean> | undefined,
+  opts: { continueOnError?: boolean } = {},
 ): Promise<ActionRunResult> {
   if (!action.steps.length) throw new Error("Action has no steps");
   if (action.steps.length > ACTION_MAX_STEPS) {
@@ -526,7 +623,7 @@ export async function runAction(
     endReason: "complete",
     steps: [],
   };
-  const ctx: TemplateContext = { params, stepOutputs: {} };
+  const ctx: TemplateContext = { params, stepOutputs: {}, cookieValues: {} };
 
   // One user decision per distinct host per run: each step hands the gateway a
   // confirmHost (instead of letting it pop up per call), so the first step
@@ -551,11 +648,16 @@ export async function runAction(
     const recorded = callById.get(step.callId)!;
     const stepStarted = Date.now();
     const req = cloneRequest(requestFromCall(recorded));
+    // Fresh cookies per step (and per run): the values prewarmed here are the
+    // session's CURRENT tokens, never the recorded ones. Cleared between steps
+    // so a stale value can't leak into a later step's templates.
+    ctx.cookieValues = {};
 
     let result: ActionStepResult | null = null;
     try {
       // Resolve + apply overrides (order matters: later overrides see earlier
       // ones' effects on the same clone).
+      await prewarmCookieValues(step, recorded.url, ctx);
       for (const ov of step.overrides ?? []) {
         applyOverride(req, ov, resolveTemplate(ov.value, ctx));
       }
@@ -607,13 +709,19 @@ export async function runAction(
 
     run.steps.push(result);
     if (result.outcome !== "ok") {
-      run.endReason = "aborted";
-      run.failedStep = result.index;
-      run.failure = result.outcome === "refused" ? "refused" : "error";
-      break;
+      // First failure anchors failedStep/failure; later ones only add steps.
+      run.failedStep ??= result.index;
+      run.failure ??= result.outcome === "refused" ? "refused" : "error";
+      if (!opts.continueOnError) {
+        run.endReason = "aborted";
+        break;
+      }
     }
   }
 
+  if (opts.continueOnError && run.failedStep !== undefined) {
+    run.endReason = "completed-with-errors";
+  }
   run.durationMs = Date.now() - startedAt;
   return run;
 }

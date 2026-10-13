@@ -12,6 +12,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { useStorage } from "@/hooks/use-storage";
 import { useMcpConnStatus } from "@/hooks/use-mcp-conn-status";
+import { useMcpServerVersion } from "@/hooks/use-mcp-server-version";
 import { settings, type McpConnStatus } from "@/lib/storage";
 import { SUPPORTED_LOCALES, type Locale } from "@/lib/i18n";
 import { sendMessage } from "@/lib/messaging";
@@ -62,6 +63,22 @@ const CONN_META = {
 >;
 
 /**
+ * Compare two `x.y.z` version strings (negative = a older). The extension and
+ * the MCP server ship in lockstep, so equality is the norm — this only feeds
+ * the direction of the skew hint below.
+ */
+function semverCompare(a: string, b: string): number {
+  const pa = a.split(".").map(Number);
+  const pb = b.split(".").map(Number);
+  for (let i = 0; i < 3; i++) {
+    const da = pa[i] ?? 0;
+    const db = pb[i] ?? 0;
+    if (da !== db) return da - db;
+  }
+  return 0;
+}
+
+/**
  * The gear-opened "Settings" view inside the side-panel home: language switch +
  * a connector (MCP) status card. Cards reuse the Secure Sandbox tab's section
  * style (rounded border + container background). The connector card collapses
@@ -75,6 +92,7 @@ export function SettingsFeature() {
   const { message, modal } = App.useApp();
   const [locale, setLocale] = useStorage(settings.locale);
   const connStatus = useMcpConnStatus();
+  const serverVersion = useMcpServerVersion();
   const [toolsOpen, setToolsOpen] = useState(false);
   const [testing, setTesting] = useState(false);
   const [devMode, setDevMode] = useStorage(settings.devMode);
@@ -84,6 +102,20 @@ export function SettingsFeature() {
   const [mcpVersion, setMcpVersion] = useStorage(settings.mcpVersion);
   // Easter-egg state: consecutive taps on the version tag (not persisted).
   const tapRef = useRef({ count: 0, timer: 0 });
+
+  // Version-skew hint for the connector card: the extension and the MCP server
+  // ship in lockstep, so any version difference is worth flagging. A connected
+  // server that never sent its version (WelcomeFrame.version absent) predates
+  // the version handshake — i.e. it is the outdated side by definition.
+  const versionSkewHint = (() => {
+    if (connStatus !== "connected") return null;
+    if (!serverVersion) return t("settings.mcpVersionSkewServerOutdated");
+    if (serverVersion === MANIFEST.version) return null;
+    const vars = { server: serverVersion, extension: MANIFEST.version };
+    return semverCompare(serverVersion, MANIFEST.version) > 0
+      ? t("settings.mcpVersionSkewServerNewer", vars)
+      : t("settings.mcpVersionSkewExtensionNewer", vars);
+  })();
 
   // Data transfer (export / import): the export scope is picked in a modal
   // when exporting; an import restores whatever categories the file carries.
@@ -419,8 +451,7 @@ export function SettingsFeature() {
       <LayaCard />
 
       {/* Connector (MCP) card: header-only by default (status tag + tools
-          toggle); expanding reveals the same tool kill-switch list as the
-          connector tab. */}
+          toggle); expanding reveals the tool kill-switch list. */}
       <section className="flex-none rounded-xl border border-(--ant-color-border-secondary) bg-(--ant-color-bg-container) overflow-hidden">
         <div className="flex items-center justify-between gap-2 px-3 py-2.5">
           <div className="min-w-0">
@@ -438,6 +469,16 @@ export function SettingsFeature() {
             <Text type="secondary" className="text-xs!">
               {t("settings.connectorDesc")}
             </Text>
+            {connStatus === "connected" && serverVersion && (
+              <Text type="secondary" className="text-xs! block">
+                {t("settings.mcpServerVersionLabel", { version: serverVersion })}
+              </Text>
+            )}
+            {versionSkewHint && (
+              <Text type="warning" className="text-xs! block mt-0.5">
+                {versionSkewHint}
+              </Text>
+            )}
           </div>
           <Button onClick={() => setToolsOpen((v) => !v)}>
             {t("mcp.tools")}

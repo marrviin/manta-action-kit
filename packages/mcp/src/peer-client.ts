@@ -125,6 +125,14 @@ export function startPeerClient(
           ws.terminate();
           return;
         }
+        // The owner's self-declared version (WelcomeFrame.version). Diagnostic
+        // only — log the skew if any so stderr shows a version-mismatch lead.
+        if (frame.version && opts.version && frame.version !== opts.version) {
+          log(
+            `version skew: owner ${frame.version} vs this server ${opts.version} — ` +
+              `a peer forwards to the owner, so the OWNER's version is what counts`,
+          );
+        }
         const auth: AuthFrame = {
           type: 'auth',
           proof: authProof(opts.token, frame.nonce),
@@ -157,7 +165,12 @@ export function startPeerClient(
       p.reject(new Error('owner connection lost'));
     }
     pending.clear();
-    if (!ownerLost) {
+    // Only a COMPLETED handshake can be "lost": a close before the handshake
+    // is a failed dial (port squatted, token mismatch, …) — the caller's
+    // election already handles that as a plain failure. Firing onOwnerLost
+    // here too would re-enter the election mid-flight and spin forever
+    // against a port we can never win.
+    if (!ownerLost && handshakeDone) {
       ownerLost = true;
       log('owner connection closed');
       opts.onOwnerLost?.();

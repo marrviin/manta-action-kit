@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
   pull_request:
 
 jobs:
@@ -18,6 +18,46 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # The extension imports @manta-action-kit/protocol through its dist
+      # entry (lib/mcp/protocol.ts) — a cold checkout has no dist, so both
+      # tsc and the unit suite need it built first.
+      - run: pnpm --filter @manta-action-kit/protocol build
       - run: pnpm compile
       - run: pnpm test
       - run: pnpm lint
+      # The agent skill hand-maintains the tool surface — fail when it drifts
+      # from the exported tool contract (or the description exceeds 1024 chars).
+      - run: pnpm sync:skill
+
+  # Playwright e2e: loads the PRODUCTION MV3 bundle into bundled Chromium
+  # (new headless supports MV3 extensions/service workers) and drives the
+  # recording / action-replay / mcp-bridge / sandbox-gateway / screenshot
+  # pipelines against hermetic fixture servers. workers=1 in the config —
+  # the whole suite is serialized by design (one shared build output).
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Install Playwright chromium (with system deps)
+        run: pnpm --filter @manta-action-kit/extension exec playwright install --with-deps chromium
+      # protocol first (extension imports its dist), then the e2e script
+      # chains the mcp build itself and runs playwright against the bundle.
+      - name: Build protocol + extension
+        run: pnpm --filter @manta-action-kit/protocol build && pnpm --filter @manta-action-kit/extension build
+      - name: Run e2e suite
+        run: pnpm --filter @manta-action-kit/extension e2e
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: packages/extension/playwright-report/
+          if-no-files-found: ignore

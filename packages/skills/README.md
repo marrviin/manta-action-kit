@@ -1,34 +1,36 @@
 # @manta-action-kit/skills
 
-Agent skills (Claude Code Skill format) — teaches agents to use and debug the
-Manta Action Kit MCP server (`packages/mcp`).
+Agent skills (Claude Code Skill format) — teaches agents to set up, use and
+debug the Manta Action Kit suite (Chrome extension + MCP server,
+`packages/mcp`).
 
 ## Included skills
 
-| Directory | Description |
-| --- | --- |
-| `manta-action-kit` | Suite usage guide: environment check & init, extension/MCP/connection troubleshooting, reading recordings, proxy forwarding, debug workflows. Ships with `scripts/check-env.mjs` for a one-shot health check |
+| Directory          | Description                                                                                                                                                                                                                                                                                                                  |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `manta-action-kit` | Setup & usage guide: first-time install and MCP registration for any client, environment check & connection troubleshooting (`scripts/check-env.mjs`), reading recordings, distilling and executing actions, proxy rules, page capture. Dev-only guidance (builds, wire-compat checklist) lives in `references/dev-setup.md` |
 
 ## How it takes effect in this repo
 
-`.claude/skills/manta-action-kit` at the repo root is a **symlink** to this
-package, so Claude Code discovers and loads it on demand (or manually via
-`/manta-action-kit`). No setup needed after cloning.
+`.claude/` is gitignored, so the symlink is not shipped — create it once after
+cloning to let Claude Code discover the skill inside this repo (or invoke it
+manually via `/manta-action-kit`):
+
+```bash
+mkdir -p .claude/skills && ln -sfn ../../skills/manta-action-kit .claude/skills/manta-action-kit
+```
 
 ## Install into other projects
 
 ```bash
-npx degit marrviin/manta-action-kit/packages/skills/manta-action-kit ~/.claude/skills/manta-action-kit
-# Or after publishing:
-# npm i @manta-action-kit/skills && cp -r node_modules/@manta-action-kit/skills/manta-action-kit ~/.claude/skills/
+npx skills add marrviin/manta-action-kit -g -a claude-code -y   # global, Claude Code
+# Or interactive: npx skills add marrviin/manta-action-kit      # pick agent + scope
 ```
+
+Update later by re-running the same command, or `npx skills update -g`.
 
 ## Publishing
 
-```bash
-cd packages/skills && npm publish
-```
-
-To add a new skill, create `packages/skills/<kebab-case-name>/SKILL.md` (the
-frontmatter must contain `name` and `description`; make `description` spell out
-its trigger phrases — agents rely on it to decide whether to load).
+`npm publish` from this directory is an optional alternative distribution
+channel; the supported install path is `npx skills add` above (it reads this
+repo directly, so no publishing step is required).

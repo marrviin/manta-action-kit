@@ -56,6 +56,30 @@ export interface Recording {
   interactions?: CapturedInteraction[];
 }
 
+/**
+ * The trimmed per-recording shape returned by list_recordings — metadata only
+ * (progressive disclosure: deps / fieldDynamism / interactions live on the
+ * full Recording and are surfaced per-recording via get_flow / get_endpoints /
+ * get_recording). Keeping list results flat is what lets the tool answer
+ * in-context instead of blowing past the agent's tool-output limit.
+ */
+export interface RecordingSummary {
+  id: string;
+  name: string;
+  origin: string;
+  url: string;
+  createdAt: number;
+  callCount: number;
+  /** Agent-authored summary (set via set_recording_description), when present. */
+  description?: string;
+  /** epoch ms when `description` was last written by an agent. */
+  descriptionUpdatedAt?: number;
+  /** Lifecycle of the laya relevance analysis (absent = never analyzed). */
+  relevanceStatus?: 'analyzing' | 'done' | 'failed' | 'skipped';
+  /** How many user interactions were captured (0 when none). */
+  interactionCount: number;
+}
+
 /** The kind of a captured user interaction. */
 export type InteractionKind = 'click' | 'submit' | 'change';
 
@@ -124,7 +148,17 @@ export type DependencyLocation = 'url' | 'query' | 'body' | 'header';
 /** A field-level data dependency between two calls in a recording's flow. */
 export interface FieldDependency {
   id: string;
+  /**
+   * Seq of the producing call. -1 for cookie-sourced edges: the value comes
+   * from a browser cookie, not from any recorded call.
+   */
   fromSeq: number;
+  /**
+   * JSON path into the producing call's response body. Cookie-sourced edges
+   * instead carry `cookie:<NAME>` — the source cookie's name, matching the
+   * `{{cookie:NAME}}` template the action replay engine resolves at execute
+   * time (header overrides only).
+   */
   fromPath: string;
   toSeq: number;
   toLocation: DependencyLocation;
@@ -182,12 +216,23 @@ export interface SchemaNode {
   example?: string;
 }
 
-/** One request field whose value comes from an upstream endpoint's response. */
+/** One request field whose value comes from an upstream source. */
 export interface EndpointInput {
   toLocation: DependencyLocation;
   toPath: string;
-  fromEndpointKey: string;
+  /**
+   * The upstream endpoint that produces the value (`${method} ${pathKey}`).
+   * Omitted for cookie-sourced inputs — see fromCookie.
+   */
+  fromEndpointKey?: string;
+  /** JSON path into the upstream source's response body (empty for cookies). */
   fromPath: string;
+  /**
+   * Cookie-sourced input: the request field is fed by this browser cookie
+   * (CSRF double-submit et al). Replay with a `{{cookie:<fromCookie>}}`
+   * override on the matching request header.
+   */
+  fromCookie?: string;
 }
 
 /** One distinct endpoint contract distilled from a recording. */
@@ -362,7 +407,13 @@ export interface ActionRunResult {
   actionName: string;
   startedAt: number;
   durationMs: number;
-  endReason: 'complete' | 'aborted';
+  /**
+   * 'complete' — every step forwarded; 'aborted' — a step failed and the run
+   * stopped there; 'completed-with-errors' — continueOnError was set, every
+   * step was attempted, and at least one failed (failedStep/failure describe
+   * the FIRST failure).
+   */
+  endReason: 'complete' | 'aborted' | 'completed-with-errors';
   failedStep?: number;
   failure?: 'refused' | 'error';
   steps: ActionStepResult[];
@@ -449,6 +500,7 @@ export type RpcMethod =
   | 'update_action'
   | 'delete_action'
   | 'execute_action'
+  | 'extension_info'
   | 'capture_screenshot'
   | 'capture_element'
   | 'start_gif_recording'
@@ -462,7 +514,7 @@ export type RpcMethod =
 export interface RpcMap {
   list_recordings: {
     params: void;
-    result: { recordings: Recording[] };
+    result: { recordings: RecordingSummary[] };
   };
   get_recording: {
     params: { id: string };
@@ -796,8 +848,24 @@ export interface RpcMap {
        * recorded field's JSON type.
        */
       params?: Record<string, string | number | boolean>;
+      /**
+       * Keep going after a failed step: every step is attempted and the result
+       * carries each one's outcome (endReason 'completed-with-errors' when any
+       * failed). Default false — the run stops at the first failed step.
+       */
+      continueOnError?: boolean;
     };
     result: { run: ActionRunResult };
+  };
+  /**
+   * Internal version probe: the extension's manifest version, so the MCP
+   * server (health tool) and check-env can detect a version skew and point the
+   * user at the fix. Not an agent-facing tool — it is not in TOOL_REGISTRY and
+   * runs regardless of the per-tool kill switches (version info is not data).
+   */
+  extension_info: {
+    params: void;
+    result: { version: string };
   };
 }
 
@@ -840,6 +908,14 @@ export interface WelcomeFrame {
   proof: string;
   /** Server's challenge nonce; the client answers with HMAC(token, "manta/auth/" + nonce). */
   nonce: string;
+  /**
+   * The MCP server's own version, so the client (extension / peer) can detect a
+   * version skew with the extension and surface a fix hint. OPTIONAL for
+   * backward compatibility: an older server omits it, and an old client ignores
+   * it. Absence on a current client therefore reads as "server predates the
+   * version exchange — update the MCP server".
+   */
+  version?: string;
 }
 
 /** A client's answer to the welcome challenge: proves it knows the token. */
@@ -929,12 +1005,22 @@ export const DEFAULT_MCP_PORT = 8787;
 /** Default port for the local HTTP proxy (script-driven gateway entry). */
 export const DEFAULT_PROXY_PORT = 8788;
 
+/**
+ * How many ports ABOVE the configured WS port the port-conflict fallback scans.
+ * When the configured port is squatted by a non-manta process, the MCP server
+ * claims the first free port in this range as a fallback owner, and the
+ * extension probes the same range (verifying the token handshake before
+ * trusting anything it finds) to locate the relocated bridge — no restart or
+ * config change needed on either side.
+ */
+export const BRIDGE_SCAN_RANGE = 32;
+
 // ---------------------------------------------------------------------------
-// Tool registry — shared by the MCP tab UI (kill switches) and the handlers
+// Tool registry — shared by the Connector card UI (kill switches) and the handlers
 // ---------------------------------------------------------------------------
 
 /**
- * A tool name shown in the MCP tab. Business tools map to an `RpcMethod` (executed
+ * A tool name shown in the Connector card. Business tools map to an `RpcMethod` (executed
  * extension-side, gated by a kill switch). Ops tools (`health` / `rebind_proxy`)
  * run inside the MCP process itself, so they are not `RpcMethod`s and the
  * extension-side kill switch cannot affect them.
@@ -960,7 +1046,7 @@ export function isOpsTool(group: ToolInfo['group']): boolean {
 
 /**
  * The tools exposed to the agent, in display order. Single source of truth for
- * the MCP tab's tool list and the per-tool enable checks (settings.mcpToolEnabled).
+ * the Connector card's tool list and the per-tool enable checks (settings.mcpToolEnabled).
  */
 export const TOOL_REGISTRY: ToolInfo[] = [
   { method: 'list_recordings', group: 'read', sensitive: false },

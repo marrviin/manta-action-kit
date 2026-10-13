@@ -69,16 +69,26 @@ def _rejection_hint(port: int, has_token: bool) -> str:
 class Bridge:
     """Async WS bridge server. One instance per process (the OWNER role)."""
 
-    def __init__(self, port: int, token: str | None, host: str = "127.0.0.1") -> None:
+    def __init__(
+        self,
+        port: int,
+        token: str | None,
+        host: str = "127.0.0.1",
+        server_version: str | None = None,
+    ) -> None:
         self._port = port
         self._host = host
         self._token = token
+        # Echoed to clients in the welcome frame so the extension can detect a
+        # version skew (see WelcomeFrame.version in the shared protocol).
+        self._server_version = server_version
         self._server: Server | None = None
         self._bound_port = port
         # id → (future, connection that carries it) — tagged so a takeover by a
         # re-connecting extension doesn't orphan the old socket's calls.
         self._pending: dict[str, tuple[asyncio.Future[Any], ServerConnection]] = {}
         self._active: ServerConnection | None = None
+        self._active_extension_version: str | None = None
         self._id = 0
         self._closed = False
 
@@ -119,6 +129,11 @@ class Bridge:
         """Is an extension currently connected?"""
         conn = self._active
         return conn is not None and conn.state.name == "OPEN"
+
+    def extension_version(self) -> str | None:
+        """The connected extension's self-declared version (hello frame), or
+        None. Diagnostic only — the authoritative probe is extension_info."""
+        return self._active_extension_version
 
     def port(self) -> int:
         """The actually bound port (resolves the ephemeral port when 0)."""
@@ -173,19 +188,20 @@ class Bridge:
 
         logger.debug("client connected")
         try:
-            authed_role = await self._handshake(conn)
+            authed_role, client_version = await self._handshake(conn)
         except (TimeoutError, _HandshakeRejected):
             # _handshake already logged + closed the socket.
             return
         except Exception:
             logger.exception("handshake error")
             return
-        if authed_role is None:
+        if not authed_role:
             return  # socket closed before the handshake completed
 
         if authed_role == protocol.ROLE_EXTENSION:
             logger.info("extension authenticated")
             self._active = conn
+            self._active_extension_version = client_version
         else:
             logger.info("peer authenticated")
 
@@ -207,6 +223,7 @@ class Bridge:
             if authed_role == protocol.ROLE_EXTENSION and self._active is conn:
                 logger.info("extension disconnected")
                 self._active = None
+                self._active_extension_version = None
             # Fail every in-flight call SENT ON THIS SOCKET immediately: the
             # extension can no longer answer them. Pending entries are tagged
             # with their connection at send time.
@@ -219,12 +236,17 @@ class Bridge:
                     )
                     self._pending.pop(fid, None)
 
-    async def _handshake(self, conn: ServerConnection) -> str | None:
-        """Pre-auth challenge-response. Returns the authenticated role, or None
-        if the socket closed first. Rejects (closes 1008) on any deviation."""
+    async def _handshake(
+        self, conn: ServerConnection
+    ) -> tuple[str, str | None]:
+        """Pre-auth challenge-response. Returns (authenticated role, the
+        client's self-declared hello version) — or None if the socket closed
+        first (in which case the tuple's role is ""). Rejects (closes 1008) on
+        any deviation."""
         stage = "hello"
         server_nonce = ""
         declared_role = protocol.ROLE_PEER
+        client_version: str | None = None
         try:
             async with asyncio.timeout(HANDSHAKE_TIMEOUT_S):
                 async for raw in conn:
@@ -257,18 +279,25 @@ class Bridge:
                             raise _HandshakeRejected
                         # Remember the declared role now; it only takes EFFECT
                         # after the auth challenge below succeeds.
+                        hello_version = frame.get("version")
+                        client_version = (
+                            hello_version
+                            if isinstance(hello_version, str)
+                            else None
+                        )
                         server_nonce = new_nonce()
                         stage = "auth"
                         declared_role = role
-                        await conn.send(
-                            json.dumps(
-                                {
-                                    "type": protocol.WELCOME,
-                                    "proof": welcome_proof(self._token, nonce),
-                                    "nonce": server_nonce,
-                                }
-                            )
-                        )
+                        welcome: dict[str, Any] = {
+                            "type": protocol.WELCOME,
+                            "proof": welcome_proof(self._token, nonce),
+                            "nonce": server_nonce,
+                        }
+                        # Optional (old clients ignore it): lets the extension
+                        # detect a version skew with this server.
+                        if self._server_version:
+                            welcome["version"] = self._server_version
+                        await conn.send(json.dumps(welcome))
                         continue
 
                     if stage == "auth" and frame.get("type") == protocol.AUTH:
@@ -278,7 +307,7 @@ class Bridge:
                         if verify_auth_proof(
                             self._token, server_nonce, frame.get("proof", "")
                         ):
-                            return declared_role
+                            return declared_role, client_version
                         logger.info(
                             "client failed the auth challenge — token mismatch "
                             "(re-copy the install prompt)"
@@ -295,8 +324,8 @@ class Bridge:
         except TimeoutError:
             logger.info("handshake timed out — dropping client")
             await conn.close(1008, "handshake timeout")
-            return None
-        return None  # socket closed before authed
+            return "", None
+        return "", None  # socket closed before authed
 
     async def _on_frame(
         self, conn: ServerConnection, role: str, frame: dict[str, Any]

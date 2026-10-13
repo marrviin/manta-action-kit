@@ -190,10 +190,38 @@ describe('kill switch', () => {
 });
 
 describe('recording reads', () => {
-  it('list_recordings relays the db list', async () => {
-    mocked.listRecordings.mockResolvedValue([{ id: 'r1', name: 'Login' } as never]);
+  it('list_recordings relays the db list projected to summaries (heavy fields stripped)', async () => {
+    mocked.listRecordings.mockResolvedValue([
+      {
+        id: 'r1',
+        name: 'Login',
+        origin: 'https://example.com',
+        url: 'https://example.com/login',
+        createdAt: 1,
+        callCount: 3,
+        description: 'Logs the user in',
+        relevanceStatus: 'done',
+        // Heavy analysis payload that must NOT leak into the list result.
+        deps: [{ id: 'd1', value: 'secret-linking-value' }],
+        fieldDynamism: { 'POST /login': { 'body.token': { verdict: 'varies' } } },
+        interactions: [{ kind: 'click', at: 2 }],
+      },
+    ] as never);
     await expect(rpc('list_recordings', {})).resolves.toEqual({
-      recordings: [{ id: 'r1', name: 'Login' }],
+      recordings: [
+        {
+          id: 'r1',
+          name: 'Login',
+          origin: 'https://example.com',
+          url: 'https://example.com/login',
+          createdAt: 1,
+          callCount: 3,
+          description: 'Logs the user in',
+          descriptionUpdatedAt: undefined,
+          relevanceStatus: 'done',
+          interactionCount: 1,
+        },
+      ],
     });
   });
 
@@ -751,7 +779,9 @@ describe('actions', () => {
     await expect(
       rpc('execute_action', { id: 'a1', params: { user: 'me' } } as never),
     ).resolves.toEqual({ run: { runId: 'run1' } });
-    expect(mocked.runAction).toHaveBeenCalledWith(action(), { user: 'me' });
+    expect(mocked.runAction).toHaveBeenCalledWith(action(), { user: 'me' }, {
+      continueOnError: false,
+    });
   });
 });
 

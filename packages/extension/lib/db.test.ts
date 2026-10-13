@@ -35,8 +35,18 @@ import {
   getInspectorCapture,
   saveScreenshotHistory,
   listScreenshotHistory,
+  getScreenshotHistory,
+  deleteScreenshotHistory,
+  deleteInspectorCapture,
+  updateCallRelevances,
+  updateDepChecks,
+  updateFieldDynamism,
+  deleteCall,
+  putRecordings,
+  putCalls,
+  putActions,
 } from '@/lib/db';
-import type { Recording, ApiCall } from '@/lib/recording/types';
+import type { Recording, ApiCall, FieldDependency } from '@/lib/recording/types';
 import type { Action } from '@/lib/action/types';
 
 const rec = (over: Partial<Recording> = {}): Recording =>
@@ -216,6 +226,160 @@ describe('actions', () => {
     expect((await getAction('a1'))!.name).toBe('Renamed');
     await deleteAction('a1');
     expect(await getAction('a1')).toBeUndefined();
+  });
+});
+
+describe('bulk import paths (put*)', () => {
+  it('puts recordings / calls / actions verbatim — ids and updatedAt preserved', async () => {
+    await putRecordings([rec({ id: 'r1' }), rec({ id: 'r2', createdAt: 2000 })]);
+    await putCalls([
+      call({ id: 'c1' }),
+      call({ id: 'c2', seq: 2 }),
+    ]);
+    await putActions([
+      {
+        id: 'a1',
+        name: 'A',
+        description: 'd',
+        recordingId: 'r1',
+        params: [],
+        steps: [{ callId: 'c1', kind: 'fetch' }],
+        createdAt: 1,
+        updatedAt: 42, // import must NOT re-stamp — roundtrip is lossless
+      } as Action,
+    ]);
+
+    expect((await getRecording('r2'))!.createdAt).toBe(2000);
+    expect((await getCalls('r1')).map((c) => c.id)).toEqual(['c1', 'c2']);
+    expect((await getAction('a1'))!.updatedAt).toBe(42);
+
+    // Overwrite by id: put again with changed fields wins.
+    await putRecordings([rec({ id: 'r1', name: 'Overwritten' })]);
+    expect((await getRecording('r1'))!.name).toBe('Overwritten');
+  });
+});
+
+describe('model marks on calls and deps', () => {
+  it('updateCallRelevances stamps only listed calls of the recording and marks it analyzed', async () => {
+    await saveRecording(rec(), [call({ id: 'c1' }), call({ id: 'c2', seq: 2 })]);
+    await updateCallRelevances('r1', [
+      { callId: 'c1', relevance: { verdict: 'irrelevant', confidence: 0.9, analyzedAt: 7 } },
+      { callId: 'ghost', relevance: { verdict: 'relevant', confidence: 1, analyzedAt: 7 } }, // unknown id — ignored
+    ]);
+
+    const calls = await getCalls('r1');
+    expect(calls.find((c) => c.id === 'c1')!.relevance!.verdict).toBe('irrelevant');
+    expect(calls.find((c) => c.id === 'c2')!.relevance).toBeUndefined(); // untouched
+
+    const r = (await getRecording('r1'))!;
+    expect(r.relevanceStatus).toBe('done');
+    expect(r.relevanceAnalyzedAt).toBeGreaterThan(0);
+  });
+
+  it('updateCallRelevances skips calls that belong to another recording', async () => {
+    // Calls are keyed by id globally — the recordingId guard protects against
+    // stamping a call whose id exists but belongs elsewhere.
+    await saveRecording(rec(), [call({ id: 'c1' })]);
+    await saveRecording(rec({ id: 'r2', createdAt: 2000 }), [
+      call({ id: 'c2', recordingId: 'r2', seq: 1 }),
+    ]);
+    await updateCallRelevances('r1', [
+      { callId: 'c2', relevance: { verdict: 'relevant', confidence: 1, analyzedAt: 7 } },
+    ]);
+    expect((await getCalls('r2'))[0]!.relevance).toBeUndefined(); // r2's call untouched
+    expect((await getCalls('r1'))[0]!.relevance).toBeUndefined(); // nothing stamped
+    // r1 was still marked analyzed (its own calls had no entries).
+    expect((await getRecording('r1'))!.relevanceStatus).toBe('done');
+  });
+
+  it('updateDepChecks marks only inferred edges and tolerates missing rec/deps', async () => {
+    const dep = (id: string, origin: FieldDependency['origin']): FieldDependency =>
+      ({ id, origin }) as FieldDependency;
+    await saveRecording(
+      rec({ deps: [dep('d1', 'inferred'), dep('d2', 'confirmed')] }),
+      [call()],
+    );
+    await updateDepChecks('r1', [
+      { depId: 'd1', depCheck: { verdict: 'likely', confidence: 0.8, analyzedAt: 7 } },
+      { depId: 'd2', depCheck: { verdict: 'unlikely', confidence: 0.8, analyzedAt: 7 } },
+      { depId: 'ghost', depCheck: { verdict: 'uncertain', confidence: 0.1, analyzedAt: 7 } },
+    ]);
+    const deps = (await getRecording('r1'))!.deps!;
+    expect(deps.find((d) => d.id === 'd1')!.depCheck!.verdict).toBe('likely');
+    // confirmed edges are ground truth — the model has no say.
+    expect(deps.find((d) => d.id === 'd2')!.depCheck).toBeUndefined();
+
+    // Missing recording / recording without deps: silent no-op.
+    await updateDepChecks('missing', [
+      { depId: 'd1', depCheck: { verdict: 'likely', confidence: 1, analyzedAt: 7 } },
+    ]);
+    await saveRecording(rec({ id: 'r3', createdAt: 3000, deps: undefined }), []);
+    await updateDepChecks('r3', [
+      { depId: 'd1', depCheck: { verdict: 'likely', confidence: 1, analyzedAt: 7 } },
+    ]);
+  });
+
+  it('updateFieldDynamism merges per-cell, preserving cells this run did not refresh', async () => {
+    await saveRecording(
+      rec({
+        fieldDynamism: { 'GET /api/a': { token: { verdict: 'varies', source: 'model', confidence: 0.9, analyzedAt: 1 } } },
+      }),
+      [call()],
+    );
+    await updateFieldDynamism('r1', {
+      'GET /api/a': { token: { verdict: 'stable', source: 'model', confidence: 0.7, analyzedAt: 2 } }, // overwrite
+      'GET /api/b': { q: { verdict: 'varies', source: 'stats', confidence: 1, analyzedAt: 2 } }, // new endpoint
+    });
+    const fd = (await getRecording('r1'))!.fieldDynamism!;
+    expect(fd['GET /api/a']!.token!.verdict).toBe('stable');
+    expect(fd['GET /api/b']!.q!.source).toBe('stats');
+    // Missing recording: silent no-op.
+    await updateFieldDynamism('missing', { 'GET /x': {} });
+  });
+});
+
+describe('call deletion', () => {
+  it('deletes one call and decrements callCount; tolerates missing rows', async () => {
+    await saveRecording(rec({ callCount: 2 }), [
+      call({ id: 'c1' }),
+      call({ id: 'c2', seq: 2 }),
+    ]);
+    await deleteCall('r1', 'c1');
+    expect((await getCalls('r1')).map((c) => c.id)).toEqual(['c2']);
+    expect((await getRecording('r1'))!.callCount).toBe(1);
+
+    // A missing call row still decrements (the decrement is unconditional —
+    // callers are expected to pass ids from the recording's own call list).
+    await deleteCall('r1', 'ghost');
+    expect((await getRecording('r1'))!.callCount).toBe(0);
+    // Missing recording: no-op, no throw.
+    await deleteCall('missing', 'c1');
+  });
+});
+
+describe('history CRUD complements', () => {
+  it('reads and deletes a single screenshot entry', async () => {
+    const id = await saveScreenshotHistory('data:image/png;base64,1', 's.png');
+    const entry = await getScreenshotHistory(id);
+    expect(entry).toMatchObject({ filename: 's.png', dataUrl: 'data:image/png;base64,1' });
+    expect(await getScreenshotHistory('missing')).toBeUndefined();
+
+    await deleteScreenshotHistory(id);
+    expect(await listScreenshotHistory()).toEqual([]);
+    await deleteScreenshotHistory('missing'); // no-op, no throw
+  });
+
+  it('deletes a single inspector capture', { timeout: 15000 }, async () => {
+    await saveInspectorHistoryCapture({
+      page: { url: 'https://x/1', title: 'p1' },
+      capturedAt: '0001',
+      elementCount: 1,
+      elements: [],
+    } as never);
+    const [first] = await listInspectorCaptures();
+    await deleteInspectorCapture(first!.id);
+    expect(await listInspectorCaptures()).toEqual([]);
+    await deleteInspectorCapture('missing'); // no-op, no throw
   });
 });
 

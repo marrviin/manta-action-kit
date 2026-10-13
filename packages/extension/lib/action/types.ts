@@ -152,8 +152,13 @@ export interface ActionRunResult {
   startedAt: number;
   /** Wall-clock duration of the whole run. */
   durationMs: number;
-  /** 'complete' — every step forwarded; 'aborted' — a step failed and the run stopped there. */
-  endReason: "complete" | "aborted";
+  /**
+   * 'complete' — every step forwarded; 'aborted' — a step failed and the run
+   * stopped there; 'completed-with-errors' — continueOnError was set, every
+   * step was attempted, and at least one failed (failedStep/failure describe
+   * the FIRST failure).
+   */
+  endReason: "complete" | "aborted" | "completed-with-errors";
   /** The failed step's 1-based index when endReason is 'aborted'. */
   failedStep?: number;
   /** Why the run aborted (mirrors the failing step's outcome). */

@@ -14,6 +14,7 @@ import {
   recordingState,
 } from '@/lib/storage';
 import { saveRecording } from '@/lib/db';
+import { collectCookiesForUrl } from '@/lib/gateway/dnr';
 import { uuid } from '@/lib/utils';
 import { createSession } from './session-core';
 
@@ -25,6 +26,11 @@ const session = createSession({
   saveRecording,
   newId: uuid,
   now: Date.now,
+  // Cookie-source dependency detection at stop(): map chrome.cookies results to
+  // the minimal {name, value} the pure pass needs. Best-effort — the pass
+  // tolerates lookup failures per URL.
+  cookieLookup: async (url) =>
+    (await collectCookiesForUrl(url)).map((c) => ({ name: c.name, value: c.value })),
 });
 
 export const getState = session.getState;

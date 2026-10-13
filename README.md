@@ -40,16 +40,23 @@ single credential.
 ## Quick start
 
 **1. Install the extension** from the
-[Chrome Web Store](https://chromewebstore.google.com/detail/manta-action-kit/pghddhbhbnlcehlmgnnalgaephllkeel).
+[Chrome Web Store](https://chromewebstore.google.com/detail/manta-action-kit/pghddhbhbnlcehlmgnnalgaephllkeel),
+then log into the site you want the agent to call — you'll record from it in
+step 5.
 
 **2. Copy the install prompt** — click the extension's toolbar icon and open
 its side panel (via the popup's _Open side panel_ entry) → _Action_ tab →
 _Copy install prompt_. It embeds your personal bridge token (`MANTA_TOKEN`).
+Can't see the toolbar icon? Chrome tucks new extensions behind the
+puzzle-piece menu next to the address bar — open it and pin Manta Action Kit.
 
-**3. Add the MCP server to your agent.** Requires [Node.js](https://nodejs.org)
-(≥ 18). Paste the prompt into Claude Code / Codex / any MCP client (for Claude
-Code you can also run `claude mcp add` and follow the prompt), or add this to
-your MCP config:
+**3. Add the MCP server to your agent.** MCP is the standard way AI agents
+plug in external tools — you don't need to understand it, just follow along.
+You'll need [Node.js](https://nodejs.org) ≥ 18 (check with `node -v`; if it's
+missing, grab the LTS installer from nodejs.org). The prompt is
+client-agnostic — paste it into Claude Code, Codex, or any MCP client and the
+agent registers the server into its own config, or add this to your MCP
+config by hand:
 
 ```json
 {
@@ -70,8 +77,26 @@ your MCP config:
 `MANTA_TOKEN` must match the extension (it is the bridge's auth secret);
 `MANTA_WS_PORT` (default 8787) must match the MCP port in the extension's
 settings, and `MANTA_PROXY_PORT` (default 8788) is the local HTTP port of the
-sandbox proxy. All env vars are optional if you keep the defaults. Details and
-troubleshooting: [`packages/mcp/README.md`](packages/mcp/README.md).
+sandbox proxy. All env vars are optional if you keep the defaults. Details:
+[`packages/mcp/README.md`](packages/mcp/README.md) · Troubleshooting:
+[`docs/claude-code.md`](docs/claude-code.md).
+
+> **Full Claude Code walkthrough?** See
+> [`docs/claude-code.md`](docs/claude-code.md).
+
+> **Using WorkBuddy?** It keeps its MCP config in `~/.workbuddy/mcp.json` and
+> needs one extra step — trusting the server in its connector UI. See
+> [`docs/workbuddy.md`](docs/workbuddy.md).
+
+> **Using JoyCode?** It keeps its MCP config in `~/.joycode/joycode-mcp.json`
+> (edit it by hand, then restart the app). See
+> [`docs/joycode.md`](docs/joycode.md).
+
+> **Other MCP clients?** Anything that can launch a stdio MCP server (Codex,
+> Cursor, Claude Desktop, …) works with the manual JSON config above — same
+> `command`/`args`/`env` shape. Codex / Cursor / Claude Desktop aren't
+> individually verified, but the install prompt gives them everything they
+> need.
 
 **4. (Optional) Install the agent skill.** A packaged usage guide —
 environment checks, connection troubleshooting, and tool recipes — that your
@@ -92,6 +117,12 @@ an agent strictly needs.
 > _"I just recorded the order-tracking flow. Turn it into an action and tell
 > me where order A1002 is."_
 
+> **First-recording tips:** make sure you're logged in before you hit _Start_
+> (and still logged in when you stop — a session expiring mid-recording bakes
+> 401s into the chain); don't wander the site while recording, or tracking and
+> polling calls pollute the chain; a flow that crosses several sites will pop
+> one confirmation per host on execution.
+
 The bridge runs 100% on `127.0.0.1` — nothing leaves your machine except the
 API calls you approved.
 
@@ -108,8 +139,9 @@ like any other tool:
 | Sandbox proxy   | `proxy_fetch` · `proxy_sse` (with your login state)                                                |
 | Ops             | `health` · proxy-rule management                                                                   |
 
-> The full tool table (23 tools, incl. element-capture reads and proxy-rule
-> management) lives in [`packages/mcp/README.md`](packages/mcp/README.md).
+> The full tool table (30+ tools, incl. page capture — element capture,
+> screenshots, GIF — and proxy-rule management) lives in
+> [`packages/mcp/README.md`](packages/mcp/README.md).
 >
 > A **proxy rule** maps a script prefix to a real base URL, so non-MCP scripts
 > can also route calls through the same sandbox gateway (same cookie injection,
@@ -181,8 +213,8 @@ Tailwind v4, Manifest V3), `packages/mcp`
 `packages/protocol` (shared WS-bridge protocol & domain types used by both),
 and `packages/skills` (an agent skill that teaches clients how to drive the
 toolkit). See
-[CONTRIBUTING.md](CONTRIBUTING.md) and
-[CLAUDE.md](CLAUDE.md) for architecture and conventions — including why the
+[CONTRIBUTING.md](CONTRIBUTING.md) for architecture and conventions — including
+why the
 MV3 service worker dials _out_ as a WebSocket client, and why cookie injection
 goes through `declarativeNetRequest` instead of `fetch credentials`.
 

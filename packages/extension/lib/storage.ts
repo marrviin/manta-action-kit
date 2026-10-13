@@ -204,7 +204,7 @@ export const recordingFilterRules = storage.defineItem<RecordingFilterRule[]>(
 
 /**
  * Live MCP bridge connection status, written by the background service worker (the
- * only context that owns the WebSocket) and read reactively by the MCP tab to show
+ * only context that owns the WebSocket) and read reactively by the Settings tab's Connector card to show
  * a status indicator. Session-scoped so it survives SW sleep but resets on restart.
  *
  * There is no MCP master switch anymore: the bridge always tries to connect to the
@@ -220,6 +220,21 @@ export const mcpConnStatus = storage.defineItem<McpConnStatus>(
   "session:mcpConnStatus",
   {
     fallback: "connecting",
+  },
+);
+
+/**
+ * The MCP server's self-declared version (WelcomeFrame.version), published by
+ * the bridge after each successful handshake. The settings page shows it next
+ * to the connection status and flags a skew with the extension's own version.
+ * `null` means the connected server predates the version exchange (i.e. the
+ * server is older than this feature) or nothing has connected yet this SW
+ * lifetime — the UI distinguishes those by the connection status.
+ */
+export const mcpServerVersion = storage.defineItem<string | null>(
+  "session:mcpServerVersion",
+  {
+    fallback: null,
   },
 );
 

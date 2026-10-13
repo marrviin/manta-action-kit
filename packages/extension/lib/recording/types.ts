@@ -145,9 +145,18 @@ export interface DepCheck {
 export interface FieldDependency {
   /** Stable id (uuid), so the UI can confirm/edit/remove a single dependency. */
   id: string;
-  /** Seq of the call that PRODUCED the value (its response). */
+  /**
+   * Seq of the call that PRODUCED the value (its response). -1 for
+   * cookie-sourced edges: the value comes from a browser cookie, not from any
+   * recorded call — see `fromPath`'s `cookie:<NAME>` form.
+   */
   fromSeq: number;
-  /** JSON path into the producing call's response body, e.g. "data.orderId". */
+  /**
+   * JSON path into the producing call's response body, e.g. "data.orderId".
+   * Cookie-sourced edges instead carry `cookie:<NAME>` — the source cookie's
+   * name, which is also the exact `{{cookie:NAME}}` template syntax the action
+   * replay engine resolves to the live cookie value at execute time.
+   */
   fromPath: string;
   /** Seq of the call that CONSUMES the value (its request). */
   toSeq: number;
@@ -269,10 +278,19 @@ export interface EndpointInput {
   toLocation: DependencyLocation;
   /** Field path / query key / header name inside `toLocation` (empty for raw url). */
   toPath: string;
-  /** The upstream endpoint that produces the value (`${method} ${pathKey}`). */
-  fromEndpointKey: string;
-  /** JSON path into that upstream endpoint's response body, e.g. "data[].id". */
+  /**
+   * The upstream endpoint that produces the value (`${method} ${pathKey}`).
+   * Omitted for cookie-sourced inputs — see fromCookie.
+   */
+  fromEndpointKey?: string;
+  /** JSON path into that upstream source's response body (empty for cookies). */
   fromPath: string;
+  /**
+   * Cookie-sourced input: the request field is fed by this browser cookie
+   * (CSRF double-submit et al). Replay with a `{{cookie:<fromCookie>}}`
+   * override on the matching request header.
+   */
+  fromCookie?: string;
   /** laya 真实性判定（透传自源依赖边，仅 inferred 边会有）。 */
   depCheck?: DepCheck;
 }

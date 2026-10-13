@@ -31,7 +31,9 @@ import { z } from "zod";
 import { startBridge, type Bridge } from "./bridge.js";
 import { startPeerClient, type PeerClient } from "./peer-client.js";
 import { startProxyHttp, type ProxyHttpServer } from "./proxy-http.js";
+import { compatVerdict, continueOnErrorHint } from "./compat.js";
 import {
+  BRIDGE_SCAN_RANGE,
   DEFAULT_MCP_PORT,
   DEFAULT_PROXY_PORT,
   type RpcMethod,
@@ -87,6 +89,11 @@ if (port === proxyPort) {
  *     shared proxyPort already serves scripts.
  * When the owner exits, each peer's link drops and it re-runs the election, so
  * one of them takes over without a manual restart.
+ *
+ * If the configured port is unusable (squatted by a non-manta process), the
+ * election falls back to a scan: the first free port above it becomes the
+ * bridge, and the extension discovers the relocation by probing the same range
+ * with the token handshake (see BRIDGE_SCAN_RANGE in the protocol package).
  */
 type Role = "owner" | "peer";
 const rt: {
@@ -118,6 +125,15 @@ function call(
 function extensionReachable(): boolean {
   if (rt.role === "owner") return !!rt.bridge?.isConnected();
   return !!rt.peer?.isConnected();
+}
+
+/**
+ * The WS bridge port actually in use: normally the configured one, but a
+ * port-conflict fallback owner binds a higher port (see elect()). Diagnostics
+ * and rebind_proxy must consult this, not the configured const.
+ */
+function wsPort(): number {
+  return rt.bridge?.port() ?? port;
 }
 
 const server = new McpServer({
@@ -193,7 +209,7 @@ server.registerTool(
   {
     title: "List recordings",
     description:
-      "List all API recordings captured by the Manta Action Kit Chrome extension (metadata only: id, name, origin, createdAt, callCount). Recordings are SOURCE MATERIAL for actions: analyze a flow (get_flow / get_endpoints / get_recording), then distill it into a reusable, parameterized action via create_action. When the goal is to RUN a captured flow, execute the action via execute_action — do not replay a recording's calls one by one via proxy_fetch.",
+      "List all API recordings captured by the Manta Action Kit Chrome extension (per-recording summary only: id, name, origin, url, createdAt, callCount, description, relevanceStatus, interactionCount — no call bodies, deps or interactions). Recordings are SOURCE MATERIAL for actions: analyze a flow (get_flow / get_endpoints / get_recording), then distill it into a reusable, parameterized action via create_action. When the goal is to RUN a captured flow, execute the action via execute_action — do not replay a recording's calls one by one via proxy_fetch.",
     inputSchema: {},
   },
   async () => {
@@ -351,7 +367,7 @@ server.registerTool(
   {
     title: "Get call dependency flow",
     description:
-      "Get a recording's FLOW: its calls as ordered lightweight steps (seq/method/url/status, no bodies) plus the inferred field dependencies linking them — i.e. which response value from an earlier call feeds a later call's request. Deps may carry a `depCheck` mark: `verdict: 'unlikely'` means the local model considers the edge a coincidental value match (a colliding timestamp/nonce) rather than a real data flow — do not build parameterization on it; an absent mark means not analyzed. Steps may also carry a `relevance` mark (`relevant` / `irrelevant` / `uncertain` — skip `irrelevant` calls as background noise) and a `precedingInteraction` mark (the user interaction, with its text and `deltaMs`, that most likely triggered the call — direct consequences of user intent vs calls that merely co-occur). Use this to understand how the calls chain together before turning the flow into an action (create_action); use get_recording for full request/response bodies. Running a captured flow goes through execute_action — do not replay the chain's calls one by one via proxy_fetch. Find the id via list_recordings.",
+      "Get a recording's FLOW: its calls as ordered lightweight steps (seq/method/url/status, no bodies) plus the inferred field dependencies linking them — i.e. which response value from an earlier call feeds a later call's request. Deps with `fromSeq: -1` carry `fromPath: \"cookie:<NAME>\"` instead: that request field is fed by a browser COOKIE (CSRF/XSRF double-submit), not by any recorded response — when distilling an action, fill it with a `{{cookie:<NAME>}}` header override so the replay uses the live cookie, never a stale recorded token. Deps may carry a `depCheck` mark: `verdict: 'unlikely'` means the local model considers the edge a coincidental value match (a colliding timestamp/nonce) rather than a real data flow — do not build parameterization on it; an absent mark means not analyzed. Steps may also carry a `relevance` mark (`relevant` / `irrelevant` / `uncertain` — skip `irrelevant` calls as background noise) and a `precedingInteraction` mark (the user interaction, with its text and `deltaMs`, that most likely triggered the call — direct consequences of user intent vs calls that merely co-occur). Use this to understand how the calls chain together before turning the flow into an action (create_action); use get_recording for full request/response bodies. Running a captured flow goes through execute_action — do not replay the chain's calls one by one via proxy_fetch. Find the id via list_recordings.",
     inputSchema: {
       id: z.string().describe("The recording id (from list_recordings)."),
     },
@@ -372,7 +388,7 @@ server.registerTool(
   {
     title: "Get API contracts",
     description:
-      "Get a recording's distinct ENDPOINTS: its calls collapsed by method + normalized URL path (numeric ids / uuids become \":id\") into one contract each, with request/response bodies inferred into REDACTED schemas — field names, types, optional/nullable flags, and one masked example per scalar, but no real values or credentials. Use this to learn a site's API surface cleanly, without wading through repetitive raw calls. Each endpoint may also carry inputsFrom: request fields whose VALUES come from an upstream endpoint's response (e.g. body.orderId ← `GET /orders` response `.data[].id`) — so before calling an endpoint, resolve its inputsFrom by first calling the upstream endpoint and reading the value from there, instead of guessing ids/tokens. inputsFrom carries only the source location, never the literal value. Request fields may also carry a `dynamism` mark (and query params a `queryDynamism` map): `verdict: 'varies'` means the value would differ on a replay in a fresh session (timestamp, session token, auto-generated id) and must become an action parameter, while `stable` is safe to hardcode; `source: 'stats'` (multi-observation) outranks `'model'` (single-observation). Use get_recording for concrete bodies, get_flow for the raw per-call dependency chain. Find the id via list_recordings. Recordings are source material for actions: author the endpoint chain as an action (create_action) and run it via execute_action rather than replaying calls manually.",
+      "Get a recording's distinct ENDPOINTS: its calls collapsed by method + normalized URL path (numeric ids / uuids become \":id\") into one contract each, with request/response bodies inferred into REDACTED schemas — field names, types, optional/nullable flags, and one masked example per scalar, but no real values or credentials. Use this to learn a site's API surface cleanly, without wading through repetitive raw calls. Each endpoint may also carry inputsFrom: request fields whose VALUES come from an upstream endpoint's response (e.g. body.orderId ← `GET /orders` response `.data[].id`) — so before calling an endpoint, resolve its inputsFrom by first calling the upstream endpoint and reading the value from there, instead of guessing ids/tokens. An input with `fromCookie: \"<NAME>\"` (no fromEndpointKey) is instead fed by that browser cookie (CSRF double-submit) — in an action, fill it with a `{{cookie:<NAME>}}` HEADER override so the replay uses the live value. inputsFrom carries only the source location, never the literal value. Request fields may also carry a `dynamism` mark (and query params a `queryDynamism` map): `verdict: 'varies'` means the value would differ on a replay in a fresh session (timestamp, session token, auto-generated id) and must become an action parameter, while `stable` is safe to hardcode; `source: 'stats'` (multi-observation) outranks `'model'` (single-observation). Use get_recording for concrete bodies, get_flow for the raw per-call dependency chain. Find the id via list_recordings. Recordings are source material for actions: author the endpoint chain as an action (create_action) and run it via execute_action rather than replaying calls manually.",
     inputSchema: {
       id: z.string().describe("The recording id (from list_recordings)."),
     },
@@ -756,10 +772,14 @@ server.registerTool(
       "body may be JSON, a form carrying an embedded JSON object like " +
       '`appid=...&body=%7B...%7D` (paths address the embedded JSON), or a plain form ' +
       "(single-segment toPath = whole form field)). Templates are `{{paramName}}`, " +
-      "`{{steps[N].outputs[name]}}`, or the built-in helpers `{{nowMs}}`/`{{nowSec}}`/" +
+      "`{{steps[N].outputs[name]}}`, the built-in helpers `{{nowMs}}`/`{{nowSec}}`/" +
       "`{{uuid}}` for fresh timestamps and one-shot ids (a declared param of the same " +
-      "name wins) — " +
-      "the latter reads an output that step N declared. `outputs` (per step) map output " +
+      "name wins), and `{{cookie:NAME}}` for the LIVE value of a browser cookie at " +
+      "replay time — use it when a request header is fed by a cookie (CSRF/XSRF " +
+      "double-submit: `X-XSRF-TOKEN` header ← `XSRF-TOKEN` cookie; get_flow marks such " +
+      'edges with fromPath "cookie:<NAME>", and get_endpoints marks inputsFrom with ' +
+      "fromCookie). Cookie templates are accepted in HEADER overrides only, and the " +
+      "cookie value is never echoed back to you. `outputs` (per step) map output " +
       "names to JSON paths into that step\u2019s response (parsed as JSON; for SSE steps each " +
       "event\u2019s data is tried). `waitMs` pauses before a step (0-10000). Steps replay " +
       "strictly in order through the user\u2019s browser session. Study the recording first " +
@@ -978,12 +998,17 @@ server.registerTool(
       "Run a saved action end to end. Pass the params it declares (required ones must be " +
       "present; others fall back to their defaults). Each step replays through the " +
       "extension's gateway with the user's cookies injected — you never see credentials. " +
-      "The run stops at the first failed step (gateway-refused or transport error); a 4xx/5xx " +
-      "response still counts as a completed step. Results carry per-step status, a body/event " +
+      "The run stops at the first failed step (gateway-refused or transport error) unless " +
+      "you pass continueOnError: true — then every step is attempted (later steps whose " +
+      "templates consume a failed step's outputs fail with precise template errors) and " +
+      "endReason becomes 'completed-with-errors'. Either way a 4xx/5xx response still " +
+      "counts as a completed step. Results carry per-step status, a body/event " +
       "preview (truncated), and the outputs extracted by declared paths. This is the entry point " +
       "for running a recorded flow — the steps are orchestrated for you (same gateway channel as " +
       "proxy_fetch, with dependencies resolved and params templated in); do not re-implement a " +
       "recording's call chain by hand via proxy_fetch. " +
+      "For a diagnosis pass after a failure, re-run with continueOnError: true — one run then " +
+      "reports every broken step, not just the first. " +
       "\u26A0\uFE0F The run passes the extension's sandbox gate: the user confirms each target " +
       "host via a confirmation popup in the browser (once per host per run, unless the host is " +
       "on the user's allowlist); a denied host aborts the run with a refused step.",
@@ -1001,20 +1026,36 @@ server.registerTool(
             "boolean field → boolean, array/object field → JSON.parse), and for new paths a " +
             'value starting with "[" or "{" is parsed as JSON — pass arrays/objects as JSON text.',
         ),
+      continueOnError: z
+        .boolean()
+        .optional()
+        .describe(
+          "Keep going after a failed step: every step is attempted and each one's outcome " +
+            "is reported (endReason 'completed-with-errors' when any failed). Use it to " +
+            "diagnose a broken action in one run; default false (stop at first failure).",
+        ),
     },
     // NO requiresUserInteraction meta — the run is gated per-host by the
     // extension-side confirmation popup (see proxy_fetch).
   },
-  async ({ id, params: runtimeParams }) => {
+  async ({ id, params: runtimeParams, continueOnError }) => {
     try {
       // Multi-step replay can involve several network round-trips plus waits — allow
       // the same generous budget as proxy_fetch/proxy_sse rather than the default.
       const res = (await call(
         "execute_action",
-        { id, params: runtimeParams },
+        { id, params: runtimeParams, continueOnError },
         130000,
       )) as RpcResults["execute_action"];
-      return jsonContent(res.run);
+      // Version-skew sentinel: on a current extension, continueOnError:true can
+      // never produce 'aborted' (it ends 'completed-with-errors' or 'complete').
+      // This signature means the older extension silently ignored the param —
+      // surface the fix instead of letting the agent misread a partial run.
+      const run =
+        continueOnError === true && res.run.endReason === "aborted"
+          ? { ...res.run, compatWarning: continueOnErrorHint() }
+          : res.run;
+      return jsonContent(run);
     } catch (err) {
       return errorContent(err);
     }
@@ -1297,25 +1338,47 @@ server.registerTool(
     title: "Check MCP service port and connection health",
     description:
       "Report the MCP server's runtime health so an agent can detect and recover from " +
-      "port problems. Returns: wsPort (the WebSocket bridge port — fixed for the process " +
+      "port problems and version skew. Returns: wsPort (the WebSocket bridge port — fixed for the process " +
       "lifetime), proxyPort (the local HTTP proxy's CURRENT port), proxyListening (whether " +
       "the HTTP proxy is bound — false means script-driven proxy rules are unavailable, " +
-      "usually a port conflict), and extensionConnected (whether the Chrome extension is " +
-      "connected over the bridge). If proxyListening is false, call rebind_proxy to move the " +
-      "proxy to a free port and self-heal without a restart.",
+      "usually a port conflict), extensionConnected (whether the Chrome extension is " +
+      "connected over the bridge), serverVersion/extensionVersion (the two halves ship in " +
+      "lockstep — a mismatch means newer features may silently not work), versionMatch, and " +
+      "compatHint (a fix instruction when the versions skew; null when they match or are " +
+      "unknown). If proxyListening is false, call rebind_proxy to move the " +
+      "proxy to a free port and self-heal without a restart. Call this tool whenever other " +
+      "tools' results look inconsistent with their documented behavior — a version skew is " +
+      "the usual silent cause.",
     inputSchema: {},
   },
   async () => {
     // As a peer, the proxy runs in the OWNER process; report the owner's shared
     // proxyPort with listening=unknown-from-here (we don't host it).
+    // Extension version: probe via RPC (works from the peer role too — the owner
+    // forwards it). An old extension without extension_info rejects the call →
+    // null, which compatVerdict treats as "unknown, no hint".
+    let extensionVersion: string | null = null;
+    if (extensionReachable()) {
+      try {
+        const res = (await call("extension_info", {}, 5000)) as RpcResults["extension_info"];
+        extensionVersion = res?.version ?? null;
+      } catch {
+        // Old extension (pre-version-exchange) — leave null.
+      }
+    }
+    const { match, hint } = compatVerdict(PKG_VERSION, extensionVersion);
     return jsonContent({
       role: rt.role,
-      wsPort: port,
+      wsPort: wsPort(),
       proxyPort: rt.proxyHttp ? rt.proxyHttp.currentPort() : proxyPort,
       proxyListening: rt.proxyHttp
         ? rt.proxyHttp.isListening()
         : rt.role === "peer",
       extensionConnected: extensionReachable(),
+      serverVersion: PKG_VERSION,
+      extensionVersion,
+      versionMatch: match,
+      compatHint: hint,
     });
   },
 );
@@ -1331,8 +1394,8 @@ server.registerTool(
       "reports proxyListening=false (a port conflict). Omit `port` to auto-pick the first " +
       "free port (scanning up from the current one); pass `port` to force a specific one. " +
       "The new port must differ from wsPort. Returns the resulting {proxyPort, proxyListening}. " +
-      "NOTE: this cannot fix a WS bridge port conflict — that is a fatal startup error and " +
-      "requires changing MANTA_WS_PORT and restarting.",
+      "NOTE: this cannot fix a WS bridge port conflict — use MANTA_WS_PORT for that (though " +
+      "the bridge now self-heals by claiming a fallback port and letting the extension discover it).",
     inputSchema: {
       port: z
         .number()
@@ -1360,7 +1423,7 @@ server.registerTool(
       const proxyHttp = rt.proxyHttp;
       let target = requested;
       if (target == null) {
-        const found = await findFreePort(proxyHttp.currentPort() + 1, port);
+        const found = await findFreePort(proxyHttp.currentPort() + 1, wsPort());
         if (found == null) {
           return errorContent(
             new Error("No free port found near the current proxy port."),
@@ -1368,7 +1431,7 @@ server.registerTool(
         }
         target = found;
       }
-      if (target === port) {
+      if (target === wsPort()) {
         return errorContent(
           new Error(
             `Proxy port ${target} collides with the WS bridge port; choose another.`,
@@ -1403,8 +1466,8 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * populated with a live bridge + HTTP proxy), false if the port is taken (someone
  * else owns it — we should become a peer instead).
  */
-async function tryBecomeOwner(): Promise<boolean> {
-  const bridge = startBridge(port, token);
+async function tryBecomeOwner(p: number): Promise<boolean> {
+  const bridge = startBridge(p, token, "127.0.0.1", PKG_VERSION);
   try {
     await bridge.whenReady();
   } catch {
@@ -1430,8 +1493,11 @@ async function tryBecomeOwner(): Promise<boolean> {
     );
   }
   console.error(
-    `[manta-action-kit-mcp] role=owner. Bridge on ws://127.0.0.1:${port}; ` +
-      `HTTP proxy on http://127.0.0.1:${proxyPort}.`,
+    `[manta-action-kit-mcp] role=owner. Bridge on ws://127.0.0.1:${p}` +
+      (p === port
+        ? ""
+        : ` (fallback — configured port ${port} was unavailable; the extension will discover this port by scan)`) +
+      `; HTTP proxy on http://127.0.0.1:${proxyPort}.`,
   );
   return true;
 }
@@ -1440,8 +1506,8 @@ async function tryBecomeOwner(): Promise<boolean> {
  * Try to become a PEER: dial the owner's bridge and forward calls to it. Resolves
  * true on success. When the owner later exits, `onOwnerLost` re-runs the election.
  */
-async function tryBecomePeer(): Promise<boolean> {
-  const peer = startPeerClient(port, "127.0.0.1", {
+async function tryBecomePeer(p: number): Promise<boolean> {
+  const peer = startPeerClient(p, "127.0.0.1", {
     version: PKG_VERSION,
     token: token ?? "",
     onOwnerLost: () => {
@@ -1452,7 +1518,17 @@ async function tryBecomePeer(): Promise<boolean> {
     },
   });
   try {
-    await peer.whenReady();
+    // Bound the handshake: the occupant of a squatted port may accept the TCP
+    // connection and never speak, which would otherwise hang the election on
+    // this port forever. A real owner completes the exchange in milliseconds,
+    // so even a generous multiple of that keeps the election snappy when the
+    // retry loop has to walk a squatting port ten times before the fallback
+    // scan.
+    const outcome = await Promise.race([
+      peer.whenReady().then(() => "ok", () => "fail"),
+      sleep(1500).then(() => "timeout"),
+    ]);
+    if (outcome !== "ok") throw new Error(`peer handshake did not complete (${outcome})`);
   } catch {
     await peer.close().catch(() => {});
     return false;
@@ -1462,7 +1538,7 @@ async function tryBecomePeer(): Promise<boolean> {
   rt.bridge = null;
   rt.proxyHttp = null;
   console.error(
-    `[manta-action-kit-mcp] role=peer. Forwarding to owner at ws://127.0.0.1:${port}.`,
+    `[manta-action-kit-mcp] role=peer. Forwarding to owner at ws://127.0.0.1:${p}.`,
   );
   return true;
 }
@@ -1472,18 +1548,36 @@ async function tryBecomePeer(): Promise<boolean> {
  * if it's taken, become a peer. There's an inherent race when the previous owner
  * is exiting: the port may still look busy while its listener won't accept us as a
  * peer yet. Retry a few times to let the dust settle before giving up.
+ *
+ * If the port stays unusable (typically squatted by a non-manta process, so both
+ * bind and peer-dial fail), fall back: scan upward, joining an existing bridge as
+ * a peer where the port is taken and claiming the first free port as owner
+ * otherwise. The extension probes this same range with the token handshake when
+ * its dials keep failing, so it finds the relocated bridge without a restart.
  */
 async function elect(): Promise<void> {
   for (let attempt = 0; attempt < 10; attempt++) {
-    if (await tryBecomeOwner()) return;
-    if (await tryBecomePeer()) return;
+    if (await tryBecomeOwner(port)) return;
+    if (await tryBecomePeer(port)) return;
     // Neither worked (owner exiting mid-flight). Back off briefly and retry.
     await sleep(150);
   }
   console.error(
-    `[manta-action-kit-mcp] warning: could not become owner or peer on port ${port} after retries. ` +
+    `[manta-action-kit-mcp] port ${port} unusable after retries — ` +
+      `scanning ports ${port + 1}-${port + BRIDGE_SCAN_RANGE} for a fallback bridge port.`,
+  );
+  for (let p = port + 1; p <= port + BRIDGE_SCAN_RANGE && p <= 65535; p++) {
+    if (p === proxyPort) continue;
+    if (await isPortFree(p)) {
+      if (await tryBecomeOwner(p)) return;
+    } else if (await tryBecomePeer(p)) {
+      return;
+    }
+  }
+  console.error(
+    `[manta-action-kit-mcp] warning: no free fallback port found near ${port}. ` +
       `Tool calls will fail until an instance owns the bridge. ` +
-      `Check for a stuck process or set MANTA_WS_PORT to a free port.`,
+      `Free a port or set MANTA_WS_PORT and restart.`,
   );
 }
 

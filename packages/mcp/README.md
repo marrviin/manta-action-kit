@@ -10,11 +10,12 @@ ever seeing the user's credentials.
 ## Requirements
 
 - **Node.js ≥ 18** to run the server (via `npx`). The companion skill's
-  `check-env.mjs` script additionally needs **Node ≥ 22** (native WebSocket).
+  `check-env.mjs` script also runs on Node ≥ 18 (it uses native `WebSocket` on
+  Node ≥ 22 and a built-in raw-socket fallback on older versions).
 - This server is only a bridge — it has no data of its own. It requires the
-**Manta Action Kit** Chrome extension, which records the API calls, stores them
-in IndexedDB, and injects the cookies. Install it first; the extension dials in
-automatically once this server is running:
+  **Manta Action Kit** Chrome extension, which records the API calls, stores them
+  in IndexedDB, and injects the cookies. Install it first; the extension dials in
+  automatically once this server is running:
 
 > **Manta Action Kit** (Chrome Web Store):
 > <https://chromewebstore.google.com/detail/manta-action-kit/pghddhbhbnlcehlmgnnalgaephllkeel>
@@ -86,36 +87,36 @@ Every MCP process starts identically (via `npx`) and races for the WS bridge por
 
 ### Element captures (read-only UI snapshots)
 
-| Tool                     | Description                                                                                              |
-| ------------------------ | -------------------------------------------------------------------------------------------------------- |
-| `list_element_captures`  | Summaries of saved element-capture snapshots (id, url, title, capturedAt, elementCount).                 |
-| `get_element_capture`    | One capture's full element tree with computed styles — a faithful, LLM-ready description of the element. |
-| `diff_element_captures`  | Diff two captures: a text report of property-level changes per DOM path, plus an `identical` flag.       |
+| Tool                    | Description                                                                                              |
+| ----------------------- | -------------------------------------------------------------------------------------------------------- |
+| `list_element_captures` | Summaries of saved element-capture snapshots (id, url, title, capturedAt, elementCount).                 |
+| `get_element_capture`   | One capture's full element tree with computed styles — a faithful, LLM-ready description of the element. |
+| `diff_element_captures` | Diff two captures: a text report of property-level changes per DOM path, plus an `identical` flag.       |
 
 ### Actions (replayable flows distilled from a recording)
 
-| Tool             | Description                                                                                    |
-| ---------------- | ---------------------------------------------------------------------------------------------- |
-| `list_actions`   | All saved actions (summaries only: params, stepCount).                                         |
-| `get_action`     | One action's full definition (steps, overrides, output extraction paths).                       |
-| `search_actions` | Find actions by keyword in name/description.                                                    |
-| `create_action`  | Distill a recording into a saved, parameterized action (requires user confirmation).            |
-| `update_action`  | Patch an action's content by id (requires user confirmation).                                   |
-| `delete_action`  | Delete an action by id (requires user confirmation).                                            |
-| `execute_action` | Run an action end to end through the gateway (cookies injected, per-host user confirmation).    |
+| Tool             | Description                                                                                  |
+| ---------------- | -------------------------------------------------------------------------------------------- |
+| `list_actions`   | All saved actions (summaries only: params, stepCount).                                       |
+| `get_action`     | One action's full definition (steps, overrides, output extraction paths).                    |
+| `search_actions` | Find actions by keyword in name/description.                                                 |
+| `create_action`  | Distill a recording into a saved, parameterized action (requires user confirmation).         |
+| `update_action`  | Patch an action's content by id (requires user confirmation).                                |
+| `delete_action`  | Delete an action by id (requires user confirmation).                                         |
+| `execute_action` | Run an action end to end through the gateway (cookies injected, per-host user confirmation). |
 
 ### Page capture (agent-driven, against the active tab)
 
-| Tool                     | Description                                                                                          |
-| ------------------------ | ---------------------------------------------------------------------------------------------------- |
-| `capture_screenshot`     | Screenshot the active tab (`visible` or `fullPage` scroll-and-stitch). Returns a downscaled image + metadata; the original is saved to the extension's screenshot history. Silent (no preview tab / notification). |
-| `capture_element`        | Serialize a page element (selector / screen point / box, shadow-DOM aware) into a lean structured tree without user interaction; full fidelity via `get_element_capture(captureId)`. |
-| `start_gif_recording`    | Start recording a tab. ⚠️ Blocks up to ~2 min on a human confirmation popup (Allow = the user gesture Chrome requires for tab capture); deny/timeout fails the call. Auto-stops at 5 min. |
-| `stop_gif_recording`     | Stop the recording and finalize the WebM draft (`draftId`; if briefly absent, read `lastResult.draftId` from the status tool). |
-| `pause_gif_recording`    | Pause the running recording.                                                                         |
-| `resume_gif_recording`   | Resume a paused recording.                                                                           |
-| `get_gif_recording_status` | Current recording state + how the last recording ended (`lastResult`).                              |
-| `list_gif_history`       | Recorded WebM drafts (metadata only). Pre-transcode: WebM→GIF conversion happens in the extension's preview tab and cannot be triggered remotely. |
+| Tool                       | Description                                                                                                                                                                                                        |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `capture_screenshot`       | Screenshot the active tab (`visible` or `fullPage` scroll-and-stitch). Returns a downscaled image + metadata; the original is saved to the extension's screenshot history. Silent (no preview tab / notification). |
+| `capture_element`          | Serialize a page element (selector / screen point / box, shadow-DOM aware) into a lean structured tree without user interaction; full fidelity via `get_element_capture(captureId)`.                               |
+| `start_gif_recording`      | Start recording a tab. ⚠️ Blocks up to ~2 min on a human confirmation popup (Allow = the user gesture Chrome requires for tab capture); deny/timeout fails the call. Auto-stops at 5 min.                          |
+| `stop_gif_recording`       | Stop the recording and finalize the WebM draft (`draftId`; if briefly absent, read `lastResult.draftId` from the status tool).                                                                                     |
+| `pause_gif_recording`      | Pause the running recording.                                                                                                                                                                                       |
+| `resume_gif_recording`     | Resume a paused recording.                                                                                                                                                                                         |
+| `get_gif_recording_status` | Current recording state + how the last recording ended (`lastResult`).                                                                                                                                             |
+| `list_gif_history`         | Recorded WebM drafts (metadata only). Pre-transcode: WebM→GIF conversion happens in the extension's preview tab and cannot be triggered remotely.                                                                  |
 
 ### Proxy rules (script gateway)
 
@@ -186,7 +187,11 @@ Equivalent manual config — **production** (published package):
     "manta-action-kit": {
       "command": "npx",
       "args": ["-y", "@manta-action-kit/mcp"],
-      "env": { "MANTA_WS_PORT": "8787", "MANTA_PROXY_PORT": "8788", "MANTA_TOKEN": "<from the extension>" },
+      "env": {
+        "MANTA_WS_PORT": "8787",
+        "MANTA_PROXY_PORT": "8788",
+        "MANTA_TOKEN": "<from the extension>",
+      },
     },
   },
 }
@@ -200,7 +205,11 @@ Equivalent manual config — **production** (published package):
     "manta-action-kit": {
       "command": "node",
       "args": ["/absolute/path/to/packages/mcp/dist/index.js"],
-      "env": { "MANTA_WS_PORT": "8787", "MANTA_PROXY_PORT": "8788", "MANTA_TOKEN": "<from the extension>" },
+      "env": {
+        "MANTA_WS_PORT": "8787",
+        "MANTA_PROXY_PORT": "8788",
+        "MANTA_TOKEN": "<from the extension>",
+      },
     },
   },
 }
@@ -223,11 +232,12 @@ API 调用作为 MCP 工具暴露给 AI Agent，并提供一个注入 Cookie 的
 
 ## 前置要求
 
-- **Node.js ≥ 18**（通过 `npx` 运行）。配套 skill 的 `check-env.mjs` 脚本还需要
-  **Node ≥ 22**（原生 WebSocket）。
+- **Node.js ≥ 18**（通过 `npx` 运行）。配套 skill 的 `check-env.mjs` 脚本
+  同样只需 Node ≥ 18（Node ≥ 22 用原生 `WebSocket`，更旧版本走内置的
+  raw-socket 降级实现）。
 - 本服务只是一个桥——自身不持有任何数据。它依赖 **Manta Action Kit** Chrome 扩展：
-接口录制、IndexedDB 存储与 Cookie 注入都由扩展完成。请先安装扩展；本服务启动后
-扩展会自动拨入连接：
+  接口录制、IndexedDB 存储与 Cookie 注入都由扩展完成。请先安装扩展；本服务启动后
+  扩展会自动拨入连接：
 
 > **Manta Action Kit**（Chrome Web Store）：
 > <https://chromewebstore.google.com/detail/manta-action-kit/pghddhbhbnlcehlmgnnalgaephllkeel>
@@ -292,36 +302,36 @@ agent ──stdio (MCP)──▶ manta-action-kit-mcp ──WS 服务 ws://127.0
 
 ### 元素捕获（只读 UI 快照）
 
-| 工具                     | 说明                                                                                       |
-| ------------------------ | ------------------------------------------------------------------------------------------ |
-| `list_element_captures`  | 已保存元素捕获快照的概要（id、url、标题、捕获时间、元素数）。                              |
-| `get_element_capture`    | 单个捕获的完整元素树与计算样式——对元素构建方式的忠实、可直接喂给 LLM 的描述。              |
-| `diff_element_captures`  | 对比两份捕获：按 DOM 路径列出逐属性变化的文本报告，另附 `identical` 标志。                 |
+| 工具                    | 说明                                                                          |
+| ----------------------- | ----------------------------------------------------------------------------- |
+| `list_element_captures` | 已保存元素捕获快照的概要（id、url、标题、捕获时间、元素数）。                 |
+| `get_element_capture`   | 单个捕获的完整元素树与计算样式——对元素构建方式的忠实、可直接喂给 LLM 的描述。 |
+| `diff_element_captures` | 对比两份捕获：按 DOM 路径列出逐属性变化的文本报告，另附 `identical` 标志。    |
 
 ### 动作（从录制蒸馏出的可回放流程）
 
-| 工具             | 说明                                                                           |
-| ---------------- | ------------------------------------------------------------------------------ |
-| `list_actions`   | 所有已保存动作的概要（参数、步骤数等）。                                       |
-| `get_action`     | 单个动作的完整定义（步骤、覆写、输出提取路径）。                               |
-| `search_actions` | 按关键词搜索动作名称/描述。                                                     |
-| `create_action`  | 将一段录制蒸馏为可参数化的已保存动作（需用户确认）。                           |
-| `update_action`  | 按 id 修改动作内容（需用户确认）。                                             |
-| `delete_action`  | 按 id 删除动作（需用户确认）。                                                 |
-| `execute_action` | 经网关端到端执行一个动作（注入 Cookie，按目标 host 逐个用户确认）。             |
+| 工具             | 说明                                                                |
+| ---------------- | ------------------------------------------------------------------- |
+| `list_actions`   | 所有已保存动作的概要（参数、步骤数等）。                            |
+| `get_action`     | 单个动作的完整定义（步骤、覆写、输出提取路径）。                    |
+| `search_actions` | 按关键词搜索动作名称/描述。                                         |
+| `create_action`  | 将一段录制蒸馏为可参数化的已保存动作（需用户确认）。                |
+| `update_action`  | 按 id 修改动作内容（需用户确认）。                                  |
+| `delete_action`  | 按 id 删除动作（需用户确认）。                                      |
+| `execute_action` | 经网关端到端执行一个动作（注入 Cookie，按目标 host 逐个用户确认）。 |
 
 ### 页面采集（Agent 驱动，作用于活动标签页）
 
-| 工具                       | 说明                                                                                                    |
-| -------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `capture_screenshot`       | 截取活动标签页（`visible` 或 `fullPage` 滚动拼接）。返回降采样压缩图 + 元数据；原图存入扩展截图历史。静默（不弹预览页、不发通知）。 |
-| `capture_element`          | 把页面元素序列化为瘦身结构化树（选择器 / 屏幕坐标 / 框选，支持 shadow DOM），无需用户交互；全量细节经 `get_element_capture(captureId)` 获取。 |
+| 工具                       | 说明                                                                                                                                           |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `capture_screenshot`       | 截取活动标签页（`visible` 或 `fullPage` 滚动拼接）。返回降采样压缩图 + 元数据；原图存入扩展截图历史。静默（不弹预览页、不发通知）。            |
+| `capture_element`          | 把页面元素序列化为瘦身结构化树（选择器 / 屏幕坐标 / 框选，支持 shadow DOM），无需用户交互；全量细节经 `get_element_capture(captureId)` 获取。  |
 | `start_gif_recording`      | 开始录制标签页。⚠️ 阻塞最多约 2 分钟等待人工确认弹窗（「允许」点击即 Chrome 抓取标签页所需的用户手势）；拒绝/超时即失败。单次 5 分钟自动停止。 |
-| `stop_gif_recording`       | 停止录制并落盘 WebM 草稿（返回 `draftId`；若短暂缺失，用状态工具读 `lastResult.draftId`）。              |
-| `pause_gif_recording`      | 暂停进行中的录制。                                                                                      |
-| `resume_gif_recording`     | 恢复已暂停的录制。                                                                                      |
-| `get_gif_recording_status` | 当前录制状态 + 上一次录制如何结束（`lastResult`）。                                                      |
-| `list_gif_history`         | 已录制的 WebM 草稿（仅元数据）。为转码前产物：WebM→GIF 转换在扩展预览页进行，无法远程触发。             |
+| `stop_gif_recording`       | 停止录制并落盘 WebM 草稿（返回 `draftId`；若短暂缺失，用状态工具读 `lastResult.draftId`）。                                                    |
+| `pause_gif_recording`      | 暂停进行中的录制。                                                                                                                             |
+| `resume_gif_recording`     | 恢复已暂停的录制。                                                                                                                             |
+| `get_gif_recording_status` | 当前录制状态 + 上一次录制如何结束（`lastResult`）。                                                                                            |
+| `list_gif_history`         | 已录制的 WebM 草稿（仅元数据）。为转码前产物：WebM→GIF 转换在扩展预览页进行，无法远程触发。                                                    |
 
 ### 代理规则（脚本网关）
 
@@ -389,7 +399,11 @@ pnpm --filter @manta-action-kit/mcp start   # node dist/index.js
     "manta-action-kit": {
       "command": "npx",
       "args": ["-y", "@manta-action-kit/mcp"],
-      "env": { "MANTA_WS_PORT": "8787", "MANTA_PROXY_PORT": "8788", "MANTA_TOKEN": "<来自扩展>" },
+      "env": {
+        "MANTA_WS_PORT": "8787",
+        "MANTA_PROXY_PORT": "8788",
+        "MANTA_TOKEN": "<来自扩展>",
+      },
     },
   },
 }
@@ -403,11 +417,15 @@ pnpm --filter @manta-action-kit/mcp start   # node dist/index.js
     "manta-action-kit": {
       "command": "node",
       "args": ["/absolute/path/to/packages/mcp/dist/index.js"],
-      "env": { "MANTA_WS_PORT": "8787", "MANTA_PROXY_PORT": "8788", "MANTA_TOKEN": "<来自扩展>" },
+      "env": {
+        "MANTA_WS_PORT": "8787",
+        "MANTA_PROXY_PORT": "8788",
+        "MANTA_TOKEN": "<来自扩展>",
+      },
     },
   },
 }
 ```
 
 扩展会自动拨入连接；连接成功后工具即可返回实时数据，否则会返回错误，提示你
-先排查连接（扩展侧边栏的 MCP 标签页显示连接状态）。
+先排查连接（扩展侧边栏「设置」标签页的「连接器」卡片显示连接状态）。

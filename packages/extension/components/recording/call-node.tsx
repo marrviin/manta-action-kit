@@ -79,11 +79,17 @@ function FlowAnnotations({
             title={`${t("flow.valueTooltip", { value: d.value })}${tone.suffix ? ` — ${tone.suffix.replace(" · ", "")}` : ""}`}
           >
             <Tag color={tone.color ?? "gold"} className={tone.className}>
-              {t("flow.consumes", {
-                target: `${locationLabel(d.toLocation, t)}${d.toPath ? ` · ${d.toPath}` : ""}`,
-                fromSeq: d.fromSeq,
-                fromField: d.fromPath || t("flow.response"),
-              })}
+              {d.fromSeq < 0
+                ? // Cookie-sourced dep: no producing step — fromPath is "cookie:<NAME>".
+                  t("flow.consumesCookie", {
+                    target: `${locationLabel(d.toLocation, t)}${d.toPath ? ` · ${d.toPath}` : ""}`,
+                    from: (d.fromPath || "").replace(/^cookie:/, ""),
+                  })
+                : t("flow.consumes", {
+                    target: `${locationLabel(d.toLocation, t)}${d.toPath ? ` · ${d.toPath}` : ""}`,
+                    fromSeq: d.fromSeq,
+                    fromField: d.fromPath || t("flow.response"),
+                  })}
               {tone.suffix}
             </Tag>
           </Tooltip>

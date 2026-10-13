@@ -13,8 +13,8 @@ import { RecordingDetail } from '@/components/recording/recording-detail';
  * The recording detail (Result) page's back button always returns to home.
  * Detail is its own route (not nested under home), so entering it replaces the
  * whole view — the tab bar only exists on the home route. Per-feature settings now
- * live inside each feature tab (e.g. MCP config in the MCP tab), so there is no
- * separate settings page.
+ * live inside each feature tab (MCP connection status lives in the Settings tab's
+ * Connector card), so there is no separate settings page.
  */
 export default function App() {
   return (

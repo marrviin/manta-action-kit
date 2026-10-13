@@ -91,8 +91,9 @@ pnpm build            # production build of the extension
 ## Project layout
 
 Architecture, data flow, and the rationale behind key decisions live in
-[`CLAUDE.md`](CLAUDE.md) and [`README.md`](README.md). Read those before making
-non-trivial changes.
+[`README.md`](README.md) and the package-level READMEs
+(`packages/mcp/README.md`, `packages/skills/README.md`). Read those before
+making non-trivial changes.
 
 ## Commit conventions
 

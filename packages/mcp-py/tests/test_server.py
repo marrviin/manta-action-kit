@@ -68,13 +68,17 @@ class FakeRuntime:
         self.calls.append((method, params, timeout_ms))
         return self.results[method]
 
-    def health_snapshot(self):
+    async def health_snapshot(self):
         return {
             "role": self.role,
             "wsPort": 8787,
             "proxyPort": None,
             "proxyListening": False,
             "extensionConnected": True,
+            "serverVersion": "0.0.0-test",
+            "extensionVersion": "0.0.0-test",
+            "versionMatch": True,
+            "compatHint": None,
         }
 
 
@@ -119,6 +123,10 @@ async def test_health_reports_runtime_state():
             "proxyPort": None,
             "proxyListening": False,
             "extensionConnected": True,
+            "serverVersion": "0.0.0-test",
+            "extensionVersion": "0.0.0-test",
+            "versionMatch": True,
+            "compatHint": None,
         }
 
 
@@ -338,6 +346,30 @@ async def test_action_crud_writes_camelcase_wire_payloads():
         assert json.loads(res.content[0].text)["actionId"] == "a1"
         # Multi-step replay gets the generous budget, not the 10s default.
         assert fake.calls[4][2] == 130_000
+
+
+async def test_execute_action_compat_warning_on_version_skew():
+    """continueOnError:true + endReason 'aborted' can only happen when an old
+    extension silently ignored the param — the result must carry the fix hint.
+    Without the flag, an 'aborted' run is just a normal failure (no hint)."""
+    fake = FakeRuntime(
+        {
+            "execute_action": {
+                "run": {"actionId": "a1", "endReason": "aborted", "steps": []}
+            }
+        }
+    )
+    async with drive(fake) as session:
+        res = await session.call_tool(
+            "execute_action", {"id": "a1", "continueOnError": True}
+        )
+        body = json.loads(res.content[0].text)
+        assert body["endReason"] == "aborted"
+        assert "continueOnError" in body["compatWarning"]
+
+        res = await session.call_tool("execute_action", {"id": "a1"})
+        body = json.loads(res.content[0].text)
+        assert "compatWarning" not in body
 
 
 async def test_capture_tools_mapping_and_timeouts():
