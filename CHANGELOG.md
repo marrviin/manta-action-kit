@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+#### Laya on-device decision model
+
+- Removed the embedded laya decision model and its runtime from the extension
+  (~8.7k lines in `lib/ai/`, the offscreen ONNX runtime, the ~800 MB Hugging
+  Face artifact download, and the Settings "Decision model" card). Real-world
+  use showed the model's relevance/dep-confidence verdicts added little value
+  over the deterministic heuristics that were already carrying the accuracy —
+  while costing a large install footprint and ongoing threshold tuning.
+  Noise/relevance judgment now belongs to the distilling agent (the LLM reading
+  the recording over MCP), which was doing it well anyway.
+- Kept the deterministic field-dynamism pass: request fields observed with
+  all-distinct values across calls are marked `varies`, all-identical ones
+  `stable` (timestamps stay volatile). Marks still surface on `get_endpoints`
+  schemas and guide action parameterization. The pass now runs stats-only at
+  recording-save time — no model load, no offscreen document.
+- Dropped the per-call `relevance` marks, the relevance filter/badges in the
+  recording detail view, and the `depCheck` marks on inferred dependencies
+  (model-only judgments). Inferred dependencies and `precedingInteraction`
+  intent marks are unchanged.
+- The extension now makes **no** remote fetches at all (see PRIVACY.md).
+
 ## [0.5.4] - 2026-10-12
 
 ### Added

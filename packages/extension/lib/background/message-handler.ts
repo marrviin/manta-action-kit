@@ -24,11 +24,9 @@ import type {
   startGifRecording,
   stopGifRecording,
 } from "@/lib/gif-recording/session";
-import type { ensureLayaRuntime } from "@/lib/ai/laya-session";
 import type {
-  analyzeRecordingRelevance,
-  rerunPendingAnalyses,
-} from "@/lib/ai/relevance-run";
+  analyzeRecordingDynamism,
+} from "@/lib/ai/dynamism-run";
 import type {
   isPendingConfirmation,
   requestGatewayConfirmation,
@@ -97,7 +95,7 @@ function notifyScreenshotFailed(err: unknown) {
  */
 export interface MessageHandlerDeps {
   session: typeof session;
-  analyzeRecordingRelevance: typeof analyzeRecordingRelevance;
+  analyzeRecordingDynamism: typeof analyzeRecordingDynamism;
   captureTabScreenshot: typeof captureTabScreenshot;
   saveScreenshotHistory: typeof saveScreenshotHistory;
   listGatewayLogs: typeof listGatewayLogs;
@@ -118,8 +116,6 @@ export interface MessageHandlerDeps {
   handleGifOffscreenDone: typeof handleGifOffscreenDone;
   resolveGifConfirmation: typeof resolveGifConfirmation;
   isPendingGifConfirmation: typeof isPendingGifConfirmation;
-  ensureLayaRuntime: typeof ensureLayaRuntime;
-  rerunPendingAnalyses: typeof rerunPendingAnalyses;
 }
 
 /**
@@ -281,13 +277,13 @@ export function createMessageHandler(deps: MessageHandlerDeps) {
                 .catch((err) =>
                   console.error("[background] notification failed", err),
                 );
-              // Auto-run the laya relevance analysis in the background —
+              // Auto-run the field-dynamism analysis in the background —
               // fire-and-forget so the stop response (and the notification
-              // above) are never delayed by a model load.
+              // above) are never delayed by it.
               void deps
-                .analyzeRecordingRelevance(result.recordingId)
+                .analyzeRecordingDynamism(result.recordingId)
                 .catch((err) =>
-                  console.error("[background] relevance analysis failed", err),
+                  console.error("[background] dynamism analysis failed", err),
                 );
             }
             sendResponse(result);
@@ -544,75 +540,6 @@ export function createMessageHandler(deps: MessageHandlerDeps) {
               console.error("[background] gif cleanup failed", err),
             );
             break;
-
-          case "LAYA_ENSURE_RUNTIME":
-            // Create the shared offscreen document on demand (reused with the
-            // GIF recorder — see lib/ai/laya-session.ts). The model itself
-            // loads lazily on the first LAYA_PREDICT.
-            await deps.ensureLayaRuntime();
-            sendResponse({ ok: true });
-            break;
-
-          case "LAYA_PREDICT": {
-            // Relay into the offscreen runtime. The service worker cannot host
-            // the ONNX session itself (no WebGPU, ~30s idle lifetime), so this
-            // is a pure pass-through with document-ensure on the front. While
-            // the prediction runs, the offscreen side pings LAYA_KEEPALIVE to
-            // keep THIS worker alive — a killed SW would drop the pending
-            // sendResponse and the caller would see "message channel closed".
-            await deps.ensureLayaRuntime();
-            sendResponse(await browser.runtime.sendMessage(raw));
-            break;
-          }
-
-          case "LAYA_PREDICT_BATCH": {
-            // Same relay as LAYA_PREDICT, batched: one shared forward pass per
-            // chunk of states instead of one pass per state.
-            await deps.ensureLayaRuntime();
-            sendResponse(await browser.runtime.sendMessage(raw));
-            break;
-          }
-
-          case "RUN_RECORDING_RELEVANCE": {
-            // Manual (re-)run from the detail view — fire-and-forget exactly
-            // like the auto pass at STOP_RECORDING; completion arrives via
-            // RECORDING_RELEVANCE_UPDATED.
-            void deps
-              .analyzeRecordingRelevance(msg.data.recordingId)
-              .catch((err) =>
-                console.error("[background] relevance analysis failed", err),
-              );
-            sendResponse({ started: true });
-            break;
-          }
-
-          case "LAYA_KEEPALIVE":
-            // No-op: the receipt alone resets the SW idle timer (see the
-            // LAYA_PREDICT relay above and lib/messaging.ts).
-            sendResponse({ ok: true });
-            break;
-
-          case "LAYA_MODEL_READY":
-            // The offscreen runtime finished loading the model — re-run the
-            // relevance analyses that were skipped while it was downloading.
-            // Fire-and-forget: the sender does not await an outcome.
-            void deps.rerunPendingAnalyses().catch((err) =>
-              console.error("[background] pending relevance rerun failed", err),
-            );
-            sendResponse({ ok: true });
-            break;
-
-          case "LAYA_GET_STATUS": {
-            // Relay, but do NOT ensure the document first: a status probe from
-            // a freshly opened panel must not spawn the runtime. A missing
-            // offscreen document simply means "not loaded".
-            try {
-              sendResponse(await browser.runtime.sendMessage(raw));
-            } catch {
-              sendResponse({ ready: false, loading: false });
-            }
-            break;
-          }
 
           case "PING":
             sendResponse({ type: "PONG", at: Date.now() });

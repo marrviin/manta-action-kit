@@ -15,24 +15,10 @@
  * WebM→GIF conversion happens in the VISIBLE preview tab (frame callbacks need
  * a composited page — see lib/gif-recording/encode.ts).
  *
- * This document ALSO hosts the laya decision-model runtime (see lib/ai/):
- * same reasons apply — WebGPU and a 1.6 GB ONNX session can neither live in
- * the SW nor be re-loaded on every side-panel toggle. Model + recorder share
- * this single offscreen document; Chrome allows only one per extension.
  */
 import { sendMessage } from '@/lib/messaging';
 import { saveGifHistory } from '@/lib/db';
 import { fileHost, timestamp } from '@/lib/screenshot/capture';
-import {
-  getPreloadProgress,
-  isAgentLoading,
-  isAgentPreloading,
-  isAgentReady,
-  layaPredict,
-  layaPredictBatch,
-  preloadAgent,
-  warmLayaArtifacts,
-} from '@/lib/ai/runtime';
 
 /**
  * Hard cap on a single recording. The WebM→GIF transcode runs in the preview
@@ -53,111 +39,10 @@ let limitTimer: ReturnType<typeof setTimeout> | null = null;
 
 type RuntimeMessage = { type?: string; data?: unknown };
 
-/**
- * Run a (possibly minutes-long) predict while pinging the SW every 15s — model
- * load + first predict run for minutes — far beyond the MV3 service worker's
- * ~30s idle kill, which would drop the background relay's pending sendResponse
- * ("message channel closed"). Same trick as the gateway confirm page's
- * GATEWAY_CONFIRM_PING.
- */
-async function withKeepalive<T>(fn: () => Promise<T>): Promise<T> {
-  const keepalive = setInterval(() => {
-    void sendMessage('LAYA_KEEPALIVE', {}).catch(() => {});
-  }, 15_000);
-  try {
-    return await fn();
-  } finally {
-    clearInterval(keepalive);
-  }
-}
-
 browser.runtime.onMessage.addListener((raw: RuntimeMessage, _sender, sendResponse) => {
   (async () => {
     try {
       switch (raw?.type) {
-        // ---- laya decision model (lib/ai/runtime.ts) ----
-        case 'LAYA_PREDICT': {
-          const { state, questions } = raw.data as {
-            state: unknown;
-            questions: Record<string, unknown>;
-          };
-          try {
-            const { result, elapsedMs } = await withKeepalive(() =>
-              layaPredict(state, questions),
-            );
-            sendResponse({
-              ok: true,
-              elapsedMs,
-              answers: result.answers as unknown as Record<string, unknown>,
-              usage: result.usage,
-            });
-          } catch (err) {
-            // Log AND answer: the {ok:false,__error} reply resolves (never
-            // rejects) upstream, so without this the failure was invisible
-            // everywhere.
-            console.error('[laya] predict failed', err);
-            sendResponse({ ok: false, __error: err instanceof Error ? err.message : String(err) });
-          }
-          break;
-        }
-        case 'LAYA_PREDICT_BATCH': {
-          const { states, questions } = raw.data as {
-            states: unknown[];
-            questions: Record<string, unknown>;
-          };
-          try {
-            const { results, elapsedMs } = await withKeepalive(() =>
-              layaPredictBatch(states, questions),
-            );
-            sendResponse({
-              ok: true,
-              elapsedMs,
-              results: results.map(
-                (r) => r.answers as unknown as Record<string, unknown>,
-              ),
-            });
-          } catch (err) {
-            console.error('[laya] batch predict failed', err);
-            sendResponse({ ok: false, __error: err instanceof Error ? err.message : String(err) });
-          }
-          break;
-        }
-        case 'LAYA_GET_STATUS': {
-          // `loading` folds the install/upgrade cache warm-up in: the settings
-          // card tracks it like any other load, and the background's
-          // closeLayaOffscreenDocument() treats the document as busy while the
-          // ~850 MB download runs. `progress` rides along so the card can show
-          // a download bar (the card polls, so no dedicated progress channel
-          // is needed).
-          sendResponse({
-            ready: isAgentReady(),
-            loading: isAgentLoading() || isAgentPreloading(),
-            progress: isAgentPreloading() ? getPreloadProgress() : undefined,
-          });
-          break;
-        }
-        case 'LAYA_PRELOAD': {
-          // Fire-and-forget: answer immediately — the service worker that
-          // relayed this on install may idle out long before the ~850 MB
-          // download finishes, and the offscreen document outlives it. The
-          // download keeps running here; LAYA_GET_STATUS reports it as
-          // `loading` until done.
-          void preloadAgent().catch((err) =>
-            console.error('[laya] artifact preload failed', err),
-          );
-          sendResponse({ ok: true });
-          break;
-        }
-        case 'LAYA_WARM_ARTIFACTS': {
-          // Same fire-and-forget as LAYA_PRELOAD, but warm-only: resume a
-          // download the browser closing killed mid-way, without paying the
-          // ~800 MB session residency on every startup.
-          void warmLayaArtifacts().catch((err) =>
-            console.error('[laya] artifact warm-up failed', err),
-          );
-          sendResponse({ ok: true });
-          break;
-        }
         // ---- GIF recorder (below) ----
         case 'GIF_OFFSCREEN_START': {
           const { streamId, url } = raw.data as { streamId: string; url: string };

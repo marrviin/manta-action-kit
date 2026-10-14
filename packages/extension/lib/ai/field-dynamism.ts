@@ -1,15 +1,13 @@
 /**
- * Pure logic for the field-dynamism pass with the laya model: for each request
- * field of a recording, decide whether its value would change if the same
- * request were replayed tomorrow in a fresh session ('varies' — a param
- * candidate) or hold identical ('stable' — safe to hardcode).
+ * Field-dynamism analysis for a recording: for each request field, decide
+ * whether its value would change if the same request were replayed tomorrow in
+ * a fresh session ('varies' — a param candidate) or hold identical ('stable' —
+ * safe to hardcode).
  *
- * The strongest signal is deterministic: the same endpoint called N times with
- * all-distinct values is 'varies', all-identical is 'stable'. The model only
- * covers the statistics' blind spot — fields observed exactly once — where
- * semantics (name, value shape) are the only evidence. A failing model thus
- * degrades to "single-observation leaves unmarked" without losing the stats
- * half.
+ * The signal is purely statistical: the same endpoint called N times with
+ * all-distinct values is 'varies', all-identical is 'stable'. Fields observed
+ * exactly once stay unmarked — there is not enough evidence, and downstream
+ * reads an absent mark as "let the agent decide".
  *
  * Marks are keyed `${method} ${normalizedPath}` → leaf path ("body.<json path>"
  * / "query.<key>") and stored on the Recording (EndpointSummary/schema are
@@ -25,25 +23,9 @@ import type {
 } from '@/lib/recording/types';
 import { endpointKeyOf } from '@/lib/recording/aggregate';
 import { isSensitiveKey, isSensitiveValue } from '@/lib/recording/redact';
-import { clipAround, parentPath, valueShape } from './dep-confidence';
-import { dynamismQuestions } from './presets';
 
-/** Char cap on the value shown to the model (a shape annotation follows). */
-export const MAX_VALUE_CHARS = 40;
-/** Char cap on the JSON context fragment around a leaf. */
-export const MAX_CONTEXT_CHARS = 200;
 /** Observed samples kept per leaf — enough for stats, small for storage. */
 export const MAX_SAMPLES_PER_LEAF = 4;
-
-/** The subset of the laya answer shape this module reads (answers cross the message relay untyped). */
-export interface DynamismAnswers {
-  stable_across_runs?: { noul?: number; answer_confidence?: number };
-}
-
-/** p(stable) at/above which a leaf is 'stable'. */
-export const STABLE_AT = 0.7;
-/** p(stable) at/below which a leaf is 'varies'. */
-export const VARIES_AT = 0.3;
 
 // --- candidate collection --------------------------------------------------------
 
@@ -91,7 +73,7 @@ function flattenLeaves(node: unknown, prefix: string, out: BodyLeaf[]): void {
  * redact.ts's business, and a mark would imply they are safe to template.
  */
 function underSensitivePath(path: string): boolean {
-  return path.split(/[.\[\]]/).some((seg) => seg && isSensitiveKey(seg));
+  return path.split(/[.[\]]/).some((seg) => seg && isSensitiveKey(seg));
 }
 
 function addSample(
@@ -120,7 +102,7 @@ function addSample(
  * Collect every request leaf candidate across the recording's calls: JSON body
  * leaves (excluding sensitive paths/values) and query parameters. Request
  * headers are excluded by design (auth is injected by the gateway, never a
- * param) and URL path segments are out of scope for v1.
+ * param) and URL path segments are out of scope.
  */
 export function collectCandidates(calls: ApiCall[]): LeafCandidate[] {
   const ordered = [...calls].sort((a, b) => a.seq - b.seq);
@@ -137,7 +119,7 @@ export function collectCandidates(calls: ApiCall[]): LeafCandidate[] {
           addSample(groups, call, `body.${leaf.path}`, leaf.value);
         }
       } catch {
-        // Non-JSON body (form text etc.) — out of scope for v1.
+        // Non-JSON body (form text etc.) — out of scope.
       }
     }
     try {
@@ -154,24 +136,25 @@ export function collectCandidates(calls: ApiCall[]): LeafCandidate[] {
 
 // --- deterministic classification --------------------------------------------------
 
+const ISO_TS_RE = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/;
+const EPOCH_MS_RE = /^\d{13}$/;
+
+/** Whether the value reads as a time value (timestamps stay volatile even when identical). */
+function timestampLike(value: string): boolean {
+  return ISO_TS_RE.test(value) || EPOCH_MS_RE.test(value);
+}
+
 function mark(
   verdict: FieldDynamism['verdict'],
-  source: FieldDynamism['source'],
   confidence: number,
   analyzedAt: number,
 ): FieldDynamism {
-  return { verdict, source, confidence, analyzedAt };
-}
-
-/** Whether every sample reads as a time value (timestamps stay volatile even when identical). */
-function allTimestampLike(samples: string[]): boolean {
-  const s = valueShape(samples[0]);
-  return (s === 'timestamp' || s === 'epoch-ms') && samples.every((v) => valueShape(v) === s);
+  return { verdict, source: 'stats', confidence, analyzedAt };
 }
 
 /**
  * Classify a candidate by statistics alone; null when there is only one
- * observation (that case is the model's job).
+ * observation (not enough evidence to claim either way).
  */
 export function classifyByStats(
   cand: LeafCandidate,
@@ -179,119 +162,34 @@ export function classifyByStats(
 ): FieldDynamism | null {
   if (cand.samples.length < 2) return null;
   const distinct = new Set(cand.samples).size;
-  if (distinct === cand.samples.length) return mark('varies', 'stats', 0.9, analyzedAt);
+  if (distinct === cand.samples.length) return mark('varies', 0.9, analyzedAt);
   if (distinct === 1) {
     // Identical values across calls: stable — unless the value is a timestamp,
     // where two close-together calls can legitimately collide.
-    return allTimestampLike(cand.samples)
-      ? mark('varies', 'stats', 0.8, analyzedAt)
-      : mark('stable', 'stats', 0.9, analyzedAt);
+    return cand.samples.every(timestampLike)
+      ? mark('varies', 0.8, analyzedAt)
+      : mark('stable', 0.9, analyzedAt);
   }
   // Partially distinct (e.g. a capped sample window) — volatile.
-  return mark('varies', 'stats', 0.7, analyzedAt);
+  return mark('varies', 0.7, analyzedAt);
 }
 
-// --- state building ----------------------------------------------------------------
-
-/** The value plus its shape, as the model reads it. */
-function sampleText(value: string): string {
-  const v = value.length <= MAX_VALUE_CHARS ? value : `${value.slice(0, MAX_VALUE_CHARS)}…`;
-  return `'${v}' (${value.length} chars, ${valueShape(value)})`;
-}
+// --- full-computation entry point ----------------------------------------------------
 
 /**
- * Build the batch predict inputs for the model queue: one state per candidate
- * the statistics could not classify (a single observation). `leaves[i]` is the
- * candidate `states[i]` describes. Questions come from dynamismQuestions().
+ * Run the whole pass: collect candidates and classify them by statistics.
+ * Pure over `calls`; single-observation leaves stay unmarked.
  */
-export function buildDynamismBatch(cands: LeafCandidate[]): {
-  states: Array<Record<string, string>>;
-  leaves: LeafCandidate[];
-  questions: Record<string, unknown>;
-} {
-  const queue = cands.filter((c) => c.samples.length < 2);
-  const states = queue.map((c) => {
-    const isQuery = c.leafPath.startsWith('query.');
-    const name = isQuery ? c.leafPath.slice(6) : c.leafPath.slice(5);
-    const context = isQuery
-      ? `query-param: ${name}=${c.samples[0]}`
-      : clipAround(c.sampleCall.reqBody, parentPath(name), MAX_CONTEXT_CHARS);
-    return {
-      field: c.leafPath,
-      endpoint: c.endpointKey,
-      samples: sampleText(c.samples[0]),
-      context,
-    };
-  });
-  return { states, leaves: queue, questions: dynamismQuestions() };
-}
-
-// --- verdicts ----------------------------------------------------------------------
-
-function confidenceOf(ans: DynamismAnswers['stable_across_runs']): number {
-  const c = ans?.answer_confidence;
-  return typeof c === 'number' && Number.isFinite(c) ? c : 0.5;
-}
-
-/**
- * Fold one state's answers into a verdict. The noul head is p(stable); the band
- * between the bars stays 'uncertain' — a unsure leaf is simply absent of a
- * strong claim, which downstream reads as "let the agent decide".
- */
-export function dynamismVerdictFromAnswers(
-  answers: DynamismAnswers,
-): { verdict: FieldDynamism['verdict']; confidence: number } {
-  const p = answers.stable_across_runs?.noul;
-  const confidence = confidenceOf(answers.stable_across_runs);
-  if (typeof p !== 'number' || !Number.isFinite(p)) {
-    return { verdict: 'uncertain', confidence };
-  }
-  if (p >= STABLE_AT) return { verdict: 'stable', confidence };
-  if (p <= VARIES_AT) return { verdict: 'varies', confidence };
-  return { verdict: 'uncertain', confidence };
-}
-
-// --- full-computation entry points ---------------------------------------------------
-
-export interface DynamismComputation {
-  /** Stats marks, keyed endpointKey → leafPath → mark. Persistable without the model. */
-  statsMarks: Record<string, Record<string, FieldDynamism>>;
-  /** Candidates reserved for the model (single observation), in batch order. */
-  queue: LeafCandidate[];
-}
-
-/**
- * Run the whole deterministic half: collect candidates, classify what the
- * statistics can, and queue the rest for the model. Pure over `calls`.
- */
-export function computeDynamism(calls: ApiCall[]): DynamismComputation {
-  const analyzedAt = Date.now();
-  const cands = collectCandidates(calls);
-  const statsMarks: Record<string, Record<string, FieldDynamism>> = {};
-  for (const cand of cands) {
-    const m = classifyByStats(cand, analyzedAt);
-    if (!m) continue;
-    (statsMarks[cand.endpointKey] ??= {})[cand.leafPath] = m;
-  }
-  return { statsMarks, queue: cands.filter((c) => c.samples.length < 2) };
-}
-
-/**
- * Fold batch predict results onto the queue returned by buildDynamismBatch
- * (same order), keyed like statsMarks. A null result degrades to 'uncertain'.
- */
-export function mergeDynamismResults(
-  leaves: LeafCandidate[],
-  results: Array<DynamismAnswers | null>,
+export function computeDynamism(
+  calls: ApiCall[],
 ): Record<string, Record<string, FieldDynamism>> {
   const analyzedAt = Date.now();
   const marks: Record<string, Record<string, FieldDynamism>> = {};
-  leaves.forEach((cand, i) => {
-    const v = results[i]
-      ? dynamismVerdictFromAnswers(results[i]!)
-      : { verdict: 'uncertain' as const, confidence: 0.5 };
-    (marks[cand.endpointKey] ??= {})[cand.leafPath] = { ...v, source: 'model', analyzedAt };
-  });
+  for (const cand of collectCandidates(calls)) {
+    const m = classifyByStats(cand, analyzedAt);
+    if (!m) continue;
+    (marks[cand.endpointKey] ??= {})[cand.leafPath] = m;
+  }
   return marks;
 }
 
@@ -301,7 +199,7 @@ export function mergeDynamismResults(
 function bodyPathTokens(jsonPath: string): (string | number)[] {
   const out: (string | number)[] = [];
   for (const seg of jsonPath.split('.')) {
-    const m = seg.match(/^([^\[\]]*)((?:\[\d+\])*)$/);
+    const m = seg.match(/^([^[\]]*)((?:\[\d+\])*)$/);
     if (!m) continue;
     if (m[1]) out.push(m[1]);
     for (const idx of m[2].matchAll(/\[(\d+)\]/g)) out.push(Number(idx[1]));

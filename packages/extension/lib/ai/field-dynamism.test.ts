@@ -4,15 +4,10 @@
 import { describe, expect, it } from 'vitest';
 import type { ApiCall, EndpointSummary } from '@/lib/recording/types';
 import {
-  STABLE_AT,
-  VARIES_AT,
   attachDynamism,
-  buildDynamismBatch,
   classifyByStats,
   collectCandidates,
   computeDynamism,
-  dynamismVerdictFromAnswers,
-  mergeDynamismResults,
 } from './field-dynamism';
 
 let seqCounter = 0;
@@ -83,7 +78,7 @@ describe('classifyByStats', () => {
   const t0 = Date.now();
   const base = { endpointKey: 'POST /api/x', leafPath: 'body.a', sampleCall: makeCall() };
 
-  it('returns null for a single observation (the model queue)', () => {
+  it('returns null for a single observation (not enough evidence)', () => {
     expect(classifyByStats({ ...base, samples: ['v1'] }, t0)).toBeNull();
   });
 
@@ -111,61 +106,14 @@ describe('classifyByStats', () => {
   });
 });
 
-describe('computeDynamism / buildDynamismBatch', () => {
-  it('routes single-observation leaves to the model queue and multi-observation to stats', () => {
+describe('computeDynamism', () => {
+  it('marks multi-observation leaves and leaves single-observation ones unmarked', () => {
     const calls = [
       makeCall({ seq: 1, reqBody: '{"once":"a1","repeat":"r1"}' }),
       makeCall({ seq: 2, reqBody: '{"repeat":"r2"}' }),
     ];
-    const { statsMarks, queue } = computeDynamism(calls);
-    expect(queue.map((c) => c.leafPath)).toEqual(['body.once']);
+    const statsMarks = computeDynamism(calls);
     expect(Object.keys(statsMarks['POST /api/checkout'])).toEqual(['body.repeat']);
-  });
-
-  it('builds one state per queued leaf with the per-leaf signal first', () => {
-    const { states, leaves, questions } = buildDynamismBatch([
-      { endpointKey: 'POST /api/x', leafPath: 'body.sessionId', samples: ['abc123'], sampleCall: makeCall({ reqBody: '{"sessionId":"abc123"}' }) },
-    ]);
-    expect(leaves).toHaveLength(1);
-    expect(Object.keys(states[0])).toEqual(['field', 'endpoint', 'samples', 'context']);
-    expect(states[0].field).toBe('body.sessionId');
-    expect(states[0].context).toContain('"sessionId":"abc123"');
-    expect(questions).toHaveProperty('stable_across_runs');
-  });
-
-  it('renders query leaves with a query context', () => {
-    const { states } = buildDynamismBatch([
-      { endpointKey: 'GET /api/x', leafPath: 'query.page', samples: ['3'], sampleCall: makeCall({ method: 'GET', url: 'https://example.com/api/x?page=3' }) },
-    ]);
-    expect(states[0].context).toBe('query-param: page=3');
-  });
-});
-
-describe('dynamismVerdictFromAnswers / mergeDynamismResults', () => {
-  it('maps the noul head onto the three verdicts', () => {
-    expect(dynamismVerdictFromAnswers({ stable_across_runs: { noul: STABLE_AT } }).verdict).toBe('stable');
-    expect(dynamismVerdictFromAnswers({ stable_across_runs: { noul: VARIES_AT } }).verdict).toBe('varies');
-    expect(
-      dynamismVerdictFromAnswers({ stable_across_runs: { noul: (STABLE_AT + VARIES_AT) / 2 } }).verdict,
-    ).toBe('uncertain');
-    expect(dynamismVerdictFromAnswers({}).confidence).toBe(0.5);
-  });
-
-  it('merges results keyed endpoint → leaf with source "model"', () => {
-    const leaves = [
-      { endpointKey: 'POST /api/x', leafPath: 'body.sessionId', samples: ['a'], sampleCall: makeCall() },
-      { endpointKey: 'POST /api/x', leafPath: 'query.page', samples: ['1'], sampleCall: makeCall() },
-    ];
-    const marks = mergeDynamismResults(leaves, [
-      { stable_across_runs: { noul: 0.1, answer_confidence: 0.7 } },
-      null,
-    ]);
-    expect(marks['POST /api/x']['body.sessionId']).toMatchObject({
-      verdict: 'varies',
-      source: 'model',
-      confidence: 0.7,
-    });
-    expect(marks['POST /api/x']['query.page'].verdict).toBe('uncertain');
   });
 });
 

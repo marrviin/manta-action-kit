@@ -23,7 +23,9 @@
     "message": "已捕获 $COUNT$ 个 API 调用",
     "description": "System notification body with the captured call count.",
     "placeholders": {
-      "count": { "content": "$1" }
+      "count": {
+        "content": "$1"
+      }
     }
   },
   "notifyConfirmTitle": {
@@ -34,8 +36,12 @@
     "message": "$METHOD$ $HOST$ 请求等待你的确认",
     "description": "System notification body with the request method and target host.",
     "placeholders": {
-      "method": { "content": "$1" },
-      "host": { "content": "$2" }
+      "method": {
+        "content": "$1"
+      },
+      "host": {
+        "content": "$2"
+      }
     }
   },
   "notifyGifFailedTitle": {
@@ -78,15 +84,9 @@
     "message": "一个 Agent 请求录制 $HOST$ ——请在弹窗中点击允许",
     "description": "System notification body with the target host of an agent-requested tab recording.",
     "placeholders": {
-      "host": { "content": "$1" }
+      "host": {
+        "content": "$1"
+      }
     }
-  },
-  "notifyRelevanceFailedTitle": {
-    "message": "相关性分析失败",
-    "description": "System notification title when the laya relevance analysis for a recording could not run."
-  },
-  "notifyRelevanceFailedMessage": {
-    "message": "本地模型无法分析这条录制——请稍后在模型设置中重试",
-    "description": "System notification body for a failed relevance analysis."
   }
 }

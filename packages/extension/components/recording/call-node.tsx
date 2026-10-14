@@ -54,25 +54,16 @@ function FlowAnnotations({
   const produces = deps.filter((d) => d.fromSeq === call.seq);
   if (consumes.length === 0 && produces.length === 0) return null;
 
-  // A laya-marked "likely coincidental" edge dims to gray — advisory like the
-  // relevance marks, not an error; the edge stays visible and confirmable.
-  const depTone = (d: FieldDependency) =>
-    d.depCheck?.verdict === "unlikely"
-      ? {
-          color: "default" as const,
-          className: cn("w-fit m-0! text-[10px]! font-normal!", "opacity-60"),
-          suffix: ` · ${t("flow.depUnlikely")}`,
-        }
-      : {
-          color: null,
-          className: "w-fit m-0! text-[10px]! font-normal!",
-          suffix: "",
-        };
+  const depTone = () => ({
+    color: null,
+    className: "w-fit m-0! text-[10px]! font-normal!",
+    suffix: "",
+  });
 
   return (
     <div className="flex flex-col gap-1">
       {consumes.map((d) => {
-        const tone = depTone(d);
+        const tone = depTone();
         return (
           <Tooltip
             key={d.id}
@@ -96,7 +87,7 @@ function FlowAnnotations({
         );
       })}
       {produces.map((d) => {
-        const tone = depTone(d);
+        const tone = depTone();
         return (
           <Tooltip
             key={d.id}
@@ -114,47 +105,6 @@ function FlowAnnotations({
         );
       })}
     </div>
-  );
-}
-
-/** i18n key per model-assigned relevance role. */
-const ROLE_LABEL_KEYS = {
-  business_data: "detail.roleBusinessData",
-  auth_session: "detail.roleAuthSession",
-  telemetry: "detail.roleTelemetry",
-  polling_heartbeat: "detail.rolePollingHeartbeat",
-  preflight_static: "detail.rolePreflightStatic",
-  other: "detail.roleOther",
-} as const;
-
-type RoleLabelKey = keyof typeof ROLE_LABEL_KEYS;
-
-function roleLabelKey(role: string): RoleLabelKey | null {
-  return role in ROLE_LABEL_KEYS ? (role as RoleLabelKey) : null;
-}
-
-/** The "likely irrelevant" / "possibly irrelevant" badge for an analyzed call. */
-function RelevanceTag({ call }: { call: ApiCall }) {
-  const { t } = useTranslation();
-  const relevance = call.relevance;
-  if (!relevance || relevance.verdict === "relevant") return null;
-  const role = relevance.role ? roleLabelKey(relevance.role) : null;
-  const tooltip = t("detail.relevanceTooltip", {
-    value: `${Math.round(relevance.confidence * 100)}%`,
-  });
-  return (
-    <Tooltip
-      title={role ? `${tooltip} · ${t(ROLE_LABEL_KEYS[role])}` : tooltip}
-    >
-      <Tag
-        color={relevance.verdict === "irrelevant" ? "default" : "warning"}
-        className="m-0! px-1.5! text-[10px]! leading-4! font-normal!"
-      >
-        {relevance.verdict === "irrelevant"
-          ? t("detail.relevanceIrrelevant")
-          : t("detail.relevanceUncertain")}
-      </Tag>
-    </Tooltip>
   );
 }
 
@@ -186,18 +136,12 @@ export const CallNode = memo(function CallNode({ call, deps = [], onDelete }: Pr
     });
   };
 
-  const irrelevant = call.relevance?.verdict === "irrelevant";
-
   return (
     <UnifiedListItem
       // pt-0! drops the shared list-item top padding so the title row sits
       // flush with the Timeline dot (the rail/dot stay unmoved); px-0! /
       // border-0! remove the shared list separators inside the chain.
-      // Irrelevant calls dim instead of shouting — the mark is advisory.
-      className={cn(
-        "pt-0! px-0! border-0!",
-        irrelevant && "opacity-60",
-      )}
+      className="pt-0! px-0! border-0!"
       expandable
       expanded={expanded}
       onToggleExpand={() => setExpanded((v) => !v)}
@@ -220,7 +164,6 @@ export const CallNode = memo(function CallNode({ call, deps = [], onDelete }: Pr
       }
       status={
         <>
-          <RelevanceTag call={call} />
           <MethodBadge method={call.method} />
           <StatusBadge status={call.status} />
         </>

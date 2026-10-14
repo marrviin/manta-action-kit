@@ -98,13 +98,9 @@ You remain in control at all times:
   browsing activity to any remote server operated by us.
 - There is **no** analytics, telemetry, tracking, advertising, or fingerprinting.
 - There is **no** account, sign-in, or user identifier.
-- The extension uses **no remote code**: all scripts (including the ONNX
-  inference runtime) are bundled in the package; nothing is fetched and
-  executed from a remote source. The one remote fetch the extension makes is
-  **model data, not code**: the on-device decision model's weights (~800 MB)
-  are downloaded **once** from Hugging Face (`huggingface.co/marrviin/laya-en-fp16`)
-  into the browser's local cache. No page data, recordings, or identifiers are
-  sent in that request, and all analysis runs locally afterwards.
+- The extension uses **no remote code** and makes **no remote fetches**: all
+  scripts are bundled in the package, and all analysis (dependency inference,
+  field-dynamism classification) runs locally and deterministically.
 
 ## Data you send to third parties (by your own action)
 

@@ -23,7 +23,9 @@
     "message": "Captured $COUNT$ API calls",
     "description": "System notification body with the captured call count.",
     "placeholders": {
-      "count": { "content": "$1" }
+      "count": {
+        "content": "$1"
+      }
     }
   },
   "notifyConfirmTitle": {
@@ -34,8 +36,12 @@
     "message": "$METHOD$ $HOST$ is waiting for your confirmation",
     "description": "System notification body with the request method and target host.",
     "placeholders": {
-      "method": { "content": "$1" },
-      "host": { "content": "$2" }
+      "method": {
+        "content": "$1"
+      },
+      "host": {
+        "content": "$2"
+      }
     }
   },
   "notifyGifFailedTitle": {
@@ -78,15 +84,9 @@
     "message": "An agent wants to record $HOST$ — click Allow in the popup window",
     "description": "System notification body with the target host of an agent-requested tab recording.",
     "placeholders": {
-      "host": { "content": "$1" }
+      "host": {
+        "content": "$1"
+      }
     }
-  },
-  "notifyRelevanceFailedTitle": {
-    "message": "Relevance analysis failed",
-    "description": "System notification title when the laya relevance analysis for a recording could not run."
-  },
-  "notifyRelevanceFailedMessage": {
-    "message": "The local model could not analyze this recording — open the model settings and try again later",
-    "description": "System notification body for a failed relevance analysis."
   }
 }

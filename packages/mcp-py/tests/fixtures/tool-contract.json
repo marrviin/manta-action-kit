@@ -2,7 +2,7 @@
   {
     "name": "list_recordings",
     "title": "List recordings",
-    "description": "List all API recordings captured by the Manta Action Kit Chrome extension (per-recording summary only: id, name, origin, url, createdAt, callCount, description, relevanceStatus, interactionCount — no call bodies, deps or interactions). Recordings are SOURCE MATERIAL for actions: analyze a flow (get_flow / get_endpoints / get_recording), then distill it into a reusable, parameterized action via create_action. When the goal is to RUN a captured flow, execute the action via execute_action — do not replay a recording's calls one by one via proxy_fetch.",
+    "description": "List all API recordings captured by the Manta Action Kit Chrome extension (per-recording summary only: id, name, origin, url, createdAt, callCount, description, interactionCount — no call bodies, deps or interactions). Recordings are SOURCE MATERIAL for actions: analyze a flow (get_flow / get_endpoints / get_recording), then distill it into a reusable, parameterized action via create_action. When the goal is to RUN a captured flow, execute the action via execute_action — do not replay a recording's calls one by one via proxy_fetch.",
     "inputSchema": {
       "type": "object",
       "properties": {},
@@ -15,7 +15,7 @@
   {
     "name": "get_recording",
     "title": "Get recording detail",
-    "description": "Get a single recording plus its full API call chain (each call's request/response, status, timing). Use list_recordings first to find the id. The result includes the recording's agent-authored `description` when present; if it is missing, the result carries a `descriptionHint` nudging you to write one via set_recording_description so downstream steps understand this recording. Each call may carry a `relevance` mark (`relevant` / `irrelevant` / `uncertain`, with a `role` like `telemetry`): `irrelevant` calls are background noise (analytics, polling, preflights) — skip them when analyzing the flow or distilling an action; no `relevance` field means the recording has not been analyzed. Recordings are source material: use what you learn here to author an action via create_action, and run captured flows through execute_action instead of replaying calls manually.",
+    "description": "Get a single recording plus its full API call chain (each call's request/response, status, timing). Use list_recordings first to find the id. The result includes the recording's agent-authored `description` when present; if it is missing, the result carries a `descriptionHint` nudging you to write one via set_recording_description so downstream steps understand this recording. Recordings are source material: use what you learn here to author an action via create_action, and run captured flows through execute_action instead of replaying calls manually.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -122,7 +122,7 @@
   {
     "name": "get_flow",
     "title": "Get call dependency flow",
-    "description": "Get a recording's FLOW: its calls as ordered lightweight steps (seq/method/url/status, no bodies) plus the inferred field dependencies linking them — i.e. which response value from an earlier call feeds a later call's request. Deps with `fromSeq: -1` carry `fromPath: \"cookie:<NAME>\"` instead: that request field is fed by a browser COOKIE (CSRF/XSRF double-submit), not by any recorded response — when distilling an action, fill it with a `{{cookie:<NAME>}}` header override so the replay uses the live cookie, never a stale recorded token. Deps may carry a `depCheck` mark: `verdict: 'unlikely'` means the local model considers the edge a coincidental value match (a colliding timestamp/nonce) rather than a real data flow — do not build parameterization on it; an absent mark means not analyzed. Steps may also carry a `relevance` mark (`relevant` / `irrelevant` / `uncertain` — skip `irrelevant` calls as background noise) and a `precedingInteraction` mark (the user interaction, with its text and `deltaMs`, that most likely triggered the call — direct consequences of user intent vs calls that merely co-occur). Use this to understand how the calls chain together before turning the flow into an action (create_action); use get_recording for full request/response bodies. Running a captured flow goes through execute_action — do not replay the chain's calls one by one via proxy_fetch. Find the id via list_recordings.",
+    "description": "Get a recording's FLOW: its calls as ordered lightweight steps (seq/method/url/status, no bodies) plus the inferred field dependencies linking them — i.e. which response value from an earlier call feeds a later call's request. Deps with `fromSeq: -1` carry `fromPath: \"cookie:<NAME>\"` instead: that request field is fed by a browser COOKIE (CSRF/XSRF double-submit), not by any recorded response — when distilling an action, fill it with a `{{cookie:<NAME>}}` header override so the replay uses the live cookie, never a stale recorded token. Steps may also carry a `precedingInteraction` mark (the user interaction, with its text and `deltaMs`, that most likely triggered the call — direct consequences of user intent vs calls that merely co-occur). Use this to understand how the calls chain together before turning the flow into an action (create_action); use get_recording for full request/response bodies. Running a captured flow goes through execute_action — do not replay the chain's calls one by one via proxy_fetch. Find the id via list_recordings.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -960,7 +960,7 @@
   {
     "name": "rebind_proxy",
     "title": "Rebind the local HTTP proxy to a free port",
-    "description": "Move the local HTTP proxy to a new port at runtime WITHOUT restarting the MCP server, then sync that port into the extension so proxy-rule scripts' baseURL (http://127.0.0.1:<proxyPort>) keeps working. Use this to recover when health reports proxyListening=false (a port conflict). Omit `port` to auto-pick the first free port (scanning up from the current one); pass `port` to force a specific one. The new port must differ from wsPort. Returns the resulting {proxyPort, proxyListening}. NOTE: this cannot fix a WS bridge port conflict — that is a fatal startup error and requires changing MANTA_WS_PORT and restarting.",
+    "description": "Move the local HTTP proxy to a new port at runtime WITHOUT restarting the MCP server, then sync that port into the extension so proxy-rule scripts' baseURL (http://127.0.0.1:<proxyPort>) keeps working. Use this to recover when health reports proxyListening=false (a port conflict). Omit `port` to auto-pick the first free port (scanning up from the current one); pass `port` to force a specific one. The new port must differ from wsPort. Returns the resulting {proxyPort, proxyListening}. NOTE: this cannot fix a WS bridge port conflict — use MANTA_WS_PORT for that (though the bridge now self-heals by claiming a fallback port and letting the extension discover it).",
     "inputSchema": {
       "type": "object",
       "properties": {

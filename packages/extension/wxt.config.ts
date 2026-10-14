@@ -9,11 +9,6 @@ export default defineConfig({
   // Source code lives at the project root (entrypoints/, components/, etc.).
   srcDir: ".",
 
-  // The laya model weights (public/models/, ~870 MB, gitignored) are NOT part
-  // of the distribution: they are downloaded from the artifacts repo at
-  // runtime (see lib/ai/runtime.ts). The zip exclude is a safety net for
-  // machines that still have a local export sitting in public/models.
-  zip: { exclude: ["**/models/**"] },
 
   manifest: {
     // Localized via _locales/{en,zh_CN}/messages.json. `default_locale` makes

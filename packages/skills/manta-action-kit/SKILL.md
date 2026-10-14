@@ -186,13 +186,11 @@ only for ad-hoc, one-off single calls.
 | "show a single call"                                           | `get_call`                  | Fetch a single API call by id                                                                             |
 | "describe this recording / what does this flow do"             | `set_recording_description` | Agent-authored business-level summary of the whole flow (shown in `list_recordings` to help future reuse) |
 
-**Relevance marks**: after a recording is saved, the extension auto-runs a local
-model pass that marks each call's `relevance` (`relevant` / `irrelevant` /
-`uncertain`, with a `role` like `telemetry`). When `get_flow` steps or `get_call`
-carry `relevance.verdict === 'irrelevant'`, that call is background noise
-(analytics, polling, preflight) — skip it when analyzing the flow or distilling
-an action. No `relevance` field means the recording has not been analyzed; treat
-every call as potentially relevant then.
+**Field dynamism marks**: after a recording is saved, the extension
+statistically marks request fields as `stable` (identical across calls — safe
+to hardcode) or `varies` (all-distinct — parameterize). `get_endpoints` surfaces
+these on the endpoint contracts (`dynamism` / `queryDynamism`); fields with no
+mark were observed once — judge from context.
 
 **User-intent marks**: `get_flow` steps may carry a
 `precedingInteraction` field — the user interaction (click/typing, with its
@@ -201,23 +199,18 @@ page during recording. Use it to identify which steps are direct consequences
 of user intent vs. calls that merely co-occur (analytics, preloads fire without
 one). Absent field = the call had no interaction within the lookback window.
 
-**Dep-confidence marks**: inferred field dependencies in `get_flow` deps (and
-`get_endpoints` `inputsFrom`) can carry a `depCheck` mark
-(`likely` / `unlikely` / `uncertain`). `depCheck.verdict === 'unlikely'` means
-the local model considers the edge a coincidental value match (a timestamp or
-nonce that happened to collide) rather than a real data flow — do not build
-action parameterization on it. Absent `depCheck` = not analyzed; treat the edge
-as the heuristic inference it is.
+**Inferred dependencies**: deps in `get_flow` (and `get_endpoints`
+`inputsFrom`) are heuristic value matches — a response value reappearing in a
+later request. They are strong hints, not proof; confirm the edge makes sense
+before building action parameterization on it.
 
 **Field dynamism marks**: `get_endpoints` request-schema leaves may carry a
 `dynamism` mark and query params appear in `queryDynamism`
-(`verdict: 'varies' | 'stable' | 'uncertain'`, `source: 'stats' | 'model'`).
+(`verdict: 'varies' | 'stable' | 'uncertain'`, `source: 'stats'`).
 `varies` = the value would differ on a replay in a fresh session (a timestamp,
 session token, auto-generated id) — make it an action parameter, never a
-hardcoded literal. `stable` = safe to hardcode. `source: 'stats'` is a
-multi-observation fact and outranks `'model'` (a single-observation judgment).
-No mark = not analyzed (or the field was seen only once and the model pass
-failed) — judge from the value shape yourself then.
+hardcoded literal. `stable` = safe to hardcode. No mark = the field was seen only once (not
+enough evidence) — judge from the value shape yourself then.
 
 ### Element captures (UI reference / visual diffing)
 

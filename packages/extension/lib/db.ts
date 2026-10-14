@@ -29,8 +29,6 @@
  */
 import type {
   ApiCall,
-  CallRelevance,
-  DepCheck,
   FieldDynamism,
   Recording,
 } from "./recording/types";
@@ -337,108 +335,9 @@ export async function deleteRecording(id: string): Promise<void> {
 }
 
 /**
- * Stamp one recording's relevance-analysis lifecycle status (analyzing /
- * done / failed). Persisted so a reopened detail view shows the truth, not
- * just what it happened to catch via broadcast.
- */
-export async function setRecordingRelevanceStatus(
-  recordingId: string,
-  status: NonNullable<Recording["relevanceStatus"]>,
-): Promise<void> {
-  const db = await openDb();
-  await new Promise<void>((resolve, reject) => {
-    const t = tx(db, [STORE_RECORDINGS], "readwrite");
-    t.oncomplete = () => resolve();
-    t.onerror = () => reject(t.error);
-    t.onabort = () => reject(t.error);
-    const rec = t.objectStore(STORE_RECORDINGS).get(recordingId);
-    rec.onsuccess = () => {
-      const recording = rec.result as Recording | undefined;
-      if (recording) {
-        recording.relevanceStatus = status;
-        recording.relevanceStatusAt = Date.now();
-        t.objectStore(STORE_RECORDINGS).put(recording);
-      }
-    };
-  });
-}
-
-/**
- * Persist the laya relevance marks for many calls of one recording in a single
- * transaction, and stamp the recording's relevanceAnalyzedAt. Calls not listed
- * in `entries` are left untouched (defensive: a concurrent delete must not be
- * resurrected by re-putting stale objects).
- */
-export async function updateCallRelevances(
-  recordingId: string,
-  entries: Array<{ callId: string; relevance: CallRelevance }>,
-): Promise<void> {
-  const db = await openDb();
-  await new Promise<void>((resolve, reject) => {
-    const t = tx(db, [STORE_RECORDINGS, STORE_CALLS], "readwrite");
-    t.oncomplete = () => resolve();
-    t.onerror = () => reject(t.error);
-    t.onabort = () => reject(t.error);
-    const callStore = t.objectStore(STORE_CALLS);
-    for (const { callId, relevance } of entries) {
-      const req = callStore.get(callId);
-      req.onsuccess = () => {
-        const call = req.result as ApiCall | undefined;
-        if (call && call.recordingId === recordingId) {
-          call.relevance = relevance;
-          callStore.put(call);
-        }
-      };
-    }
-    const rec = t.objectStore(STORE_RECORDINGS).get(recordingId);
-    rec.onsuccess = () => {
-      const recording = rec.result as Recording | undefined;
-      if (recording) {
-        recording.relevanceAnalyzedAt = Date.now();
-        recording.relevanceStatus = "done";
-        recording.relevanceStatusAt = Date.now();
-        t.objectStore(STORE_RECORDINGS).put(recording);
-      }
-    };
-  });
-}
-
-/**
- * Persist laya dep-confidence marks onto a recording's stored dependencies in
- * one transaction. Edges not listed are left untouched; confirmed/manual edges
- * are never modified (the model has no say over them). Does not touch the
- * relevance lifecycle — this is a refinement of the flow view, not the
- * headline analysis.
- */
-export async function updateDepChecks(
-  recordingId: string,
-  entries: Array<{ depId: string; depCheck: DepCheck }>,
-): Promise<void> {
-  const db = await openDb();
-  await new Promise<void>((resolve, reject) => {
-    const t = tx(db, [STORE_RECORDINGS], "readwrite");
-    t.oncomplete = () => resolve();
-    t.onerror = () => reject(t.error);
-    t.onabort = () => reject(t.error);
-    const rec = t.objectStore(STORE_RECORDINGS).get(recordingId);
-    rec.onsuccess = () => {
-      const recording = rec.result as Recording | undefined;
-      if (!recording?.deps) return;
-      const byId = new Map(entries.map((e) => [e.depId, e.depCheck]));
-      for (const dep of recording.deps) {
-        const check = byId.get(dep.id);
-        if (check && dep.origin === "inferred") dep.depCheck = check;
-      }
-      t.objectStore(STORE_RECORDINGS).put(recording);
-    };
-  });
-}
-
-/**
- * Merge laya field-dynamism marks into a recording's `fieldDynamism`
+ * Merge field-dynamism marks into a recording's `fieldDynamism`
  * leaf-level: entries overwrite their (endpointKey, leafPath) cell, all other
- * cells (including past model marks this run did not refresh) are preserved.
- * Does not touch the relevance lifecycle.
+ * cells are preserved.
  */
 export async function updateFieldDynamism(
   recordingId: string,

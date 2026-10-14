@@ -200,7 +200,6 @@ describe('recording reads', () => {
         createdAt: 1,
         callCount: 3,
         description: 'Logs the user in',
-        relevanceStatus: 'done',
         // Heavy analysis payload that must NOT leak into the list result.
         deps: [{ id: 'd1', value: 'secret-linking-value' }],
         fieldDynamism: { 'POST /login': { 'body.token': { verdict: 'varies' } } },
@@ -218,7 +217,6 @@ describe('recording reads', () => {
           callCount: 3,
           description: 'Logs the user in',
           descriptionUpdatedAt: undefined,
-          relevanceStatus: 'done',
           interactionCount: 1,
         },
       ],
@@ -467,7 +465,7 @@ describe('flow reads', () => {
     });
   });
 
-  it('get_flow prefers stored deps, sorts by seq and passes through relevance', async () => {
+  it('get_flow prefers stored deps and sorts by seq', async () => {
     await expect(rpc('get_flow', {})).rejects.toThrow(/missing "id"/);
     mocked.getRecording.mockResolvedValue(null);
     await expect(rpc('get_flow', { id: 'r1' })).resolves.toEqual({ flow: null });
@@ -479,12 +477,10 @@ describe('flow reads', () => {
     } as never);
     mocked.getCalls.mockResolvedValue([
       { seq: 2, method: 'POST', url: 'https://a/2', status: 200 },
-      { seq: 1, method: 'GET', url: 'https://a/1', status: 200, relevance: { verdict: 'irrelevant', role: 'telemetry' } },
+      { seq: 1, method: 'GET', url: 'https://a/1', status: 200 },
     ] as never);
     const res = await rpc('get_flow', { id: 'r1' });
     expect(res.flow.steps.map((s: { seq: number }) => s.seq)).toEqual([1, 2]);
-    expect(res.flow.steps[0]).toMatchObject({ relevance: { verdict: 'irrelevant' } });
-    expect(res.flow.steps[1]).not.toHaveProperty('relevance');
     expect(res.flow.deps).toEqual([{ fromSeq: 1, toSeq: 2 }]);
     expect(mocked.getCalls).toHaveBeenCalledTimes(1); // no on-the-fly inference
   });

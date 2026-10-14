@@ -68,7 +68,7 @@ const defaults = (): MessageHandlerDeps =>
       setPaused: vi.fn(async () => ({ status: 'paused' })),
       push: vi.fn(async () => 42),
     },
-    analyzeRecordingRelevance: vi.fn(async () => undefined),
+    analyzeRecordingDynamism: vi.fn(async () => undefined),
     captureTabScreenshot: vi.fn(async () => ({
       dataUrl: 'data:image/png;base64,AAAA',
       filename: 'shot.png',
@@ -93,7 +93,6 @@ const defaults = (): MessageHandlerDeps =>
     handleGifOffscreenDone: vi.fn(async () => undefined),
     resolveGifConfirmation: vi.fn(() => true),
     isPendingGifConfirmation: vi.fn(() => true),
-    ensureLayaRuntime: vi.fn(async () => undefined),
   }) as unknown as MessageHandlerDeps;
 
 const fn = (f: unknown): ReturnType<typeof vi.fn> => f as ReturnType<typeof vi.fn>;
@@ -137,37 +136,6 @@ describe('routing + ack shapes', () => {
       ),
     ).resolves.toEqual({ ok: true, count: 42 });
     expect(fn(deps.session.push)).toHaveBeenCalledWith({ call: {} }, 9);
-  });
-
-  it('LAYA relays go through browser.runtime with the raw message', async () => {
-    const { dispatch, deps } = makeHandler();
-    const raw = { type: 'LAYA_PREDICT', data: { states: [1] } };
-    await expect(dispatch(raw)).resolves.toEqual({ relayed: true });
-    expect(fn(deps.ensureLayaRuntime)).toHaveBeenCalledTimes(1);
-    expect(fn(browserRelay)).toHaveBeenCalledWith(raw);
-
-    // batch uses the same relay
-    await dispatch({ type: 'LAYA_PREDICT_BATCH', data: { states: [] } });
-    expect(fn(deps.ensureLayaRuntime)).toHaveBeenCalledTimes(2);
-
-    // keepalive is a no-op receipt
-    await expect(dispatch({ type: 'LAYA_KEEPALIVE' })).resolves.toEqual({
-      ok: true,
-    });
-    expect(fn(deps.ensureLayaRuntime)).toHaveBeenCalledTimes(2);
-  });
-
-  it('LAYA_GET_STATUS relays but never spawns the runtime; a dead relay means "not loaded"', async () => {
-    const { dispatch, deps } = makeHandler();
-    await dispatch({ type: 'LAYA_GET_STATUS' });
-    expect(fn(deps.ensureLayaRuntime)).not.toHaveBeenCalled();
-    expect(fn(browserRelay)).toHaveBeenCalledTimes(1);
-
-    browserRelay.mockRejectedValue(new Error('no listener'));
-    await expect(dispatch({ type: 'LAYA_GET_STATUS' })).resolves.toEqual({
-      ready: false,
-      loading: false,
-    });
   });
 
   it('gateway confirm lifecycle: decision, ping, resize and the debug test gate', async () => {
@@ -500,7 +468,7 @@ describe('INSPECTOR_CAPTURE_RELAY_* (child-frame capture relay)', () => {
 });
 
 describe('STOP_RECORDING side effects', () => {
-  it('notifies + fires the relevance analysis when a recording was saved', async () => {
+  it('notifies + fires the dynamism analysis when a recording was saved', async () => {
     const { dispatch, deps } = makeHandler();
     const res = await dispatch({ type: 'STOP_RECORDING' });
     expect(res).toMatchObject({ recordingId: 'r1', state: { count: 3 } });
@@ -508,7 +476,7 @@ describe('STOP_RECORDING side effects', () => {
       expect.objectContaining({ title: expect.any(String) }),
     );
     await vi.waitFor(() =>
-      expect(fn(deps.analyzeRecordingRelevance)).toHaveBeenCalledWith('r1'),
+      expect(fn(deps.analyzeRecordingDynamism)).toHaveBeenCalledWith('r1'),
     );
   });
 
@@ -520,22 +488,9 @@ describe('STOP_RECORDING side effects', () => {
     });
     await dispatch({ type: 'STOP_RECORDING' });
     expect(notificationsCreate).not.toHaveBeenCalled();
-    expect(fn(deps.analyzeRecordingRelevance)).not.toHaveBeenCalled();
+    expect(fn(deps.analyzeRecordingDynamism)).not.toHaveBeenCalled();
   });
 
-  it('RUN_RECORDING_RELEVANCE answers immediately and swallows analysis errors', async () => {
-    const { dispatch, deps } = makeHandler();
-    fn(deps.analyzeRecordingRelevance).mockRejectedValue(new Error('model OOM'));
-    await expect(
-      dispatch({
-        type: 'RUN_RECORDING_RELEVANCE',
-        data: { recordingId: 'r2' },
-      }),
-    ).resolves.toEqual({ started: true });
-    await vi.waitFor(() =>
-      expect(fn(deps.analyzeRecordingRelevance)).toHaveBeenCalledWith('r2'),
-    );
-  });
 });
 
 describe('CAPTURE_SCREENSHOT choreography', () => {

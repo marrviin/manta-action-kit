@@ -13,21 +13,6 @@ export type HeaderMap = Record<string, string>;
 export type CallSource = 'fetch' | 'xhr' | 'eventsource';
 
 /**
- * laya 判定的一个调用与录制链路的相关性。停止录制后自动分析（lib/ai/relevance-run.ts），
- * 结果直接落在 ApiCall 上；旧记录无此字段视为未分析。
- */
-export interface CallRelevance {
-  /** 相关 / 疑似无关 / 不确定（模型置信度不足）。deps 锚点调用恒为 relevant。 */
-  verdict: 'relevant' | 'irrelevant' | 'uncertain';
-  /** 模型 answer_confidence (0..1)；deps 锚点强制 relevant 时为 1。 */
-  confidence: number;
-  /** role choice 的结果（如 "telemetry"），给出"为什么无关"的可读理由。 */
-  role?: string;
-  /** epoch ms，本轮分析时间。 */
-  analyzedAt: number;
-}
-
-/**
  * One captured API call — request input + response output + timing.
  * This is the payload emitted by the injected hook and stored in IndexedDB.
  */
@@ -63,8 +48,6 @@ export interface ApiCall {
   errored: boolean;
   /** Error message when errored. */
   errorText?: string;
-  /** laya 自动相关性分析结果；无此字段 = 未分析。 */
-  relevance?: CallRelevance;
   /**
    * 触发本调用的用户交互（停止录制时由 attachPrecedingInteractions 回填，取调用开始前
    * 5s 窗口内最近的一次，每次交互最多标记 5 个调用）；无此字段 = 调用前没有可感知的用户交互。仅是意图提示，
@@ -123,19 +106,6 @@ export type CapturedCall = Omit<ApiCall, 'id' | 'recordingId' | 'seq'>;
 export type DependencyLocation = 'url' | 'query' | 'body' | 'header';
 
 /**
- * laya 对一条推断依赖边真实性的判定。只有 origin === 'inferred' 的边会被打标
- * （confirmed/manual 边是 ground truth，模型无权推翻）；无此字段 = 未分析。
- */
-export interface DepCheck {
-  /** likely=真实数据依赖 / unlikely=疑似巧合（时间戳、nonce 等撞车值） / uncertain。 */
-  verdict: 'likely' | 'unlikely' | 'uncertain';
-  /** 模型 answer_confidence (0..1)。 */
-  confidence: number;
-  /** epoch ms，本轮分析时间。 */
-  analyzedAt: number;
-}
-
-/**
  * One field-level data dependency between two calls in a recording's flow:
  * the value produced at `fromSeq` (JSON path `fromPath` in its response) reappears
  * as an input at `toSeq` (in `toLocation`, at `toPath`). Captured so an agent can
@@ -174,23 +144,20 @@ export interface FieldDependency {
    * user may confirm/remove); 'confirmed' = user-approved; 'manual' = user-added.
    */
   origin: 'inferred' | 'confirmed' | 'manual';
-  /** laya 真实性判定（lib/ai/dep-confidence.ts）；仅 inferred 边会有。 */
-  depCheck?: DepCheck;
 }
 
 /** The primitive JSON kinds a SchemaNode can describe (arrays/objects nest). */
 export type SchemaKind = 'string' | 'number' | 'boolean' | 'null' | 'array' | 'object';
 
 /**
- * laya 对一个请求字段的动态性判定：同一路径的值在回放（新会话、明天）时是否会变。
- * `source: 'stats'` 是多观测的确定性事实（同一 endpoint 多次调用值全不同/全相同），
- * `'model'` 是单观测时 laya 的语义判断——下游采信 stats 优先于 model。
+ * 对一个请求字段的动态性判定：同一路径的值在回放（新会话、明天）时是否会变。
+ * 判定是纯统计的（同一 endpoint 多次调用值全不同/全相同）；单观测叶子不打标。
  */
 export interface FieldDynamism {
   /** varies=每次运行会变（该参数化） / stable=可写死 / uncertain。 */
   verdict: 'varies' | 'stable' | 'uncertain';
-  /** 'stats' = 确定性统计判定（模型未参与）；'model' = laya 判定。 */
-  source: 'stats' | 'model';
+  /** 判定来源，恒为 'stats'（确定性统计判定）。 */
+  source: 'stats';
   /** 置信度 (0..1)。 */
   confidence: number;
   /** epoch ms，本轮分析时间。 */
@@ -223,7 +190,7 @@ export interface SchemaNode {
    */
   example?: string;
   /**
-   * laya 的字段动态性判定（lib/ai/field-dynamism.ts），只挂请求侧叶子；无此字段 = 未分析。
+   * 请求字段的动态性判定（lib/ai/field-dynamism.ts），只挂请求侧叶子；无此字段 = 证据不足未判定。
    */
   dynamism?: FieldDynamism;
 }
@@ -263,7 +230,7 @@ export interface EndpointSummary {
    */
   inputsFrom?: EndpointInput[];
   /**
-   * laya 对各 query 参数的动态性判定（key = 参数名），见 FieldDynamism。无此字段 = 未分析。
+   * 各 query 参数的动态性判定（key = 参数名），见 FieldDynamism。无此字段 = 证据不足未判定。
    */
   queryDynamism?: Record<string, FieldDynamism>;
 }
@@ -291,8 +258,6 @@ export interface EndpointInput {
    * override on the matching request header.
    */
   fromCookie?: string;
-  /** laya 真实性判定（透传自源依赖边，仅 inferred 边会有）。 */
-  depCheck?: DepCheck;
 }
 
 /** A saved recording's metadata (list view). Calls live in a separate store. */
@@ -314,10 +279,10 @@ export interface Recording {
    */
   deps?: FieldDependency[];
   /**
-   * laya 的请求字段动态性判定（lib/ai/field-dynamism.ts），按 endpoint key → 叶子
+   * 请求字段动态性判定（lib/ai/field-dynamism.ts），按 endpoint key → 叶子
    * 路径（"body.<json path>" / "query.<key>"）两级索引。EndpointSummary/schema 是
    * 读取时从 calls 现算的，所以判定结果存这里（不落 per-call），读取时经
-   * attachDynamism 挂回。叶子无标记 = 未分析（stats 判定不了的且模型没跑/失败）。
+   * attachDynamism 挂回。叶子无标记 = 证据不足（单观测）未判定。
    */
   fieldDynamism?: Record<string, Record<string, FieldDynamism>>;
   /**
@@ -330,22 +295,10 @@ export interface Recording {
   description?: string;
   /** epoch ms when `description` was last written by an agent (for staleness hints). */
   descriptionUpdatedAt?: number;
-  /** epoch ms when the laya relevance analysis last ran (absent = never analyzed). */
-  relevanceAnalyzedAt?: number;
-  /**
-   * Lifecycle of the laya relevance analysis, so the detail view can show a
-   * live status (incl. on reopen — persisted, not just broadcast). Absent =
-   * never ran. `relevanceStatusAt` is the epoch ms of the last transition; a
-   * stale `analyzing` (SW died mid-run) is detected by its age. `skipped` =
-   * the run completed with stats-only marks because the model was still
-   * downloading; the auto-rerun (LAYA_MODEL_READY) flips it to `done`.
-   */
-  relevanceStatus?: 'analyzing' | 'done' | 'failed' | 'skipped';
-  relevanceStatusAt?: number;
   /**
    * 录制期间采集到的用户交互时间线（click/submit/change 描述符，时间升序，上限 300 条
-   * 超出丢最旧）。Phase 1 仅落库 + UI 展示 + MCP 透出；Phase 2 将作为 laya 相关性
-   * 判定的用户意图信号。Optional：此功能之前保存的录制没有该字段。
+   * 超出丢最旧）。仅落库 + UI 展示 + MCP 透出，作为调用链路的用户意图信号。
+   * Optional：此功能之前保存的录制没有该字段。
    */
   interactions?: CapturedInteraction[];
 }

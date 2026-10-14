@@ -139,7 +139,6 @@ function toRecordingSummary(r: Recording): RecordingSummary {
     callCount: r.callCount,
     description: r.description,
     descriptionUpdatedAt: r.descriptionUpdatedAt,
-    relevanceStatus: r.relevanceStatus,
     interactionCount: r.interactions?.length ?? 0,
   };
 }
@@ -426,9 +425,6 @@ export async function handleRpc<M extends RpcMethod>(
             method: c.method,
             url: c.url,
             status: c.status,
-            // laya relevance mark, when the recording has been analyzed:
-            // 'irrelevant' calls are background noise the agent can skip.
-            ...(c.relevance ? { relevance: c.relevance } : {}),
             // The user interaction that likely triggered this step (nearest
             // within ~2s before it started) — readable intent for the agent.
             ...(c.precedingInteraction

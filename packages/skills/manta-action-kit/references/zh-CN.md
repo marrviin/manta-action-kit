@@ -66,10 +66,7 @@ MANTA_TOKEN=<MCP 配置 env 里的 token> node <skill 目录>/scripts/check-env.
 
 ## 数据里的标记（marks）
 
-- `relevance.verdict === 'irrelevant'`：背景噪声（埋点/轮询/预检），蒸馏时跳过
 - `precedingInteraction`：该调用由用户点击/输入直接触发，是强意图信号
-- `depCheck.verdict === 'unlikely'`：推断的依赖边是巧合撞值（时间戳/nonce），
-  不要基于它做参数化
 - `dynamism: 'varies'`：回放时该字段值会变，必须做成参数；时间戳/一次性 id
   用内置助手 `{{nowMs}}` / `{{nowSec}}` / `{{uuid}}`，不要硬编码
 - `fromPath: "cookie:<NAME>"`（fromSeq 为 -1）／`inputsFrom.fromCookie`：该请求

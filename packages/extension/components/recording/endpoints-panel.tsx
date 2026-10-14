@@ -129,12 +129,10 @@ function EndpointBody({ ep }: { ep: EndpointSummary }) {
           <div className="flex flex-col gap-1">
             {ep.inputsFrom.map((inp, i) => {
               const to = inp.toPath ? `${inp.toLocation}.${inp.toPath}` : inp.toLocation;
-              const unlikely = inp.depCheck?.verdict === 'unlikely';
               return (
                 <Text
                   key={`${to}-${i}`}
-                  type={unlikely ? 'secondary' : undefined}
-                  className={cn('font-mono text-[12px]! leading-5', unlikely && 'opacity-60')}
+                  className="font-mono text-[12px]! leading-5"
                 >
                   {inp.fromCookie
                     ? t('endpoints.inputFromCookie', { to, from: inp.fromCookie })
@@ -143,7 +141,6 @@ function EndpointBody({ ep }: { ep: EndpointSummary }) {
                         from: inp.fromEndpointKey ?? '',
                         fromPath: inp.fromPath || '(body)',
                       })}
-                  {unlikely ? ` · ${t('endpoints.inputUnlikely')}` : ''}
                 </Text>
               );
             })}
