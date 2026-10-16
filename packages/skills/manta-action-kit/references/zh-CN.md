@@ -15,14 +15,31 @@ Chrome 扩展 + 本地 MCP 服务（`@manta-action-kit/mcp`）：在浏览器里
    安装扩展（Node ≥ 18 为 MCP 服务端要求）。
 2. 扩展工具栏图标 → 打开侧栏 → **Action 标签页 → Copy install prompt**（内含
    个人 `MANTA_TOKEN` 和端口）。
-3. 在所用客户端里注册 MCP 服务——直接粘贴安装提示词按引导走；Claude Code 手动等价：
-   `claude mcp add manta-action-kit --env MANTA_TOKEN=<token> -- npx -y @manta-action-kit/mcp`。
-   WorkBuddy（`~/.workbuddy/mcp.json`，注册后还需在连接器 UI 里**信任**）、
-   JoyCode（`~/.joycode/joycode-mcp.json`）、Codex（`~/.codex/config.toml`）、
-   Cursor（`~/.cursor/mcp.json`）按各自配置文件合并。详见 SKILL.md 第 1 节。
+3. 在所用客户端里注册 MCP 服务，两种方式：
+   - **CLI（推荐）**：终端里跑 `npx -y @manta-action-kit/mcp init`——自动检测本机已装的
+     agent 宿主（Claude Code / Claude Desktop / Codex / Cursor 等），交互式写入各自的
+     server 配置；问到 token/端口时粘贴上一步的安装提示词即可，装完重启客户端会话。
+     WorkBuddy 仍需在其连接器 UI 里**信任**一次。
+   - **手动**：直接粘贴安装提示词按引导走；Claude Code 手动等价：
+     `claude mcp add manta-action-kit --env MANTA_TOKEN=<token> -- npx -y @manta-action-kit/mcp`。
+     WorkBuddy（`~/.workbuddy/mcp.json`，注册后还需在连接器 UI 里**信任**）、
+     JoyCode（`~/.joycode/joycode-mcp.json`）、Codex（`~/.codex/config.toml`）、
+     Cursor（`~/.cursor/mcp.json`）按各自配置文件合并。详见 SKILL.md 第 1 节。
 4. 跑一次环境检查确认链路通。
 
 ## 环境检查 / 连不上时
+
+**首选内置 CLI doctor（一条命令查全部）：**
+
+```bash
+npx -y @manta-action-kit/mcp doctor
+```
+
+逐项输出 OK / WARNING / FIXABLE / FAIL：WARNING 是「降级但能用」（含版本不一致），不算失败；
+FIXABLE 项（缺配置、token 过期）CLI 会**先征求用户确认再自动修**——要在用户可见的终端里跑，
+别在无人值守的非交互 shell 里盲跑；FAIL 给出具体解法，退出码 0 = 无 FAIL。
+
+**非交互替代**——skill 自带脚本，只读检查、无任何提示（agent 无人值守时安全）：
 
 ```bash
 MANTA_TOKEN=<MCP 配置 env 里的 token> node <skill 目录>/scripts/check-env.mjs
@@ -52,36 +69,36 @@ MANTA_TOKEN=<MCP 配置 env 里的 token> node <skill 目录>/scripts/check-env.
 
 ## 常用说法 → 工具
 
-| 你说                                          | 工具                                                        |
-| --------------------------------------------- | ----------------------------------------------------------- |
-| 查录制 / 列出我录过什么                       | `list_recordings`                                           |
-| 看调用链路 / 字段从哪来                       | `get_flow` · `get_endpoints` · `get_recording`              |
-| 看单个调用                                    | `get_call`                                                  |
-| 描述这段录制是干什么的                        | `set_recording_description`                                 |
+| 你说                                          | 工具                                                           |
+| --------------------------------------------- | -------------------------------------------------------------- |
+| 查录制 / 列出我录过什么                       | `list_recordings`                                              |
+| 看调用链路 / 字段从哪来                       | `get_flow` · `get_endpoints` · `get_recording`                 |
+| 看单个调用                                    | `get_call`                                                     |
+| 描述这段录制是干什么的                        | `set_recording_description`                                    |
 | 分析时发现埋点/监控等无效接口                 | `add_recording_filter_rules`（加入过滤规则，后续录制自动跳过） |
-| 这个接口为什么没被录制                        | `list_recording_filter_rules`（查该 URL 是否命中过滤规则）    |
-| 查 action 列表                                | `list_actions`                                              |
-| 找一个能做 X 的 action                        | `search_actions`                                            |
-| 看 action 定义 / 参数                         | `get_action`                                                |
-| 把这段录制变成 action / 可复用                | `create_action`                                             |
-| 改 action 的参数 / 步骤 / 描述                | `update_action`                                             |
-| 删掉这个 action                               | `delete_action`                                             |
-| 执行那个 action / 回放流程 / 自动操作这个流程 | `execute_action`                                            |
-| 用我的登录态调这个接口                        | `proxy_fetch`（单次临时调用）                               |
-| 拉流式 SSE                                    | `proxy_sse`                                                 |
-| 给脚本开代理规则 / 看代理规则                 | `add_proxy_rule` · `list_proxy_rules` · `update_proxy_rule` |
-| 看元素捕获历史                                | `list_element_captures`                                     |
-| 看某个捕获的完整结构                          | `get_element_capture`                                       |
-| 对比两次捕获哪里不一样                        | `diff_element_captures`                                     |
-| 截个图 / 整页截图                             | `capture_screenshot`                                        |
-| 把这个元素序列化出来                          | `capture_element`                                           |
-| 录个 GIF / 录屏                               | `start_gif_recording`                                       |
-| 暂停 / 恢复录制                               | `pause_gif_recording` · `resume_gif_recording`              |
-| 停止录制                                      | `stop_gif_recording`                                        |
-| 在录吗 / 录到哪了                             | `get_gif_recording_status`                                  |
-| 看录制草稿历史                                | `list_gif_history`                                          |
-| 链路体检（版本是否一致等）                    | `health`                                                    |
-| 代理端口被占，换个端口                        | `rebind_proxy`                                              |
+| 这个接口为什么没被录制                        | `list_recording_filter_rules`（查该 URL 是否命中过滤规则）     |
+| 查 action 列表                                | `list_actions`                                                 |
+| 找一个能做 X 的 action                        | `search_actions`                                               |
+| 看 action 定义 / 参数                         | `get_action`                                                   |
+| 把这段录制变成 action / 可复用                | `create_action`                                                |
+| 改 action 的参数 / 步骤 / 描述                | `update_action`                                                |
+| 删掉这个 action                               | `delete_action`                                                |
+| 执行那个 action / 回放流程 / 自动操作这个流程 | `execute_action`                                               |
+| 用我的登录态调这个接口                        | `proxy_fetch`（单次临时调用）                                  |
+| 拉流式 SSE                                    | `proxy_sse`                                                    |
+| 给脚本开代理规则 / 看代理规则                 | `add_proxy_rule` · `list_proxy_rules` · `update_proxy_rule`    |
+| 看元素捕获历史                                | `list_element_captures`                                        |
+| 看某个捕获的完整结构                          | `get_element_capture`                                          |
+| 对比两次捕获哪里不一样                        | `diff_element_captures`                                        |
+| 截个图 / 整页截图                             | `capture_screenshot`                                           |
+| 把这个元素序列化出来                          | `capture_element`                                              |
+| 录个 GIF / 录屏                               | `start_gif_recording`                                          |
+| 暂停 / 恢复录制                               | `pause_gif_recording` · `resume_gif_recording`                 |
+| 停止录制                                      | `stop_gif_recording`                                           |
+| 在录吗 / 录到哪了                             | `get_gif_recording_status`                                     |
+| 看录制草稿历史                                | `list_gif_history`                                             |
+| 链路体检（版本是否一致等）                    | `health`                                                       |
+| 代理端口被占，换个端口                        | `rebind_proxy`                                                 |
 
 ## 核心原则
 

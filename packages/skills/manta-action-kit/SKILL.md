@@ -48,20 +48,26 @@ Requirements: Chrome, and Node ≥ 18 on PATH (the server runs through `npx`).
    [references/dev-setup.md](references/dev-setup.md)).
 2. **Copy the install prompt**: extension toolbar icon → _Open side panel_ → **Action** tab →
    _Copy install prompt_. It embeds the personal bridge token (`MANTA_TOKEN`) and current ports.
-3. **Register the MCP server** in the user's client. The pasted install prompt already contains a
-   working registration (JSON block / command) — follow it. Manual equivalents:
-   - **Claude Code**:
-     `claude mcp add manta-action-kit --env MANTA_TOKEN=<token> -- npx -y @manta-action-kit/mcp`
-     then `/mcp` reconnect or restart the session.
-   - **Codex**: add to `~/.codex/config.toml`:
-     `[mcp_servers.manta-action-kit]` with `command = "npx"`, `args = ["-y", "@manta-action-kit/mcp"]`,
-     `env = { MANTA_TOKEN = "<token>" }`; restart the session.
-   - **Cursor**: merge the install prompt's JSON block into `~/.cursor/mcp.json` (or the project's
-     `.cursor/mcp.json`); restart the session.
-   - **WorkBuddy**: merge into `~/.workbuddy/mcp.json` (no leading dot in the filename — a dotted
-     path is silently ignored), then **trust** the server in WorkBuddy's connector UI (registration
-     alone stays inert until trusted).
-   - **JoyCode**: merge into `~/.joycode/joycode-mcp.json` (no leading dot), then restart JoyCode.
+3. **Register the MCP server** in the user's client. Two ways:
+   - **CLI (recommended)**: run `npx -y @manta-action-kit/mcp init` in a terminal — it detects
+     locally installed agent hosts (Claude Code, Claude Desktop, Codex, Cursor, …) and writes the
+     server entry into their configs interactively; paste the install prompt (step 2) when it asks
+     for the token/ports. Restart the client session afterwards. Still needs the per-client
+     **trust** step for WorkBuddy (see the manual path).
+   - **Manual**: the pasted install prompt already contains a working registration (JSON block /
+     command) — follow it. Per-client equivalents:
+     - **Claude Code**:
+       `claude mcp add manta-action-kit --env MANTA_TOKEN=<token> -- npx -y @manta-action-kit/mcp`
+       then `/mcp` reconnect or restart the session.
+     - **Codex**: add to `~/.codex/config.toml`:
+       `[mcp_servers.manta-action-kit]` with `command = "npx"`, `args = ["-y", "@manta-action-kit/mcp"]`,
+       `env = { MANTA_TOKEN = "<token>" }`; restart the session.
+     - **Cursor**: merge the install prompt's JSON block into `~/.cursor/mcp.json` (or the project's
+       `.cursor/mcp.json`); restart the session.
+     - **WorkBuddy**: merge into `~/.workbuddy/mcp.json` (no leading dot in the filename — a dotted
+       path is silently ignored), then **trust** the server in WorkBuddy's connector UI (registration
+       alone stays inert until trusted).
+     - **JoyCode**: merge into `~/.joycode/joycode-mcp.json` (no leading dot), then restart JoyCode.
 4. **Verify** with the environment check below (or just call `list_recordings`).
 5. **First run**: have the user record a flow in the popup (Start → use the site → Stop), then ask
    the agent to distill and replay it, e.g. _"I just recorded the order-tracking flow. Turn it into
@@ -75,8 +81,28 @@ the dev setup in [references/dev-setup.md](references/dev-setup.md) (build + reg
 
 ## 2. Environment Check (run in order when the user says "check environment / can't connect / troubleshoot")
 
-**Run the bundled script first (one command covers all checks, printing ✅/❌ per item with fix
-suggestions):**
+**Run the built-in CLI doctor first (one command covers all checks):**
+
+```bash
+npx -y @manta-action-kit/mcp doctor
+```
+
+`doctor` probes Node version, agent MCP config coverage, the WS bridge (with a full token
+handshake — far more specific than a bare TCP ping), extension connection + version skew, and the
+HTTP proxy. Each check is classified:
+
+- `OK` — healthy.
+- `WARNING` — degraded but still working (server not started yet, version skew); printed with a
+  solution, does NOT fail the exit code.
+- `FIXABLE` — the CLI can repair it (missing config entries, stale token); it asks the user for
+  confirmation first, so run it in a terminal the user can see and let them answer the prompts —
+  don't run it blind in a non-interactive shell.
+- `FAIL` — needs human action (port squatted, extension offline); printed with concrete
+  solutions. Exit code 0 = no FAILs remain (after optional fixes).
+
+**Non-interactive alternative** — the bundled skill script performs the same read-only checks
+without any prompts (safe when no user is at the terminal; prints ✅/❌ per item with fix
+suggestions):
 
 ```bash
 MANTA_TOKEN=<from the MCP config env> node <skill-dir>/scripts/check-env.mjs
@@ -109,10 +135,12 @@ Report results per item rather than only the final conclusion. Healthy output lo
 installed skill copies show an `⚠️ Installed skill copy … build check n/a` skip line instead — a
 skip is informational, not a failure.)
 
-**Fix it yourself first.** Everything reachable from the terminal (re-running the script,
-re-registering the server, updating the MCP config env, `rebind_proxy`) is yours to do without
-asking — attempt it, then re-run the script to confirm. Only bundle the truly user-side actions
-(something in Chrome's UI) into one explicit list for the user, and stop retrying while waiting.
+**Fix it yourself first.** Everything reachable from the terminal (re-running `doctor`, updating
+the MCP config env, `rebind_proxy`) is yours to do without asking — attempt it, then re-run to
+confirm. (Exception: `doctor`'s FIXABLE repairs ask for the user's confirmation at its own
+prompts — surface those, don't work around them by hand-editing configs silently.) Only bundle
+the truly user-side actions (something in Chrome's UI) into one explicit list for the user, and
+stop retrying while waiting.
 
 ### Check 1. MCP server is registered and can start
 
@@ -238,15 +266,15 @@ passing, live cookies) resolves at replay time:
 
 ### Recordings (raw material, for analysis / action creation)
 
-| User says                                                      | Tool                        | Notes                                                                                                     |
-| -------------------------------------------------------------- | --------------------------- | --------------------------------------------------------------------------------------------------------- |
-| "check recordings / list recordings / what APIs I've recorded" | `list_recordings`           | All recording metadata (index of action material)                                                         |
-| "show this recording's call chain / full req-res"              | `get_recording`             | Single recording + full chain (for analysis)                                                              |
-| "analyze step dependencies / where fields come from"           | `get_flow`                  | Ordered steps + inferred field dependencies (must read before create_action)                              |
-| "show API contracts / deduplicated endpoints"                  | `get_endpoints`             | Deduplicated endpoints + sanitized schemas (must read before create_action)                               |
-| "show a single call"                                           | `get_call`                  | Fetch a single API call by id                                                                             |
-| "describe this recording / what does this flow do"             | `set_recording_description` | Agent-authored business-level summary of the whole flow (shown in `list_recordings` to help future reuse) |
-| (during analysis) "these are tracking/telemetry calls"         | `add_recording_filter_rules` | Blacklist noise URL patterns so FUTURE recordings skip them; the user is notified and can delete rules  |
+| User says                                                      | Tool                          | Notes                                                                                                       |
+| -------------------------------------------------------------- | ----------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| "check recordings / list recordings / what APIs I've recorded" | `list_recordings`             | All recording metadata (index of action material)                                                           |
+| "show this recording's call chain / full req-res"              | `get_recording`               | Single recording + full chain (for analysis)                                                                |
+| "analyze step dependencies / where fields come from"           | `get_flow`                    | Ordered steps + inferred field dependencies (must read before create_action)                                |
+| "show API contracts / deduplicated endpoints"                  | `get_endpoints`               | Deduplicated endpoints + sanitized schemas (must read before create_action)                                 |
+| "show a single call"                                           | `get_call`                    | Fetch a single API call by id                                                                               |
+| "describe this recording / what does this flow do"             | `set_recording_description`   | Agent-authored business-level summary of the whole flow (shown in `list_recordings` to help future reuse)   |
+| (during analysis) "these are tracking/telemetry calls"         | `add_recording_filter_rules`  | Blacklist noise URL patterns so FUTURE recordings skip them; the user is notified and can delete rules      |
 | "why is endpoint X missing from a recording"                   | `list_recording_filter_rules` | Check whether an enabled rule's pattern matches X — a match means it was filtered at capture time by design |
 
 #### Reading the marks (what `get_flow` / `get_endpoints` output actually looks like)

@@ -47,7 +47,11 @@ token（`MANTA_TOKEN`）。工具栏看不到图标？Chrome 会把新装的扩�
 ——不用弄懂原理，照着做即可。需要 [Node.js](https://nodejs.org)（≥ 18，
 用 `node -v` 自查；没装就去 nodejs.org 下 LTS 安装包）。安装提示词是
 客户端无关的——直接粘给 Claude Code、Codex 或任意 MCP 客户端，agent 会把
-服务注册进自己的配置；也可以手动加进 MCP 配置：
+服务注册进自己的配置；也可以手动加进 MCP 配置。想省事可以跑
+`npx -y @manta-action-kit/mcp init`：自动检测本机已装的 agent 宿主
+（Claude Code / Claude Desktop / Cursor / Windsurf / VS Code / Codex CLI），
+勾选后自动写入各自的 MCP 配置，问到 token 时粘贴安装提示词即可，装完重启
+对应 agent：
 
 ```json
 {
