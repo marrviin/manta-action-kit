@@ -70,6 +70,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+#### Python MCP server dropped (`packages/mcp-py`)
+
+- The Python port (`manta-action-kit-mcp` on PyPI) and its contract-test suite are removed; Node
+  is the single shipped MCP runtime again. The tool-contract fixture now lives in
+  `packages/mcp/tests/fixtures/` (exported from the real Node tool registration), and
+  `pnpm sync:skill` guards the skill against tool-surface drift.
+
 #### Extension manifest slimmed down (laya leftovers removed)
 
 - Removed the `wasm-unsafe-eval` CSP allowance and the onnxruntime dev-server
@@ -79,6 +86,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Chrome's default `script-src 'self'`; the permissions list is unchanged.
 
 ### Added
+
+#### MCP CLI (`init` / `doctor`)
+
+- The `manta-action-kit-mcp` bin doubles as a CLI (no arguments still launches the stdio MCP
+  server): `init` (alias `i`) detects locally installed agent hosts (Claude Code, Claude Desktop,
+  Cursor, Windsurf, VS Code, Codex CLI), shows a multi-select pre-checked with the detected ones,
+  and upserts the `manta-action-kit` server entry into each selected agent's MCP config —
+  creating files if missing, preserving every other entry, never truncating corrupted ones. It
+  extracts the token and ports from the extension's install prompt when asked.
+- `doctor` (alias `d`) runs a read-only environment check — Node version, agent config coverage,
+  a WS-bridge probe with the real token handshake (reusing the peer client), extension
+  connection + version skew, and the HTTP proxy port — and reports each check as OK / warning /
+  fixable / failure. Fixable problems (missing config entries, a stale `MANTA_TOKEN`) are
+  offered as an automatic fix after confirmation; warnings don't fail the exit code, unresolved
+  failures exit 1.
+- Skill docs (SKILL.md / zh-CN.md) route first-time setup through `init` and make `doctor` the
+  primary environment check; `scripts/check-env.mjs` remains the non-interactive fallback.
 
 #### Agent-managed recording filter rules (noise-API governance)
 

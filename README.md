@@ -56,7 +56,11 @@ You'll need [Node.js](https://nodejs.org) ≥ 18 (check with `node -v`; if it's
 missing, grab the LTS installer from nodejs.org). The prompt is
 client-agnostic — paste it into Claude Code, Codex, or any MCP client and the
 agent registers the server into its own config, or add this to your MCP
-config by hand:
+config by hand. Prefer hands-off? Run `npx -y @manta-action-kit/mcp init` —
+it detects locally installed agent hosts (Claude Code, Claude Desktop,
+Cursor, Windsurf, VS Code, Codex CLI) and writes the registration into each
+one you pick (paste the install prompt when it asks for the token), then
+restart the agent:
 
 ```json
 {

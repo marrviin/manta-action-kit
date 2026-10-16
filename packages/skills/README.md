@@ -6,9 +6,9 @@ debug the Manta Action Kit suite (Chrome extension + MCP server,
 
 ## Included skills
 
-| Directory          | Description                                                                                                                                                                                                                                                                                                                  |
-| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `manta-action-kit` | Setup & usage guide: first-time install and MCP registration for any client, environment check & connection troubleshooting (`scripts/check-env.mjs`), reading recordings, distilling and executing actions, proxy rules, page capture. Dev-only guidance (builds, wire-compat checklist) lives in `references/dev-setup.md` |
+| Directory          | Description                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `manta-action-kit` | Setup & usage guide: first-time install and MCP registration for any client (via the `mcp init` CLI or manual configs), environment check & connection troubleshooting (the `mcp doctor` CLI, or `scripts/check-env.mjs` non-interactively), reading recordings, distilling and executing actions, recording filter rules, proxy rules, page capture. Dev-only guidance (builds, wire-compat checklist) lives in `references/dev-setup.md` |
 
 ## How it takes effect in this repo
 
