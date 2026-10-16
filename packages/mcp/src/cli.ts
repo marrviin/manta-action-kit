@@ -168,12 +168,15 @@ export const AGENTS: AgentSpec[] = [
   {
     id: "windsurf",
     label: "Windsurf",
-    configPath: () => join(homedir(), ".codeium", "windsurf", "mcp_config.json"),
+    configPath: () =>
+      join(homedir(), ".codeium", "windsurf", "mcp_config.json"),
     rootKey: "mcpServers",
     detect: () =>
       onPath("windsurf") ||
       hasAppBundle("Windsurf.app") ||
-      configHasManta(join(homedir(), ".codeium", "windsurf", "mcp_config.json")),
+      configHasManta(
+        join(homedir(), ".codeium", "windsurf", "mcp_config.json"),
+      ),
   },
   {
     id: "vscode",
@@ -193,7 +196,8 @@ export const AGENTS: AgentSpec[] = [
     // ~/.codex can hold leftovers (auth, sessions, config.toml) from a removed
     // install — only the binary on PATH or a wired-in manta entry proves use.
     detect: () =>
-      onPath("codex") || configHasManta(join(homedir(), ".codex", "config.toml")),
+      onPath("codex") ||
+      configHasManta(join(homedir(), ".codex", "config.toml")),
   },
 ];
 
@@ -218,11 +222,16 @@ export async function upsertJsonServer(
     if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
       throw new Error(
         `${configPath} exists but is not valid JSON — fix or remove it first.`,
+        { cause: err },
       );
     }
   }
   const servers = (config[rootKey] ??= {});
-  if (typeof servers !== "object" || servers === null || Array.isArray(servers)) {
+  if (
+    typeof servers !== "object" ||
+    servers === null ||
+    Array.isArray(servers)
+  ) {
     throw new Error(
       `${configPath}: "${rootKey}" is not an object — fix it manually first.`,
     );
@@ -292,7 +301,11 @@ export async function upsertCodexServer(
 // --- Install-prompt parsing -------------------------------------------------
 
 /** Fields extractable from a pasted install prompt / env JSON line. */
-export type InstallFields = { token?: string; wsPort?: number; proxyPort?: number };
+export type InstallFields = {
+  token?: string;
+  wsPort?: number;
+  proxyPort?: number;
+};
 
 /**
  * Extract the token and ports from pasted text (the extension's install prompt,
@@ -312,7 +325,9 @@ export function extractInstallFields(text: string): InstallFields {
   // Bare token: a lone line that is just a UUID (v4-shaped, like the extension
   // generates) — only when the JSON extraction found nothing.
   if (!out.token) {
-    const bare = text.trim().match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+    const bare = text
+      .trim()
+      .match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
     if (bare) out.token = bare[0];
   }
   return out;
@@ -382,7 +397,9 @@ export async function runInit(): Promise<number> {
       label: spec.label,
       hint: detected ? "detected" : "not detected",
     })),
-    initialValues: items.filter(({ detected }) => detected).map(({ spec }) => spec.id),
+    initialValues: items
+      .filter(({ detected }) => detected)
+      .map(({ spec }) => spec.id),
     required: true,
   });
   if (clack.isCancel(selected)) {
@@ -402,7 +419,10 @@ export async function runInit(): Promise<number> {
         "Paste the install prompt from the Chrome extension " +
         "(side panel → Action tab → Copy install prompt), or just the MANTA_TOKEN value:",
       placeholder: "Install this MCP service… / 3f2504e0-4f89-…",
-      validate: (v) => (v && v.trim() ? undefined : "Paste the prompt or the token (Ctrl-C to cancel)"),
+      validate: (v) =>
+        v && v.trim()
+          ? undefined
+          : "Paste the prompt or the token (Ctrl-C to cancel)",
     });
     if (clack.isCancel(pasted)) {
       clack.cancel("Cancelled — nothing written.");
@@ -421,7 +441,9 @@ export async function runInit(): Promise<number> {
   const wsPort =
     Number(process.env.MANTA_WS_PORT) || fields.wsPort || DEFAULT_MCP_PORT;
   const proxyPort =
-    Number(process.env.MANTA_PROXY_PORT) || fields.proxyPort || DEFAULT_PROXY_PORT;
+    Number(process.env.MANTA_PROXY_PORT) ||
+    fields.proxyPort ||
+    DEFAULT_PROXY_PORT;
 
   const entry = buildServerEntry(wsPort, proxyPort, token);
   let written = 0;
