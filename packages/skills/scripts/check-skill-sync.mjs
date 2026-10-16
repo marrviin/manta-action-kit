@@ -3,7 +3,7 @@
  * Skill ↔ tool-contract sync check.
  *
  * The skill (packages/skills/manta-action-kit/SKILL.md) hand-maintains the tool
- * surface; the contract fixture (packages/mcp-py/tests/fixtures/tool-contract.json)
+ * surface; the contract fixture (packages/mcp/tests/fixtures/tool-contract.json)
  * is exported from the REAL Node registration. This script fails CI when they
  * drift:
  *
@@ -29,7 +29,7 @@ const SKILL_DIR = path.join(
 const SKILL_MD = path.join(SKILL_DIR, "SKILL.md");
 const CONTRACT = path.resolve(
   SKILL_DIR,
-  "../../mcp-py/tests/fixtures/tool-contract.json",
+  "../../mcp/tests/fixtures/tool-contract.json",
 );
 
 /** snake_case backtick tokens that are NOT tool names (escape hatch, keep small). */

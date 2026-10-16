@@ -29,8 +29,9 @@ import {
   addProxyRule,
   updateProxyRuleContent,
 } from "@/lib/gateway/manage-rules";
-import { settings } from "@/lib/storage";
-import type { ApiCall, Recording } from "@/lib/recording/types";
+import { settings, recordingFilterRules } from "@/lib/storage";
+import type { ApiCall, Recording, RecordingFilterRule } from "@/lib/recording/types";
+import { matchesPattern } from "@/lib/recording/filter";
 import { inferDependencies } from "@/lib/recording/infer-deps";
 import {
   aggregateEndpoints,
@@ -52,7 +53,7 @@ import {
 import { requestGifConfirmation } from "@/lib/gif-confirm";
 import { GifRecordingError } from "@/lib/gif-recording/types";
 import { gifLastResult, gifRecordingState } from "@/lib/storage";
-import { isCapturableUrl } from "@/lib/utils";
+import { isCapturableUrl, uuid } from "@/lib/utils";
 import {
   ACTION_MAX_STEPS,
   ACTION_MAX_WAIT_MS,
@@ -139,9 +140,33 @@ function toRecordingSummary(r: Recording): RecordingSummary {
     callCount: r.callCount,
     description: r.description,
     descriptionUpdatedAt: r.descriptionUpdatedAt,
-    relevanceStatus: r.relevanceStatus,
     interactionCount: r.interactions?.length ?? 0,
   };
+}
+
+/**
+ * Best-effort system notification when the agent adds recording filter rules.
+ * Capture behavior silently changes for every future recording on the affected
+ * site, so the user must be told (and can delete the rules from the side
+ * panel). No-op where chrome.notifications is absent (unit tests).
+ */
+function notifyFilterRulesAdded(patterns: string[]) {
+  if (typeof chrome === "undefined" || !chrome.notifications?.create) return;
+  chrome.notifications
+    .create({
+      type: "basic",
+      iconUrl: chrome.runtime.getURL("/icon/128.png"),
+      title:
+        browser.i18n.getMessage("notifyFilterRulesAddedTitle") ||
+        "Recording filter updated",
+      message:
+        browser.i18n.getMessage("notifyFilterRulesAddedMessage", [
+          String(patterns.length),
+          patterns.join(", "),
+        ]) ||
+        `${patterns.length} URL pattern(s) added by the AI assistant: ${patterns.join(", ")}`,
+    })
+    .catch((e) => console.error("[mcp] filter-rules notification failed", e));
 }
 
 /** Dispatch one RPC method to its result. Throws on unknown method / bad params. */
@@ -205,6 +230,74 @@ export async function handleRpc<M extends RpcMethod>(
       await updateRecordingDescription(id, description);
       const recording = (await getRecording(id)) ?? null;
       return { recording } as RpcMap[M]["result"];
+    }
+
+    case "list_recording_filter_rules": {
+      const { url } =
+        params as RpcMap["list_recording_filter_rules"]["params"];
+      const rules = await recordingFilterRules.getValue();
+      // Optional "why is this endpoint missing?" check: which ENABLED rules
+      // would have dropped this URL at capture time.
+      const urlMatches = url
+        ? rules
+            .filter((r) => r.enabled && matchesPattern(url, r.pattern))
+            .map((r) => r.id)
+        : undefined;
+      return { rules, urlMatches } as RpcMap[M]["result"];
+    }
+
+    case "add_recording_filter_rules": {
+      const { patterns } =
+        params as RpcMap["add_recording_filter_rules"]["params"];
+      if (!Array.isArray(patterns) || patterns.length === 0) {
+        throw new Error(
+          'add_recording_filter_rules: "patterns" must be a non-empty array of strings',
+        );
+      }
+      if (patterns.length > 50) {
+        throw new Error(
+          "add_recording_filter_rules: too many patterns (max 50 per call)",
+        );
+      }
+      const cleaned: string[] = [];
+      for (const p of patterns) {
+        if (typeof p !== "string" || !p.trim()) {
+          throw new Error(
+            'add_recording_filter_rules: every pattern must be a non-empty string',
+          );
+        }
+        if (p.length > 500) {
+          throw new Error(
+            "add_recording_filter_rules: pattern too long (max 500 chars)",
+          );
+        }
+        cleaned.push(p.trim());
+      }
+      const current = await recordingFilterRules.getValue();
+      const existing = new Set(current.map((r) => r.pattern));
+      const added: RecordingFilterRule[] = [];
+      const skipped: { pattern: string; reason: "duplicate" }[] = [];
+      for (const pattern of cleaned) {
+        // A duplicate may be a rule the user deliberately DISABLED — skipping
+        // (not re-enabling) keeps that decision intact.
+        if (existing.has(pattern)) {
+          skipped.push({ pattern, reason: "duplicate" });
+          continue;
+        }
+        existing.add(pattern);
+        added.push({
+          id: uuid(),
+          pattern,
+          enabled: true,
+          createdAt: Date.now(),
+          source: "agent",
+        });
+      }
+      if (added.length) {
+        await recordingFilterRules.setValue([...added, ...current]);
+        notifyFilterRulesAdded(added.map((r) => r.pattern));
+      }
+      return { added, skipped } as RpcMap[M]["result"];
     }
 
     case "list_element_captures": {
@@ -426,9 +519,6 @@ export async function handleRpc<M extends RpcMethod>(
             method: c.method,
             url: c.url,
             status: c.status,
-            // laya relevance mark, when the recording has been analyzed:
-            // 'irrelevant' calls are background noise the agent can skip.
-            ...(c.relevance ? { relevance: c.relevance } : {}),
             // The user interaction that likely triggered this step (nearest
             // within ~2s before it started) — readable intent for the agent.
             ...(c.precedingInteraction

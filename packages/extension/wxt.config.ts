@@ -9,11 +9,6 @@ export default defineConfig({
   // Source code lives at the project root (entrypoints/, components/, etc.).
   srcDir: ".",
 
-  // The laya model weights (public/models/, ~870 MB, gitignored) are NOT part
-  // of the distribution: they are downloaded from the artifacts repo at
-  // runtime (see lib/ai/runtime.ts). The zip exclude is a safety net for
-  // machines that still have a local export sitting in public/models.
-  zip: { exclude: ["**/models/**"] },
 
   manifest: {
     // Localized via _locales/{en,zh_CN}/messages.json. `default_locale` makes
@@ -56,14 +51,6 @@ export default defineConfig({
     // chrome.tabCapture.getMediaStreamId — both Chrome 116+. Without this the
     // Store won't filter older browsers and those calls fail at runtime.
     minimum_chrome_version: "116",
-    // onnxruntime-web compiles its .wasm with WebAssembly.instantiate, which
-    // MV3's default `script-src 'self'` forbids ("no available backend found",
-    // both the WebGPU and wasm sessions fail). 'wasm-unsafe-eval' is Chrome's
-    // scoped allowance for wasm compilation — it still forbids JS eval, and is
-    // the standard, store-accepted way to ship ONNX Runtime in an extension.
-    content_security_policy: {
-      extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'",
-    },
     // MAIN-world scripts injected via injectScript() must be web accessible.
     web_accessible_resources: [
       {
@@ -87,13 +74,5 @@ export default defineConfig({
   // Tailwind CSS v4 via its first-party Vite plugin.
   vite: () => ({
     plugins: [tailwindcss()],
-    // onnxruntime-web must not be pre-bundled in dev: its internal dynamic
-    // import of `ort-wasm-simd-threaded.*.mjs` resolves against the pre-bundle
-    // dir, where that sibling asset doesn't exist → "no available backend
-    // found". Excluded, the relative import hits the real files in
-    // node_modules/onnxruntime-web/dist/. (Rollup handles this itself at
-    // build time — the build emits the .wasm as a hashed asset — so this is
-    // dev-server-only.)
-    optimizeDeps: { exclude: ["onnxruntime-web"] },
   }),
 });

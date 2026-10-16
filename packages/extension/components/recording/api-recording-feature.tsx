@@ -5,6 +5,7 @@ import {
   Empty,
   Input,
   Spin,
+  Tag,
   Typography,
 } from "antd";
 import {
@@ -225,6 +226,13 @@ function FilterRuleRow({
         <Text ellipsis className="text-sm block" title={rule.pattern}>
           {rule.pattern}
         </Text>
+      }
+      /* Origin tag: 'agent' rules were added by an AI assistant over MCP —
+         surface that so the user knows why the rule exists. */
+      status={
+        rule.source === "agent" ? (
+          <Tag className="mr-0!">{t("recording.ruleSourceAgent")}</Tag>
+        ) : undefined
       }
     />
   );

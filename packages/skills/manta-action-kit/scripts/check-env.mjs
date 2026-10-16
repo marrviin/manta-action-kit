@@ -49,7 +49,8 @@ const MANTA_TOKEN = process.env.MANTA_TOKEN;
 const results = [];
 const report = (ok, label, detail = "") => {
   const mark = ok === "skip" ? "⚠️" : ok ? "✅" : "❌";
-  results.push(ok === true);
+  // Skips are neither pass nor fail — they must not count toward the exit code.
+  if (ok !== "skip") results.push(ok === true);
   console.log(`${mark} ${label}${detail ? ` — ${detail}` : ""}`);
 };
 

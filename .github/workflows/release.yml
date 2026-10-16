@@ -72,58 +72,10 @@ jobs:
             npm publish manta-action-kit-mcp-*.tgz --provenance --access public
           fi
 
-  publish-mcp-py:
-    needs: publish-mcp
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 11
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: pnpm
-      - uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
-      - name: Verify tag matches package version
-        run: |
-          TAG="${GITHUB_REF_NAME#v}"
-          PKG=$(sed -n 's/^version = "\(.*\)"$/\1/p' packages/mcp-py/pyproject.toml | head -1)
-          if [ "$TAG" != "$PKG" ]; then
-            echo "Tag v$TAG does not match packages/mcp-py version $PKG"
-            exit 1
-          fi
-      - name: Run the Python test suite
-        working-directory: packages/mcp-py
-        run: |
-          pnpm install --frozen-lockfile --ignore-scripts || true # 对拍测试需要 node_modules 里的 ws
-          pnpm --filter @manta-action-kit/protocol build # mcp 的 src/protocol.ts re-export 之，冷 checkout 无 dist 会 TS2307
-          pnpm --filter @manta-action-kit/mcp build
-          uv sync
-          uv run pytest -q
-      # PyPI Trusted Publishing（OIDC）：无需 token。注意与 npm 同样的限制 —
-      # 全新项目首版无法由 OIDC 创建，需先在 pypi.org 上把 pending publisher
-      # 配置好（Account settings → Publishing：
-      #   project: manta-action-kit-mcp, owner: marrviin, repo: manta-action-kit,
-      #   workflow: release.yml, environment: 留空）
-      # 之后首版即可由本 job 直接发布并自动绑定 trusted publisher。
-      - name: Build and publish to PyPI (skip if version already there)
-        working-directory: packages/mcp-py
-        run: |
-          PKG=$(sed -n 's/^version = "\(.*\)"$/\1/p' pyproject.toml | head -1)
-          if curl -fsSL "https://pypi.org/pypi/manta-action-kit-mcp/$PKG/json" >/dev/null 2>&1; then
-            echo "manta-action-kit-mcp@$PKG already on PyPI — skipping"
-          else
-            uv build
-            uv publish
-          fi
-
   # 扩展 zip 挂到 GitHub Release（不上架 Web Store，仅作为产物分发）。
-  # 注意：extension 与 mcp/mcp-py 版本号不强制同步，故不做 tag 一致性校验。
+  # 注意：extension 与 mcp 版本号不强制同步，故不做 tag 一致性校验。
   publish-extension:
-    needs: publish-mcp-py
+    needs: publish-mcp
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -157,7 +109,7 @@ jobs:
           if-no-files-found: error
 
   github-release:
-    needs: [publish-protocol, publish-mcp, publish-mcp-py, publish-extension]
+    needs: [publish-protocol, publish-mcp, publish-extension]
     runs-on: ubuntu-latest
     permissions:
       contents: write # 创建 Release 需要

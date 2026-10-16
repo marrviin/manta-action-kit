@@ -14,7 +14,6 @@ import {
   renameRecording,
   updateRecordingDescription,
   deleteRecording,
-  setRecordingRelevanceStatus,
   addGatewayLog,
   listGatewayLogs,
   clearGatewayLogs,
@@ -38,8 +37,6 @@ import {
   getScreenshotHistory,
   deleteScreenshotHistory,
   deleteInspectorCapture,
-  updateCallRelevances,
-  updateDepChecks,
   updateFieldDynamism,
   deleteCall,
   putRecordings,
@@ -118,13 +115,6 @@ describe('recordings', () => {
     await updateRecordingDescription('missing', 'x'); // no-op, no throw
   });
 
-  it('stamps the relevance lifecycle status', async () => {
-    await saveRecording(rec(), []);
-    await setRecordingRelevanceStatus('r1', 'analyzing');
-    expect((await getRecording('r1'))!.relevanceStatus).toBe('analyzing');
-    await setRecordingRelevanceStatus('r1', 'done');
-    expect((await getRecording('r1'))!.relevanceStatus).toBe('done');
-  });
 
   it('deleting a recording cascades to its calls and distilled actions', async () => {
     await saveRecording(rec(), [call({ id: 'c1' }), call({ id: 'c2', seq: 2 })]);
@@ -259,75 +249,16 @@ describe('bulk import paths (put*)', () => {
   });
 });
 
-describe('model marks on calls and deps', () => {
-  it('updateCallRelevances stamps only listed calls of the recording and marks it analyzed', async () => {
-    await saveRecording(rec(), [call({ id: 'c1' }), call({ id: 'c2', seq: 2 })]);
-    await updateCallRelevances('r1', [
-      { callId: 'c1', relevance: { verdict: 'irrelevant', confidence: 0.9, analyzedAt: 7 } },
-      { callId: 'ghost', relevance: { verdict: 'relevant', confidence: 1, analyzedAt: 7 } }, // unknown id — ignored
-    ]);
-
-    const calls = await getCalls('r1');
-    expect(calls.find((c) => c.id === 'c1')!.relevance!.verdict).toBe('irrelevant');
-    expect(calls.find((c) => c.id === 'c2')!.relevance).toBeUndefined(); // untouched
-
-    const r = (await getRecording('r1'))!;
-    expect(r.relevanceStatus).toBe('done');
-    expect(r.relevanceAnalyzedAt).toBeGreaterThan(0);
-  });
-
-  it('updateCallRelevances skips calls that belong to another recording', async () => {
-    // Calls are keyed by id globally — the recordingId guard protects against
-    // stamping a call whose id exists but belongs elsewhere.
-    await saveRecording(rec(), [call({ id: 'c1' })]);
-    await saveRecording(rec({ id: 'r2', createdAt: 2000 }), [
-      call({ id: 'c2', recordingId: 'r2', seq: 1 }),
-    ]);
-    await updateCallRelevances('r1', [
-      { callId: 'c2', relevance: { verdict: 'relevant', confidence: 1, analyzedAt: 7 } },
-    ]);
-    expect((await getCalls('r2'))[0]!.relevance).toBeUndefined(); // r2's call untouched
-    expect((await getCalls('r1'))[0]!.relevance).toBeUndefined(); // nothing stamped
-    // r1 was still marked analyzed (its own calls had no entries).
-    expect((await getRecording('r1'))!.relevanceStatus).toBe('done');
-  });
-
-  it('updateDepChecks marks only inferred edges and tolerates missing rec/deps', async () => {
-    const dep = (id: string, origin: FieldDependency['origin']): FieldDependency =>
-      ({ id, origin }) as FieldDependency;
-    await saveRecording(
-      rec({ deps: [dep('d1', 'inferred'), dep('d2', 'confirmed')] }),
-      [call()],
-    );
-    await updateDepChecks('r1', [
-      { depId: 'd1', depCheck: { verdict: 'likely', confidence: 0.8, analyzedAt: 7 } },
-      { depId: 'd2', depCheck: { verdict: 'unlikely', confidence: 0.8, analyzedAt: 7 } },
-      { depId: 'ghost', depCheck: { verdict: 'uncertain', confidence: 0.1, analyzedAt: 7 } },
-    ]);
-    const deps = (await getRecording('r1'))!.deps!;
-    expect(deps.find((d) => d.id === 'd1')!.depCheck!.verdict).toBe('likely');
-    // confirmed edges are ground truth — the model has no say.
-    expect(deps.find((d) => d.id === 'd2')!.depCheck).toBeUndefined();
-
-    // Missing recording / recording without deps: silent no-op.
-    await updateDepChecks('missing', [
-      { depId: 'd1', depCheck: { verdict: 'likely', confidence: 1, analyzedAt: 7 } },
-    ]);
-    await saveRecording(rec({ id: 'r3', createdAt: 3000, deps: undefined }), []);
-    await updateDepChecks('r3', [
-      { depId: 'd1', depCheck: { verdict: 'likely', confidence: 1, analyzedAt: 7 } },
-    ]);
-  });
-
+describe('field dynamism marks', () => {
   it('updateFieldDynamism merges per-cell, preserving cells this run did not refresh', async () => {
     await saveRecording(
       rec({
-        fieldDynamism: { 'GET /api/a': { token: { verdict: 'varies', source: 'model', confidence: 0.9, analyzedAt: 1 } } },
+        fieldDynamism: { 'GET /api/a': { token: { verdict: 'varies', source: 'stats', confidence: 0.9, analyzedAt: 1 } } },
       }),
       [call()],
     );
     await updateFieldDynamism('r1', {
-      'GET /api/a': { token: { verdict: 'stable', source: 'model', confidence: 0.7, analyzedAt: 2 } }, // overwrite
+      'GET /api/a': { token: { verdict: 'stable', source: 'stats', confidence: 0.7, analyzedAt: 2 } }, // overwrite
       'GET /api/b': { q: { verdict: 'varies', source: 'stats', confidence: 1, analyzedAt: 2 } }, // new endpoint
     });
     const fd = (await getRecording('r1'))!.fieldDynamism!;

@@ -23,7 +23,25 @@
     "message": "Captured $COUNT$ API calls",
     "description": "System notification body with the captured call count.",
     "placeholders": {
-      "count": { "content": "$1" }
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "notifyFilterRulesAddedTitle": {
+    "message": "Recording filter updated",
+    "description": "System notification title when an agent adds recording filter rules."
+  },
+  "notifyFilterRulesAddedMessage": {
+    "message": "$COUNT$ URL pattern(s) added by the AI assistant: $PATTERNS$. Future recordings will skip matching requests — manage them in the recording tab.",
+    "description": "System notification body listing the URL patterns an agent added to the recording filter.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      },
+      "patterns": {
+        "content": "$2"
+      }
     }
   },
   "notifyConfirmTitle": {
@@ -34,8 +52,12 @@
     "message": "$METHOD$ $HOST$ is waiting for your confirmation",
     "description": "System notification body with the request method and target host.",
     "placeholders": {
-      "method": { "content": "$1" },
-      "host": { "content": "$2" }
+      "method": {
+        "content": "$1"
+      },
+      "host": {
+        "content": "$2"
+      }
     }
   },
   "notifyGifFailedTitle": {
@@ -78,15 +100,9 @@
     "message": "An agent wants to record $HOST$ — click Allow in the popup window",
     "description": "System notification body with the target host of an agent-requested tab recording.",
     "placeholders": {
-      "host": { "content": "$1" }
+      "host": {
+        "content": "$1"
+      }
     }
-  },
-  "notifyRelevanceFailedTitle": {
-    "message": "Relevance analysis failed",
-    "description": "System notification title when the laya relevance analysis for a recording could not run."
-  },
-  "notifyRelevanceFailedMessage": {
-    "message": "The local model could not analyze this recording — open the model settings and try again later",
-    "description": "System notification body for a failed relevance analysis."
   }
 }

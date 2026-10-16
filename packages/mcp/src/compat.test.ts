@@ -1,8 +1,7 @@
 /**
  * Version-compat diagnostics tests: semver comparison, the verdict/hint
  * matrix, and the lockstep version invariant across packages (extension ↔ MCP
- * server ship on one version number — py ↔ node is pinned separately by
- * packages/mcp-py/tests/test_node_parity.py).
+ * server ship on one version number).
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -67,7 +66,5 @@ describe('lockstep version invariant', () => {
     const ext = read('extension/package.json');
     const mcp = read('mcp/package.json');
     expect(ext).toBe(mcp);
-    // The py side is pinned to the Node server by
-    // packages/mcp-py/tests/test_node_parity.py::test_version_matches_node_server.
   });
 });

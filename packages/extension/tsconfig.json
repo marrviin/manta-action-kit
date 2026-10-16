@@ -2,9 +2,7 @@
   "extends": "./.wxt/tsconfig.json",
   "compilerOptions": {
     "jsx": "react-jsx",
-    // Vendored laya-ts runtime (lib/ai/*.ts, upstream Apache-2.0) is authored
-    // under plain `strict`; the stricter indexed-access check yields ~40
-    // errors in code we deliberately keep un-forked.
+    // Stricter indexed-access is off repo-wide for now.
     "noUncheckedIndexedAccess": false
   }
 }

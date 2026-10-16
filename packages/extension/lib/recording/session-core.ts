@@ -312,8 +312,8 @@ export function createSession(deps: SessionDeps) {
             ? await inferCookieDependencies(calls, deps.cookieLookup)
             : []),
         ],
-        // Keep the raw interaction timeline on the recording (Phase 2 feeds it to
-        // laya). Omit when empty so old recordings and interaction-less ones compare equal.
+        // Keep the raw interaction timeline on the recording (UI display + MCP).
+        // Omit when empty so old recordings and interaction-less ones compare equal.
         ...(ints.length > 0 ? { interactions: [...ints] } : {}),
       };
 

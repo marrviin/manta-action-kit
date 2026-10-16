@@ -57,6 +57,8 @@ export interface PeerClientOptions {
    * proves it knows the token (see auth.ts).
    */
   token: string;
+  /** Suppress the [peer] stderr diagnostics (e.g. doctor's own reporting). */
+  quiet?: boolean;
 }
 
 export function startPeerClient(
@@ -70,7 +72,9 @@ export function startPeerClient(
   let ownerLost = false;
 
   // Log to stderr — stdout is reserved for the MCP stdio transport.
-  const log = (...a: unknown[]) => console.error('[peer]', ...a);
+  const log = (...a: unknown[]) => {
+    if (!opts.quiet) console.error('[peer]', ...a);
+  };
 
   const ws = new WebSocket(url);
 

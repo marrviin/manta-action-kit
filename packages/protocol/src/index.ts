@@ -74,8 +74,6 @@ export interface RecordingSummary {
   description?: string;
   /** epoch ms when `description` was last written by an agent. */
   descriptionUpdatedAt?: number;
-  /** Lifecycle of the laya relevance analysis (absent = never analyzed). */
-  relevanceStatus?: 'analyzing' | 'done' | 'failed' | 'skipped';
   /** How many user interactions were captured (0 when none). */
   interactionCount: number;
 }
@@ -167,29 +165,12 @@ export interface FieldDependency {
   origin: 'inferred' | 'confirmed' | 'manual';
 }
 
-/**
- * The laya model's per-call relevance mark (present only after the recording
- * has been analyzed). 'irrelevant' steps are background noise (telemetry,
- * polling, preflight) an agent can skip when distilling an action.
- */
-export interface CallRelevanceMark {
-  verdict: 'relevant' | 'irrelevant' | 'uncertain';
-  /** Model answer_confidence (0..1); 1 for data-flow-anchored calls. */
-  confidence: number;
-  /** Model-assigned role, e.g. 'telemetry' | 'auth_session' | 'business_data'. */
-  role?: string;
-  /** epoch ms of the analysis. */
-  analyzedAt: number;
-}
-
 /** A lightweight call summary in a flow (no headers/bodies). */
 export interface FlowStep {
   seq: number;
   method: string;
   url: string;
   status: number;
-  /** Present only when the recording's relevance analysis has run. */
-  relevance?: CallRelevanceMark;
   /** The user interaction that likely triggered this step (nearest within ~2s). */
   precedingInteraction?: PrecedingInteraction;
 }
@@ -483,6 +464,8 @@ export type RpcMethod =
   | 'get_flow'
   | 'get_endpoints'
   | 'set_recording_description'
+  | 'list_recording_filter_rules'
+  | 'add_recording_filter_rules'
   | 'list_element_captures'
   | 'get_element_capture'
   | 'diff_element_captures'
@@ -556,6 +539,45 @@ export interface RpcMap {
   set_recording_description: {
     params: { id: string; description: string };
     result: { recording: Recording | null };
+  };
+  /**
+   * Agent-facing: list the recording filter rules (the URL blacklist consulted
+   * at capture time). Optional `url` asks which enabled rules match it — the
+   * canonical check for "why is this endpoint missing from a recording".
+   */
+  list_recording_filter_rules: {
+    params: { url?: string };
+    result: {
+      rules: {
+        id: string;
+        pattern: string;
+        enabled: boolean;
+        createdAt: number;
+        /** Absent on rules created before the field existed (treat as 'user'). */
+        source?: 'user' | 'agent';
+      }[];
+      /** When `url` was passed: ids of ENABLED rules whose pattern matches it. */
+      urlMatches?: string[];
+    };
+  };
+  /**
+   * Agent-facing: add URL patterns to the recording filter (blacklist). No
+   * native confirmation — the tool result and a system notification inform the
+   * user, who can delete rules from the side panel at any time.
+   */
+  add_recording_filter_rules: {
+    params: { patterns: string[] };
+    result: {
+      added: {
+        id: string;
+        pattern: string;
+        enabled: boolean;
+        createdAt: number;
+        source: 'agent';
+      }[];
+      /** Duplicates (already present, or within the batch) are skipped, not errors. */
+      skipped: { pattern: string; reason: 'duplicate' }[];
+    };
   };
   /**
    * Agent-facing: list saved element captures (newest first), summaries only —
@@ -1035,7 +1057,7 @@ export interface ToolInfo {
    * tools: shown with a switch for consistency, but the switch is disabled
    * (always on) because the kill switch does not reach them.
    */
-  group: 'read' | 'gateway' | 'action' | 'capture' | 'ops';
+  group: 'read' | 'gateway' | 'action' | 'capture' | 'recording' | 'ops';
   sensitive: boolean;
 }
 
@@ -1055,6 +1077,8 @@ export const TOOL_REGISTRY: ToolInfo[] = [
   { method: 'get_endpoints', group: 'read', sensitive: false },
   { method: 'get_call', group: 'read', sensitive: false },
   { method: 'set_recording_description', group: 'read', sensitive: false },
+  { method: 'list_recording_filter_rules', group: 'recording', sensitive: false },
+  { method: 'add_recording_filter_rules', group: 'recording', sensitive: false },
   { method: 'list_element_captures', group: 'read', sensitive: false },
   { method: 'get_element_capture', group: 'read', sensitive: false },
   { method: 'diff_element_captures', group: 'read', sensitive: false },

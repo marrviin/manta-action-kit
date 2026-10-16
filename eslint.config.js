@@ -16,16 +16,8 @@ export default tseslint.config(
       "**/.wxt/**",
       ".codegraph/**",
       "**/*.min.js",
-      // Generated coverage report + vendored ONNX Runtime wasm loader
-      // (upstream: microsoft/onnxruntime, MIT).
+      // Generated coverage report.
       "**/coverage/**",
-      "**/public/ort/**",
-      // Vendored laya-ts runtime (upstream: NandhaKishorM/laya, Apache-2.0).
-      // Kept as close to upstream as possible; our extension glue
-      // (runtime.ts, laya-session.ts) is explicitly un-ignored below.
-      "packages/extension/lib/ai/*.ts",
-      "!packages/extension/lib/ai/runtime.ts",
-      "!packages/extension/lib/ai/laya-session.ts",
     ],
   },
 
@@ -122,7 +114,5 @@ export default tseslint.config(
     },
   },
 
-  // Extension-side laya glue (NOT the vendored lib/ai runtime — that is
-  // ignored above): runtime.ts, laya-session.ts follow repo rules fully.
   prettier,
 );

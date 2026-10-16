@@ -3,19 +3,19 @@ name: manta-action-kit
 description: >-
   Setup and usage guide for the manta-action-kit suite (Chrome extension +
   local MCP server): first-time setup (install the extension, register the MCP
-  server in any client), environment checks and connection troubleshooting,
-  and tool recipes — reading recordings, distilling recordings into
-  parameterized actions, executing actions, cookie-injecting proxy_fetch
-  forwarding, and agent-driven page capture (screenshots, element
-  serialization, GIF tab recording). Use when the user mentions "manta", wants
-  to install / set up / initialize the environment, can't connect, or says
-  "check recordings", "view call chains", "create an action / turn a recording
-  into an action", "execute an action", "search actions", "call the API with
-  my login state", "show element captures", "screenshot this page", "capture
-  this element", "record a GIF", "check environment". Chinese triggers:
-  「安装 manta」「初始化环境」「检查环境」「连不上」「查录制」「看调用链路」
-  「创建 action」「执行 action」「用我的登录态调这个接口」「截个图」「录个 GIF」.
-  Chinese quick reference: references/zh-CN.md.
+  server), env checks and troubleshooting, and tool recipes — reading
+  recordings, distilling them into parameterized actions, executing actions,
+  cookie-injecting proxy_fetch forwarding, and agent-driven page capture
+  (screenshots, element serialization, GIF tab recording). Use when the user
+  mentions "manta", wants to install / set up / initialize the environment,
+  can't connect, or says "check recordings", "view call chains", "create an
+  action / turn a recording into an action", "execute / replay an action",
+  "automate this flow", "search actions", "call the API with my login state",
+  "show element captures", "screenshot this page", "capture this element",
+  "record a GIF", "check environment". Chinese triggers: 「安装 manta」
+  「初始化环境」「检查环境」「连不上」「查录制」「看调用链路」「创建 action」
+  「执行 action」「回放流程」「自动操作这个流程」「用我的登录态调这个接口」
+  「截个图」「录个 GIF」. Chinese quick reference: references/zh-CN.md.
 ---
 
 # manta-action-kit Suite Usage Guide
@@ -27,8 +27,7 @@ The suite consists of two parts:
   process); sandboxed proxy gateway (injects cookies when forwarding — cookies are never exposed to
   the agent).
 - **MCP server** (`packages/mcp`, stdio): provides the tools in this file. Tool names carry the
-  prefix `mcp__manta-action-kit__`. **"manta" is the user-facing short alias** for it. A Python
-  port lives in `packages/mcp-py` (same tool surface, versioned in lockstep).
+  prefix `mcp__manta-action-kit__`. **"manta" is the user-facing short alias** for it.
 
 > **Path note.** `packages/...` paths below are relative to the manta-action-kit repo root — they
 > apply when working inside that repo. If this skill was installed into another project, the MCP
@@ -97,7 +96,23 @@ The script covers the checks below (including an end-to-end probe as a peer, dis
 "bridge up but extension not connected" from "full chain works"). Exit code 0 = all pass. **For any
 ❌ item, dig in and fix it with the manual steps below, then re-run the script to confirm.**
 
-Report results per item rather than only the final conclusion.
+Report results per item rather than only the final conclusion. Healthy output looks like:
+
+```text
+✅ Claude Code has manta-action-kit MCP registered
+✅ WS bridge port 8787 has an MCP server listening
+✅ End-to-end probe passed (MCP → bridge → extension) — current recording count: 3
+✅ Versions in lockstep (ext 0.6.0 = server 0.6.0)
+```
+
+(Repo checkouts additionally lead with `✅ MCP build output present (packages/mcp/dist/index.js)`;
+installed skill copies show an `⚠️ Installed skill copy … build check n/a` skip line instead — a
+skip is informational, not a failure.)
+
+**Fix it yourself first.** Everything reachable from the terminal (re-running the script,
+re-registering the server, updating the MCP config env, `rebind_proxy`) is yours to do without
+asking — attempt it, then re-run the script to confirm. Only bundle the truly user-side actions
+(something in Chrome's UI) into one explicit list for the user, and stop retrying while waiting.
 
 ### Check 1. MCP server is registered and can start
 
@@ -175,6 +190,52 @@ only for ad-hoc, one-off single calls.
 | "delete this action"                            | `delete_action`  | Delete the action                                                                                                                                                                 |
 | "execute the action / run that action"          | `execute_action` | End-to-end replay: auto-resolved dependencies, template parameter injection; runs through the extension gateway (same channel and same confirmation-dialog gating as proxy_fetch) |
 
+A distilled action is params + steps that reference recorded callIds with templated overrides.
+Read `get_flow` first, then author roughly this shape — everything else (inter-step value
+passing, live cookies) resolves at replay time:
+
+```json
+{
+  "params": [
+    {
+      "name": "orderId",
+      "type": "string",
+      "required": true,
+      "description": "Order id — feeds the detail lookup"
+    }
+  ],
+  "steps": [
+    {
+      "callId": "<callId at seq 1>",
+      "kind": "fetch",
+      "outputs": { "orderId": "data.orderId" }
+    },
+    {
+      "callId": "<callId at seq 3>",
+      "kind": "fetch",
+      "overrides": [
+        {
+          "toLocation": "query",
+          "toPath": "orderId",
+          "value": "{{steps[0].outputs.orderId}}"
+        }
+      ]
+    },
+    {
+      "callId": "<callId at seq 4>",
+      "kind": "fetch",
+      "overrides": [
+        {
+          "toLocation": "header",
+          "toPath": "X-XSRF-TOKEN",
+          "value": "{{cookie:XSRF-TOKEN}}"
+        }
+      ]
+    }
+  ]
+}
+```
+
 ### Recordings (raw material, for analysis / action creation)
 
 | User says                                                      | Tool                        | Notes                                                                                                     |
@@ -185,39 +246,78 @@ only for ad-hoc, one-off single calls.
 | "show API contracts / deduplicated endpoints"                  | `get_endpoints`             | Deduplicated endpoints + sanitized schemas (must read before create_action)                               |
 | "show a single call"                                           | `get_call`                  | Fetch a single API call by id                                                                             |
 | "describe this recording / what does this flow do"             | `set_recording_description` | Agent-authored business-level summary of the whole flow (shown in `list_recordings` to help future reuse) |
+| (during analysis) "these are tracking/telemetry calls"         | `add_recording_filter_rules` | Blacklist noise URL patterns so FUTURE recordings skip them; the user is notified and can delete rules  |
+| "why is endpoint X missing from a recording"                   | `list_recording_filter_rules` | Check whether an enabled rule's pattern matches X — a match means it was filtered at capture time by design |
 
-**Relevance marks**: after a recording is saved, the extension auto-runs a local
-model pass that marks each call's `relevance` (`relevant` / `irrelevant` /
-`uncertain`, with a `role` like `telemetry`). When `get_flow` steps or `get_call`
-carry `relevance.verdict === 'irrelevant'`, that call is background noise
-(analytics, polling, preflight) — skip it when analyzing the flow or distilling
-an action. No `relevance` field means the recording has not been analyzed; treat
-every call as potentially relevant then.
+#### Reading the marks (what `get_flow` / `get_endpoints` output actually looks like)
 
-**User-intent marks**: `get_flow` steps may carry a
-`precedingInteraction` field — the user interaction (click/typing, with its
-text and `deltaMs`) that most likely triggered that call, captured from the
-page during recording. Use it to identify which steps are direct consequences
-of user intent vs. calls that merely co-occur (analytics, preloads fire without
-one). Absent field = the call had no interaction within the lookback window.
+`get_flow` returns an ordered, lightweight step list (no request/response bodies — use
+`get_recording` for those). A typical step with the two kinds of marks attached:
 
-**Dep-confidence marks**: inferred field dependencies in `get_flow` deps (and
-`get_endpoints` `inputsFrom`) can carry a `depCheck` mark
-(`likely` / `unlikely` / `uncertain`). `depCheck.verdict === 'unlikely'` means
-the local model considers the edge a coincidental value match (a timestamp or
-nonce that happened to collide) rather than a real data flow — do not build
-action parameterization on it. Absent `depCheck` = not analyzed; treat the edge
-as the heuristic inference it is.
+```json
+{
+  "seq": 3,
+  "method": "POST",
+  "url": "https://shop.example.com/api/orders",
+  "status": 200,
+  "precedingInteraction": {
+    "kind": "click",
+    "text": "Place order",
+    "deltaMs": 180
+  },
+  "deps": [
+    {
+      "fromSeq": 1,
+      "fromPath": "data.orderId",
+      "toSeq": 3,
+      "toLocation": "query",
+      "toPath": "orderId",
+      "value": "A10293",
+      "origin": "inferred"
+    }
+  ]
+}
+```
 
-**Field dynamism marks**: `get_endpoints` request-schema leaves may carry a
-`dynamism` mark and query params appear in `queryDynamism`
-(`verdict: 'varies' | 'stable' | 'uncertain'`, `source: 'stats' | 'model'`).
-`varies` = the value would differ on a replay in a fresh session (a timestamp,
-session token, auto-generated id) — make it an action parameter, never a
-hardcoded literal. `stable` = safe to hardcode. `source: 'stats'` is a
-multi-observation fact and outranks `'model'` (a single-observation judgment).
-No mark = not analyzed (or the field was seen only once and the model pass
-failed) — judge from the value shape yourself then.
+Plain-language guide to each mark:
+
+- **`precedingInteraction`** — "the user clicked/typed something, and this call fired right
+  after". A step WITH it is a direct consequence of user intent (belongs in an action); a step
+  WITHOUT it fired on its own (analytics, preloads, polling) and usually does not. Absent field
+  = no interaction within the lookback window. It's a hint, not proof — an unlucky 5s window can
+  miss one.
+- **`deps`** (and `get_endpoints` `inputsFrom`) — "this request field was filled from an earlier
+  response" (here: step 1's `data.orderId` feeds step 3's `orderId` query param). These are
+  heuristic value matches — strong hints, not proof; confirm the edge makes sense before
+  building parameterization on it. `origin: "confirmed" | "manual"` means a human approved the
+  edge; `inferred` means auto-detected only.
+- **Cookie-sourced deps** — `fromSeq: -1` with `fromPath: "cookie:<NAME>"` means the field is
+  fed by a browser cookie (CSRF/XSRF double-submit), not by any recorded response. Fill it with
+  a `{{cookie:<NAME>}}` header override at replay time (see the CSRF note in section 3).
+- **`dynamism` / `queryDynamism`** (on `get_endpoints` request schemas, never on `get_flow`) —
+  answers "if you replay this tomorrow, will this field still hold the same value?" Decided
+  statistically from repeated observations (`source: 'stats'`): `varies` = all-distinct values
+  across calls (timestamps, session tokens, auto-generated ids) → make it an action parameter or
+  use `{{nowMs}}` / `{{nowSec}}` / `{{uuid}}`, never a hardcoded literal. `stable` = identical
+  across calls → safe to hardcode. **No mark = the field was seen only once** (not enough
+  evidence) — judge from the value shape yourself (a `createdAt` smells like `varies` even
+  unmarked).
+
+### Recording filter rules (governance for noise APIs)
+
+When you find tracking / telemetry / monitoring / heartbeat calls with no business value while
+analyzing a recording, blacklist them so FUTURE recordings skip them (better signal rate):
+
+- `add_recording_filter_rules` — pass an array of wildcard URL patterns (`*` matches any run of
+  characters; full-string, case-insensitive match against the complete URL, e.g.
+  `*://*.example.com/api/collect*`). Rules take effect immediately, no user confirmation; the
+  user gets a system notification and can delete rules anytime from the extension's
+  "Recording → Filter rules" tab. Derive patterns conservatively from the noise URL's distinctive
+  path segment so business APIs can't be swallowed by accident. Tell the user which patterns you
+  added.
+- `list_recording_filter_rules` — list all rules; pass `url` to check which enabled rules match
+  it. **When the user asks "why is endpoint X missing from a recording", check here first** — a
+  matching rule means it was filtered at capture time by design, not a capture failure.
 
 ### Element captures (UI reference / visual diffing)
 

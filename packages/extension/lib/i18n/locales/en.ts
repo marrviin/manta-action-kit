@@ -124,6 +124,7 @@ export const en = {
     urlPatternPlaceholder: "e.g. */analytics*",
     ruleAdded: "Filter rule added",
     ruleDuplicate: "This filter rule already exists",
+    ruleSourceAgent: "AI",
     deleteRuleTitle: "Delete this filter rule",
     deleteRuleConfirm: 'Delete "{{pattern}}"?',
     loadFailed: "Failed to load recordings",
@@ -167,31 +168,12 @@ export const en = {
     consumesCookie: "{{target}} ← cookie {{from}}",
     // "response {{fromPath}} → step #{{toSeq}} {{target}}"
     produces: "response {{fromPath}} → step #{{toSeq}} {{target}}",
-    depUnlikely: "likely coincidental",
   },
   detail: {
     titleWithCount: "{{name}} ({{count}} calls)",
     tabResult: "Recorded Result",
     tabEndpoints: "Endpoints",
     callChainTitle: "Call Chain",
-    rerunRelevance: "Re-analyze",
-    relevanceFailed: "Analysis failed — click Re-analyze to retry",
-    relevanceSkipped: "Model was still downloading — stats marks only; re-runs automatically once it's ready",
-    filterTitle: "Filter by relevance",
-    filterAll: "All calls",
-    filterRelevant: "Relevant",
-    filterUncertain: "Possibly irrelevant",
-    filterIrrelevant: "Likely irrelevant",
-    filterEmpty: "No calls match this filter",
-    relevanceIrrelevant: "Likely irrelevant",
-    relevanceUncertain: "Possibly irrelevant",
-    relevanceTooltip: "Marked by the local model · confidence {{value}}",
-    roleBusinessData: "business data",
-    roleAuthSession: "auth / session",
-    roleTelemetry: "telemetry",
-    rolePollingHeartbeat: "polling / heartbeat",
-    rolePreflightStatic: "preflight / static",
-    roleOther: "other",
     descExpand: "Expand",
     descCollapse: "Collapse",
     waitGap: "Wait {{gap}}",
@@ -343,6 +325,12 @@ export const en = {
     set_recording_descriptionLabel: "Set recording description",
     set_recording_descriptionDesc:
       "Write an agent-authored, business-level summary of the whole flow — its purpose, what it can do, and caveats for reuse (not a per-endpoint field dump). Dedicated write path; shown read-only on the detail page",
+    list_recording_filter_rulesLabel: "List recording filter rules",
+    list_recording_filter_rulesDesc:
+      "List the URL blacklist consulted at capture time; can also check whether a given URL is filtered (answers \"why is this endpoint missing from a recording\")",
+    add_recording_filter_rulesLabel: "Add recording filter rules",
+    add_recording_filter_rulesDesc:
+      "Add wildcard URL patterns so future recordings skip noise APIs (tracking/telemetry/monitoring); the user is notified and can delete rules from the recording tab",
     list_element_capturesLabel: "List element captures",
     list_element_capturesDesc:
       "Get an overview of saved element-capture snapshots (page, title, element count); material for analyzing a component or diffing against another snapshot",
@@ -501,12 +489,6 @@ export const en = {
     devModeTitle: "Developer mode",
     devModeDesc: "Internal debugging tools",
     devModeUnlockToast: "Developer mode unlocked",
-    layaTitle: "Decision model",
-    layaDesc:
-      "Laya - on-device inference model for automated analysis of captured data",
-    layaLoad: "Load",
-    layaLoaded: "Loaded",
-    layaLoading: "Loading…",
   },
 } as const;
 

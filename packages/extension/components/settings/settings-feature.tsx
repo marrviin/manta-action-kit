@@ -26,7 +26,6 @@ import {
   TransferParseError,
 } from "@/lib/transfer";
 import { McpToolList } from "@/components/mcp/tool-list";
-import { LayaCard } from "@/components/settings/laya-card";
 
 const { Text } = Typography;
 
@@ -446,10 +445,6 @@ export function SettingsFeature() {
           }}
         />
       </section>
-      {/* Laya decision model: status + load (the try-it playground lives in
-          the developer-mode card below). */}
-      <LayaCard />
-
       {/* Connector (MCP) card: header-only by default (status tag + tools
           toggle); expanding reveals the tool kill-switch list. */}
       <section className="flex-none rounded-xl border border-(--ant-color-border-secondary) bg-(--ant-color-bg-container) overflow-hidden">

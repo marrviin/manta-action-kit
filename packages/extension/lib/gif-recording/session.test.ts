@@ -9,9 +9,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('@/lib/messaging', () => ({
   sendMessage: vi.fn(async () => undefined as unknown),
 }));
-vi.mock('@/lib/ai/laya-session', () => ({
-  closeLayaOffscreenDocument: vi.fn(async () => undefined as unknown),
-}));
 
 import {
   handleGifOffscreenDone,
@@ -23,10 +20,8 @@ import {
 } from '@/lib/gif-recording/session';
 import { GifRecordingError } from '@/lib/gif-recording/types';
 import { sendMessage } from '@/lib/messaging';
-import { closeLayaOffscreenDocument } from '@/lib/ai/laya-session';
 
 const send = sendMessage as unknown as ReturnType<typeof vi.fn>;
-const closeDoc = vi.mocked(closeLayaOffscreenDocument);
 
 // -- chrome / browser stubs ---------------------------------------------------
 
@@ -58,6 +53,7 @@ vi.mock('@/lib/storage', () => ({
 
 const getContexts = vi.fn(async (..._a: unknown[]) => [] as unknown[]);
 const createDocument = vi.fn(async () => {});
+const closeDocument = vi.fn(async () => {});
 const alarmsCreate = vi.fn();
 const alarmsClear = vi.fn(async () => {});
 const notificationsCreate = vi.fn(async () => 'n1');
@@ -79,7 +75,7 @@ beforeEach(() => {
       getURL: (p: string) => `chrome-extension://test${p}`,
       ContextType: { OFFSCREEN_DOCUMENT: 'OFFSCREEN_DOCUMENT' },
     },
-    offscreen: { createDocument, Reason: { DISPLAY_MEDIA: 'DISPLAY_MEDIA' } },
+    offscreen: { createDocument, closeDocument, Reason: { DISPLAY_MEDIA: 'DISPLAY_MEDIA' } },
     notifications: { create: notificationsCreate },
     tabs: { query: tabsQuery, create: tabsCreate },
   });
@@ -221,7 +217,7 @@ describe('handleGifOffscreenDone', () => {
     await handleGifOffscreenDone({ ok: true, savedForPreview: true, draftId: 'd1' });
     expect(tabsCreate).not.toHaveBeenCalled();
     expect(notificationsCreate).not.toHaveBeenCalled();
-    expect(closeDoc).toHaveBeenCalled();
+    expect(closeDocument).toHaveBeenCalled();
   });
 
   it('interactive success opens the preview tab addressed by draftId', async () => {
@@ -250,6 +246,6 @@ describe('handleGifOffscreenDone', () => {
     stateStore.value = recording({ silent: true });
     await handleGifOffscreenDone({ ok: false });
     expect(notificationsCreate).toHaveBeenCalled();
-    expect(closeDoc).toHaveBeenCalled();
+    expect(closeDocument).toHaveBeenCalled();
   });
 });
