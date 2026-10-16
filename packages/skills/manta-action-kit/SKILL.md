@@ -27,8 +27,7 @@ The suite consists of two parts:
   process); sandboxed proxy gateway (injects cookies when forwarding — cookies are never exposed to
   the agent).
 - **MCP server** (`packages/mcp`, stdio): provides the tools in this file. Tool names carry the
-  prefix `mcp__manta-action-kit__`. **"manta" is the user-facing short alias** for it. A Python
-  port lives in `packages/mcp-py` (same tool surface, versioned in lockstep).
+  prefix `mcp__manta-action-kit__`. **"manta" is the user-facing short alias** for it.
 
 > **Path note.** `packages/...` paths below are relative to the manta-action-kit repo root — they
 > apply when working inside that repo. If this skill was installed into another project, the MCP
@@ -247,6 +246,8 @@ passing, live cookies) resolves at replay time:
 | "show API contracts / deduplicated endpoints"                  | `get_endpoints`             | Deduplicated endpoints + sanitized schemas (must read before create_action)                               |
 | "show a single call"                                           | `get_call`                  | Fetch a single API call by id                                                                             |
 | "describe this recording / what does this flow do"             | `set_recording_description` | Agent-authored business-level summary of the whole flow (shown in `list_recordings` to help future reuse) |
+| (during analysis) "these are tracking/telemetry calls"         | `add_recording_filter_rules` | Blacklist noise URL patterns so FUTURE recordings skip them; the user is notified and can delete rules  |
+| "why is endpoint X missing from a recording"                   | `list_recording_filter_rules` | Check whether an enabled rule's pattern matches X — a match means it was filtered at capture time by design |
 
 #### Reading the marks (what `get_flow` / `get_endpoints` output actually looks like)
 
@@ -301,6 +302,22 @@ Plain-language guide to each mark:
   across calls → safe to hardcode. **No mark = the field was seen only once** (not enough
   evidence) — judge from the value shape yourself (a `createdAt` smells like `varies` even
   unmarked).
+
+### Recording filter rules (governance for noise APIs)
+
+When you find tracking / telemetry / monitoring / heartbeat calls with no business value while
+analyzing a recording, blacklist them so FUTURE recordings skip them (better signal rate):
+
+- `add_recording_filter_rules` — pass an array of wildcard URL patterns (`*` matches any run of
+  characters; full-string, case-insensitive match against the complete URL, e.g.
+  `*://*.example.com/api/collect*`). Rules take effect immediately, no user confirmation; the
+  user gets a system notification and can delete rules anytime from the extension's
+  "Recording → Filter rules" tab. Derive patterns conservatively from the noise URL's distinctive
+  path segment so business APIs can't be swallowed by accident. Tell the user which patterns you
+  added.
+- `list_recording_filter_rules` — list all rules; pass `url` to check which enabled rules match
+  it. **When the user asks "why is endpoint X missing from a recording", check here first** — a
+  matching rule means it was filtered at capture time by design, not a capture failure.
 
 ### Element captures (UI reference / visual diffing)
 

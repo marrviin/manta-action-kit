@@ -464,6 +464,8 @@ export type RpcMethod =
   | 'get_flow'
   | 'get_endpoints'
   | 'set_recording_description'
+  | 'list_recording_filter_rules'
+  | 'add_recording_filter_rules'
   | 'list_element_captures'
   | 'get_element_capture'
   | 'diff_element_captures'
@@ -537,6 +539,45 @@ export interface RpcMap {
   set_recording_description: {
     params: { id: string; description: string };
     result: { recording: Recording | null };
+  };
+  /**
+   * Agent-facing: list the recording filter rules (the URL blacklist consulted
+   * at capture time). Optional `url` asks which enabled rules match it — the
+   * canonical check for "why is this endpoint missing from a recording".
+   */
+  list_recording_filter_rules: {
+    params: { url?: string };
+    result: {
+      rules: {
+        id: string;
+        pattern: string;
+        enabled: boolean;
+        createdAt: number;
+        /** Absent on rules created before the field existed (treat as 'user'). */
+        source?: 'user' | 'agent';
+      }[];
+      /** When `url` was passed: ids of ENABLED rules whose pattern matches it. */
+      urlMatches?: string[];
+    };
+  };
+  /**
+   * Agent-facing: add URL patterns to the recording filter (blacklist). No
+   * native confirmation — the tool result and a system notification inform the
+   * user, who can delete rules from the side panel at any time.
+   */
+  add_recording_filter_rules: {
+    params: { patterns: string[] };
+    result: {
+      added: {
+        id: string;
+        pattern: string;
+        enabled: boolean;
+        createdAt: number;
+        source: 'agent';
+      }[];
+      /** Duplicates (already present, or within the batch) are skipped, not errors. */
+      skipped: { pattern: string; reason: 'duplicate' }[];
+    };
   };
   /**
    * Agent-facing: list saved element captures (newest first), summaries only —
@@ -1016,7 +1057,7 @@ export interface ToolInfo {
    * tools: shown with a switch for consistency, but the switch is disabled
    * (always on) because the kill switch does not reach them.
    */
-  group: 'read' | 'gateway' | 'action' | 'capture' | 'ops';
+  group: 'read' | 'gateway' | 'action' | 'capture' | 'recording' | 'ops';
   sensitive: boolean;
 }
 
@@ -1036,6 +1077,8 @@ export const TOOL_REGISTRY: ToolInfo[] = [
   { method: 'get_endpoints', group: 'read', sensitive: false },
   { method: 'get_call', group: 'read', sensitive: false },
   { method: 'set_recording_description', group: 'read', sensitive: false },
+  { method: 'list_recording_filter_rules', group: 'recording', sensitive: false },
+  { method: 'add_recording_filter_rules', group: 'recording', sensitive: false },
   { method: 'list_element_captures', group: 'read', sensitive: false },
   { method: 'get_element_capture', group: 'read', sensitive: false },
   { method: 'diff_element_captures', group: 'read', sensitive: false },

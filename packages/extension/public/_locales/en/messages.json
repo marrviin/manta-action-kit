@@ -28,6 +28,22 @@
       }
     }
   },
+  "notifyFilterRulesAddedTitle": {
+    "message": "Recording filter updated",
+    "description": "System notification title when an agent adds recording filter rules."
+  },
+  "notifyFilterRulesAddedMessage": {
+    "message": "$COUNT$ URL pattern(s) added by the AI assistant: $PATTERNS$. Future recordings will skip matching requests — manage them in the recording tab.",
+    "description": "System notification body listing the URL patterns an agent added to the recording filter.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      },
+      "patterns": {
+        "content": "$2"
+      }
+    }
+  },
   "notifyConfirmTitle": {
     "message": "Sandbox request confirmation",
     "description": "System notification title when a sandbox call awaits confirmation."

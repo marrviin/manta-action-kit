@@ -7,6 +7,95 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+#### Python MCP server (`packages/mcp-py`) deleted
+
+- The Python port of the MCP server (`manta-action-kit-mcp` on PyPI) is gone.
+  It was a feature-incomplete mirror of the Node server (no HTTP proxy /
+  script gateway), and keeping the two runtimes in lockstep cost a parity
+  test suite, a contract-fixture sync flow, and a separate PyPI release job
+  — the CLI divergence we just shipped (init/doctor/-v exist only in Node)
+  was the last straw. Every MCP client can launch the Node server via npx,
+  so nothing is lost. PyPI stops receiving updates; existing `uvx`
+  installs will fail to resolve `manta-action-kit-mcp@latest` and should
+  switch their MCP config to `npx -y @manta-action-kit/mcp@latest`.
+- The tool-contract fixture survives — it anchors the skill-docs sync check —
+  and moved to `packages/mcp/tests/fixtures/tool-contract.json`
+  (`pnpm --filter @manta-action-kit/mcp contract:export` writes there now;
+  `check-skill-sync.mjs` reads the new path).
+- `release.yml` drops the `publish-mcp-py` job; CONTRIBUTING.md and the skill
+  docs no longer describe the dual-runtime sync flow.
+
+### Added
+
+#### CLI subcommands for the MCP package (`init` / `doctor` / `-v`)
+
+- `@manta-action-kit/mcp` gains CLI subcommands handled before server startup:
+  `init` (alias `i`) detects locally installed agent hosts (Claude Code, Claude
+  Desktop, Cursor, Windsurf, VS Code, Codex CLI), shows an interactive
+  multi-select (via `@clack/prompts`) pre-checked with the detected ones, and
+  upserts the `manta-action-kit` server entry into each selected agent's MCP
+  config — JSON configs (`mcpServers`, VS Code's `servers`) and Codex's TOML
+  `config.toml` (existing section replaced in place). Missing files are
+  created; other entries are preserved; corrupted configs error out instead of
+  being truncated. When `MANTA_TOKEN` is unset, `init` asks for the
+  extension's install prompt (or a bare token) and extracts the token and
+  ports from it; a missing token is written as absent with a warning (the
+  bridge fails closed). `-v`/`--version` prints the package version, and
+  `-h`/`--help` prints usage.
+- `doctor` (alias `d`) runs a read-only environment check: Node >= 18, agent
+  config coverage (which detected agents have the manta entry), a WS-bridge
+  probe with the real token handshake (reusing the peer client — a successful
+  handshake proves both a live owner and a valid token), extension connection
+  and version skew via the `extension_info` RPC, and the HTTP proxy port.
+  Fixable problems (missing config entries, a stale token) are offered as an
+  automatic fix after user confirmation; unfixable ones print concrete
+  solutions (identify a port squatter with `lsof`, open Chrome for a
+  disconnected extension, …). Warnings don't fail the exit code (the
+  check-env convention); unresolved failures exit 1. Settings resolve from
+  env → installed agent configs → package defaults, so doctor works against
+  the deployed config without any env setup. The doctor report renders as a
+  single boxed card (clack `note`) after a silent check phase, with all
+  interactive fixes collected after the report and a re-checked card after
+  fixes apply. Agent detection requires proof of a working install — binary
+  on PATH, the macOS app bundle, or a config that already wires manta in —
+  so leftover config dirs (e.g. a removed Codex CLI's `~/.codex`) no longer
+  read as installed agents and don't trigger install prompts.
+- The no-token warning moved from module load into server startup, so it no
+  longer pollutes `init` runs, and now points at `npx @manta-action-kit/mcp init`
+  as the fix path.
+
+## [0.6.1] - 2026-10-16
+
+### Changed
+
+#### Extension manifest slimmed down (laya leftovers removed)
+
+- Removed the `wasm-unsafe-eval` CSP allowance and the onnxruntime dev-server
+  exclude from the extension manifest/build config, and dropped the unused
+  `onnxruntime-web` / `onnxruntime-node` dependencies — all existed only for
+  the laya on-device model removed in 0.6.0. `extension_pages` CSP is back to
+  Chrome's default `script-src 'self'`; the permissions list is unchanged.
+
+### Added
+
+#### Agent-managed recording filter rules (noise-API governance)
+
+- Two new MCP tools (`list_recording_filter_rules` / `add_recording_filter_rules`, both runtimes)
+  expose the recording URL blacklist to the agent: when an analysis finds tracking/telemetry/
+  monitoring calls with no business value, it can blacklist their URL patterns so future
+  recordings skip them. Rules are added enabled immediately (no confirmation gate); the user is
+  informed via a system notification and an "AI" origin tag in the recording tab's filter-rules
+  panel, and can delete rules at any time. `get_flow` / `get_endpoints` descriptions nudge the
+  agent towards this loop.
+- `list_recording_filter_rules` accepts an optional `url` to report which enabled rules match it —
+  the diagnostic answer to "why is endpoint X missing from a recording" (a match means the call
+  was dropped at capture time by design). The skill docs (SKILL.md / zh-CN.md) document both
+  flows.
+- `RecordingFilterRule` gains an optional `source: 'user' | 'agent'` (absent on pre-existing
+  rules, treated as `'user'`).
+
 ## [0.6.0] - 2026-10-13
 
 ### Added

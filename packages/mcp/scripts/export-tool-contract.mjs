@@ -3,14 +3,14 @@
 // (dist/index.js), through an in-memory MCP client, so nothing is duplicated
 // or hand-maintained.
 //
-// The fixture is the sync anchor for the Python port:
-// packages/mcp-py/tests/test_tool_contract.py compares its own tool surface
-// against this file. When a Node-side tool changes, regenerate:
+// The fixture is the sync anchor for the docs: the skill sync check
+// (packages/skills/scripts/check-skill-sync.mjs) compares SKILL.md's tool
+// table against this file. When a Node-side tool changes, regenerate:
 //
 //   pnpm --filter @manta-action-kit/mcp contract:export
 //
-// Output goes to stdout; the package script redirects it into the Python
-// tests' fixtures directory.
+// Output goes to stdout; the package script redirects it into this
+// package's tests/fixtures directory.
 //
 // Requires dist/ to be built first (pnpm --filter @manta-action-kit/mcp build).
 process.env.MCP_NO_AUTORUN = "1";

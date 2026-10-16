@@ -124,6 +124,7 @@ export const en = {
     urlPatternPlaceholder: "e.g. */analytics*",
     ruleAdded: "Filter rule added",
     ruleDuplicate: "This filter rule already exists",
+    ruleSourceAgent: "AI",
     deleteRuleTitle: "Delete this filter rule",
     deleteRuleConfirm: 'Delete "{{pattern}}"?',
     loadFailed: "Failed to load recordings",
@@ -324,6 +325,12 @@ export const en = {
     set_recording_descriptionLabel: "Set recording description",
     set_recording_descriptionDesc:
       "Write an agent-authored, business-level summary of the whole flow — its purpose, what it can do, and caveats for reuse (not a per-endpoint field dump). Dedicated write path; shown read-only on the detail page",
+    list_recording_filter_rulesLabel: "List recording filter rules",
+    list_recording_filter_rulesDesc:
+      "List the URL blacklist consulted at capture time; can also check whether a given URL is filtered (answers \"why is this endpoint missing from a recording\")",
+    add_recording_filter_rulesLabel: "Add recording filter rules",
+    add_recording_filter_rulesDesc:
+      "Add wildcard URL patterns so future recordings skip noise APIs (tracking/telemetry/monitoring); the user is notified and can delete rules from the recording tab",
     list_element_capturesLabel: "List element captures",
     list_element_capturesDesc:
       "Get an overview of saved element-capture snapshots (page, title, element count); material for analyzing a component or diffing against another snapshot",

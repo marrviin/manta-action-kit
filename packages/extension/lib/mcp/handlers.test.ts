@@ -31,6 +31,10 @@ vi.mock('@/lib/storage', () => ({
   },
   gifLastResult: { getValue: vi.fn(async () => null as unknown) },
   gifRecordingState: { getValue: vi.fn(async () => null as unknown) },
+  recordingFilterRules: {
+    getValue: vi.fn(async () => [] as unknown),
+    setValue: vi.fn(async () => undefined as unknown),
+  },
 }));
 
 vi.mock('@/lib/gateway/run', () => ({
@@ -95,7 +99,7 @@ import {
   getAction,
   updateRecordingDescription,
 } from '@/lib/db';
-import { settings, gifLastResult } from '@/lib/storage';
+import { settings, gifLastResult, recordingFilterRules } from '@/lib/storage';
 import { runGatewayFetch, runGatewaySse } from '@/lib/gateway/run';
 import { resolveProxyRule } from '@/lib/gateway/proxy-rule';
 import { addProxyRule, updateProxyRuleContent } from '@/lib/gateway/manage-rules';
@@ -126,6 +130,8 @@ const mocked = {
   deleteAction: mock(deleteAction),
   getAction: mock(getAction),
   updateRecordingDescription: mock(updateRecordingDescription),
+  recordingFilterRulesGetValue: mock(recordingFilterRules.getValue),
+  recordingFilterRulesSetValue: mock(recordingFilterRules.setValue),
   runGatewayFetch: mock(runGatewayFetch),
   runGatewaySse: mock(runGatewaySse),
   resolveProxyRule: mock(resolveProxyRule),
@@ -263,6 +269,81 @@ describe('recording reads', () => {
     });
     expect(mocked.updateRecordingDescription).toHaveBeenCalledWith('r1', '  d  ');
     expect(res.recording).toEqual({ id: 'r1', description: 'd' });
+  });
+});
+
+describe('recording filter rules', () => {
+  const rule = (id: string, pattern: string, enabled = true) => ({
+    id,
+    pattern,
+    enabled,
+    createdAt: 1,
+  });
+
+  it('list_recording_filter_rules returns rules and matches an optional url (enabled only)', async () => {
+    mocked.recordingFilterRulesGetValue.mockResolvedValue([
+      rule('a', '*://*.example.com/api/track*'),
+      rule('b', '*track*', false),
+      rule('c', '*://*.other.com/*'),
+    ]);
+
+    const res = await rpc('list_recording_filter_rules');
+    expect(res.rules).toHaveLength(3);
+    expect(res.urlMatches).toBeUndefined();
+
+    const withUrl = await rpc('list_recording_filter_rules', {
+      url: 'https://www.example.com/api/track?x=1',
+    });
+    // The disabled rule would match the url too, but only ENABLED rules count —
+    // a disabled rule never dropped anything at capture time.
+    expect(withUrl.urlMatches).toEqual(['a']);
+  });
+
+  it('add_recording_filter_rules validates, dedupes, stamps source agent and prepends', async () => {
+    await expect(
+      rpc('add_recording_filter_rules', { patterns: [] }),
+    ).rejects.toThrow(/non-empty array/);
+    await expect(
+      rpc('add_recording_filter_rules', { patterns: ['ok', '   '] }),
+    ).rejects.toThrow(/non-empty string/);
+    await expect(
+      rpc('add_recording_filter_rules', { patterns: ['x'.repeat(501)] }),
+    ).rejects.toThrow(/too long/);
+    await expect(
+      rpc('add_recording_filter_rules', { patterns: new Array(51).fill('*a*') }),
+    ).rejects.toThrow(/max 50/);
+
+    mocked.recordingFilterRulesGetValue.mockResolvedValue([
+      rule('old', '*://*.example.com/api/track*'),
+    ]);
+    const res = await rpc('add_recording_filter_rules', {
+      patterns: [
+        ' *://*.example.com/api/collect* ', // trimmed into the rule
+        '*://*.example.com/api/track*', // duplicate of the existing rule → skipped
+        '*://*.example.com/api/collect*', // duplicate within the batch → skipped
+      ],
+    });
+    expect(res.added).toHaveLength(1);
+    expect(res.added[0]).toMatchObject({
+      pattern: '*://*.example.com/api/collect*',
+      enabled: true,
+      source: 'agent',
+    });
+    expect(res.skipped).toEqual([
+      { pattern: '*://*.example.com/api/track*', reason: 'duplicate' },
+      { pattern: '*://*.example.com/api/collect*', reason: 'duplicate' },
+    ]);
+    expect(mocked.recordingFilterRulesSetValue).toHaveBeenCalledTimes(1);
+    const [next] = mocked.recordingFilterRulesSetValue.mock.calls[0];
+    expect(next[0].id).toBe(res.added[0].id);
+    expect(next[1]).toMatchObject({ id: 'old' });
+  });
+
+  it('add_recording_filter_rules persists nothing when every pattern is a duplicate', async () => {
+    mocked.recordingFilterRulesGetValue.mockResolvedValue([rule('old', '*/x*')]);
+    const res = await rpc('add_recording_filter_rules', { patterns: ['*/x*'] });
+    expect(res.added).toHaveLength(0);
+    expect(mocked.recordingFilterRulesSetValue).not.toHaveBeenCalled();
   });
 });
 

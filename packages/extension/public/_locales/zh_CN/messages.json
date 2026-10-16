@@ -28,6 +28,22 @@
       }
     }
   },
+  "notifyFilterRulesAddedTitle": {
+    "message": "录制过滤规则已更新",
+    "description": "System notification title when an agent adds recording filter rules."
+  },
+  "notifyFilterRulesAddedMessage": {
+    "message": "AI 助手添加了 $COUNT$ 条过滤规则：$PATTERNS$。后续录制将跳过匹配的请求，可在录制页的过滤规则中管理。",
+    "description": "System notification body listing the URL patterns an agent added to the recording filter.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      },
+      "patterns": {
+        "content": "$2"
+      }
+    }
+  },
   "notifyConfirmTitle": {
     "message": "安全沙箱请求确认",
     "description": "System notification title when a sandbox call awaits confirmation."

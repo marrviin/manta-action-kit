@@ -34,10 +34,9 @@ The extension and the MCP server ship on ONE version number (`pnpm version:minor
 synced across packages) but are INSTALLED independently — the extension auto-updates through
 Chrome, the server only when the user's MCP config re-runs. A version skew degrades silently, so:
 
-1. **Sync all tool-description copies**: Node `packages/mcp/src/index.ts` AND Python
-   `packages/mcp-py/src/manta_action_kit_mcp/server.py` must describe tools identically, then re-run
+1. **Sync the tool-description copies**: update `packages/mcp/src/index.ts`, then re-run
    `pnpm --filter @manta-action-kit/mcp contract:export` to refresh
-   `packages/mcp-py/tests/fixtures/tool-contract.json` (py tests fail if it drifts).
+   `packages/mcp/tests/fixtures/tool-contract.json`.
    The skill must stay in sync too: `pnpm sync:skill` fails if a registered tool is missing from
    SKILL.md or SKILL.md references a tool that no longer exists.
 2. **New RPC params must degrade safely on an older extension** (which ignores unknown params):
@@ -56,10 +55,6 @@ Chrome, the server only when the user's MCP config re-runs. A version skew degra
 - MCP source: `packages/mcp/src/` (`index.ts` tool definitions, `bridge.ts` WS bridge and error
   messages). Frame protocol and port constants 8787/8788 live in `packages/protocol/src/`
   (`@manta-action-kit/protocol`); `packages/mcp/src/protocol.ts` is just a re-export.
-- A **Python port** of the MCP server lives in `packages/mcp-py` (`manta-action-kit-mcp` on PyPI,
-  versioned in lockstep with the Node package, same tool surface and WS handshake). Kept in sync
-  by contract tests that compare it against a JSON fixture exported from the real Node tool
-  registration (`packages/mcp/scripts` → `contract:export`).
 - Extension source: `packages/extension/` (`lib/gateway/` gateway, `lib/action/` action types and
   replay engine, `lib/mcp/handlers.ts` per-tool toggles, `components/action/` action tab UI).
 - The agent skill package: `packages/skills/` (this skill; `.claude/skills/manta-action-kit` at

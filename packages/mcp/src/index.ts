@@ -32,6 +32,7 @@ import { startBridge, type Bridge } from "./bridge.js";
 import { startPeerClient, type PeerClient } from "./peer-client.js";
 import { startProxyHttp, type ProxyHttpServer } from "./proxy-http.js";
 import { compatVerdict, continueOnErrorHint } from "./compat.js";
+import { handleCli } from "./cli.js";
 import {
   BRIDGE_SCAN_RANGE,
   DEFAULT_MCP_PORT,
@@ -50,12 +51,17 @@ const proxyPort = Number(process.env.MANTA_PROXY_PORT) || DEFAULT_PROXY_PORT;
  */
 const token = process.env.MANTA_TOKEN;
 
-if (!token) {
-  console.error(
-    `[manta-action-kit-mcp] warning: MANTA_TOKEN is not set. The bridge will reject every ` +
-      `client (the extension's handshake requires it). Re-copy the install prompt from the ` +
-      `extension (Action tab → Copy install prompt) and update your MCP config env.`,
-  );
+// CLI subcommands (init / -v / -h) are routed here so they never touch the
+// bridge ports — a user running `npx @manta-action-kit/mcp init` with mismatched
+// port env vars must not be killed by the server-only validation below.
+// Suppressed under MCP_NO_AUTORUN=1: the test suite imports this module and its
+// argv must never be mistaken for CLI subcommands.
+if (
+  process.env.MCP_NO_AUTORUN !== "1" &&
+  (await handleCli(process.argv.slice(2)))
+) {
+  // doctor sets exitCode (1 = unresolved failures); everything else exits 0.
+  process.exit(process.exitCode ?? 0);
 }
 
 // Single source of truth for the server version: derive it from package.json at
@@ -367,7 +373,7 @@ server.registerTool(
   {
     title: "Get call dependency flow",
     description:
-      "Get a recording's FLOW: its calls as ordered lightweight steps (seq/method/url/status, no bodies) plus the inferred field dependencies linking them — i.e. which response value from an earlier call feeds a later call's request. Deps with `fromSeq: -1` carry `fromPath: \"cookie:<NAME>\"` instead: that request field is fed by a browser COOKIE (CSRF/XSRF double-submit), not by any recorded response — when distilling an action, fill it with a `{{cookie:<NAME>}}` header override so the replay uses the live cookie, never a stale recorded token. Steps may also carry a `precedingInteraction` mark (the user interaction, with its text and `deltaMs`, that most likely triggered the call — direct consequences of user intent vs calls that merely co-occur). Use this to understand how the calls chain together before turning the flow into an action (create_action); use get_recording for full request/response bodies. Running a captured flow goes through execute_action — do not replay the chain's calls one by one via proxy_fetch. Find the id via list_recordings.",
+      "Get a recording's FLOW: its calls as ordered lightweight steps (seq/method/url/status, no bodies) plus the inferred field dependencies linking them — i.e. which response value from an earlier call feeds a later call's request. Deps with `fromSeq: -1` carry `fromPath: \"cookie:<NAME>\"` instead: that request field is fed by a browser COOKIE (CSRF/XSRF double-submit), not by any recorded response — when distilling an action, fill it with a `{{cookie:<NAME>}}` header override so the replay uses the live cookie, never a stale recorded token. Steps may also carry a `precedingInteraction` mark (the user interaction, with its text and `deltaMs`, that most likely triggered the call — direct consequences of user intent vs calls that merely co-occur). Use this to understand how the calls chain together before turning the flow into an action (create_action); use get_recording for full request/response bodies. Running a captured flow goes through execute_action — do not replay the chain's calls one by one via proxy_fetch. When the flow contains noise — tracking/telemetry/monitoring calls with no business value — add their URL patterns to the recording filter via add_recording_filter_rules so future recordings on this site skip them, and tell the user which patterns you added. Find the id via list_recordings.",
     inputSchema: {
       id: z.string().describe("The recording id (from list_recordings)."),
     },
@@ -388,7 +394,7 @@ server.registerTool(
   {
     title: "Get API contracts",
     description:
-      "Get a recording's distinct ENDPOINTS: its calls collapsed by method + normalized URL path (numeric ids / uuids become \":id\") into one contract each, with request/response bodies inferred into REDACTED schemas — field names, types, optional/nullable flags, and one masked example per scalar, but no real values or credentials. Use this to learn a site's API surface cleanly, without wading through repetitive raw calls. Each endpoint may also carry inputsFrom: request fields whose VALUES come from an upstream endpoint's response (e.g. body.orderId ← `GET /orders` response `.data[].id`) — so before calling an endpoint, resolve its inputsFrom by first calling the upstream endpoint and reading the value from there, instead of guessing ids/tokens. An input with `fromCookie: \"<NAME>\"` (no fromEndpointKey) is instead fed by that browser cookie (CSRF double-submit) — in an action, fill it with a `{{cookie:<NAME>}}` HEADER override so the replay uses the live value. inputsFrom carries only the source location, never the literal value. Request fields may also carry a `dynamism` mark (and query params a `queryDynamism` map): `verdict: 'varies'` means the value would differ on a replay in a fresh session (timestamp, session token, auto-generated id) and must become an action parameter, while `stable` is safe to hardcode; `source: 'stats'` (multi-observation) outranks `'model'` (single-observation). Use get_recording for concrete bodies, get_flow for the raw per-call dependency chain. Find the id via list_recordings. Recordings are source material for actions: author the endpoint chain as an action (create_action) and run it via execute_action rather than replaying calls manually.",
+      "Get a recording's distinct ENDPOINTS: its calls collapsed by method + normalized URL path (numeric ids / uuids become \":id\") into one contract each, with request/response bodies inferred into REDACTED schemas — field names, types, optional/nullable flags, and one masked example per scalar, but no real values or credentials. Use this to learn a site's API surface cleanly, without wading through repetitive raw calls. Each endpoint may also carry inputsFrom: request fields whose VALUES come from an upstream endpoint's response (e.g. body.orderId ← `GET /orders` response `.data[].id`) — so before calling an endpoint, resolve its inputsFrom by first calling the upstream endpoint and reading the value from there, instead of guessing ids/tokens. An input with `fromCookie: \"<NAME>\"` (no fromEndpointKey) is instead fed by that browser cookie (CSRF double-submit) — in an action, fill it with a `{{cookie:<NAME>}}` HEADER override so the replay uses the live value. inputsFrom carries only the source location, never the literal value. Request fields may also carry a `dynamism` mark (and query params a `queryDynamism` map): `verdict: 'varies'` means the value would differ on a replay in a fresh session (timestamp, session token, auto-generated id) and must become an action parameter, while `stable` is safe to hardcode; `source: 'stats'` (multi-observation) outranks `'model'` (single-observation). Use get_recording for concrete bodies, get_flow for the raw per-call dependency chain. Find the id via list_recordings. Recordings are source material for actions: author the endpoint chain as an action (create_action) and run it via execute_action rather than replaying calls manually. When the endpoints include noise — tracking/telemetry/monitoring calls with no business value — add their URL patterns to the recording filter via add_recording_filter_rules so future recordings on this site skip them, and tell the user which patterns you added.",
     inputSchema: {
       id: z.string().describe("The recording id (from list_recordings)."),
     },
@@ -424,6 +430,80 @@ server.registerTool(
       })) as RpcResults["get_call"];
       if (!res.call) return errorContent(`No call found with id "${callId}".`);
       return jsonContent(res.call);
+    } catch (err) {
+      return errorContent(err);
+    }
+  },
+);
+
+server.registerTool(
+  "list_recording_filter_rules",
+  {
+    title: "List recording filter rules",
+    description:
+      "List the extension's RECORDING FILTER RULES — the URL blacklist consulted while " +
+      "recording: any request whose URL matches an enabled rule's pattern is dropped at " +
+      "capture time and never reaches a recording. Each rule: {id, pattern, enabled, " +
+      "source, createdAt} (source 'agent' = added by an AI assistant). A pattern is a " +
+      "wildcard glob over the FULL URL: `*` matches any run of characters, matching is " +
+      "full-string and case-insensitive (e.g. `*://*.example.com/api/track*`). Pass `url` " +
+      "to also get `urlMatches`: the ids of enabled rules matching that exact URL. " +
+      "⚠️ When the user asks why an endpoint is missing from a recording, CHECK HERE " +
+      "FIRST — a matching rule means the call was filtered out by design, not a capture " +
+      "failure.",
+    inputSchema: {
+      url: z
+        .string()
+        .optional()
+        .describe(
+          "Optional URL to test against the enabled rules; the result then includes urlMatches (matching rule ids).",
+        ),
+    },
+  },
+  async ({ url }) => {
+    try {
+      const res = (await call("list_recording_filter_rules", {
+        url,
+      })) as RpcResults["list_recording_filter_rules"];
+      return jsonContent(res);
+    } catch (err) {
+      return errorContent(err);
+    }
+  },
+);
+
+server.registerTool(
+  "add_recording_filter_rules",
+  {
+    title: "Add recording filter rules",
+    description:
+      "Add URL patterns to the recording filter (blacklist) so FUTURE recordings skip " +
+      "noise APIs — tracking, telemetry, monitoring, polling heartbeats. Pass `patterns`: " +
+      "an array of wildcard URL globs (`*` matches any run of characters; full-string, " +
+      "case-insensitive match against the complete URL). Derive patterns conservatively " +
+      "from the noise calls' URLs — anchor them on the distinctive path segment (e.g. " +
+      "`*://*.example.com/api/collect*`) rather than a broad prefix that could swallow " +
+      "business APIs. Rules are added enabled immediately (no user confirmation): the " +
+      "user receives a system notification and can delete rules from the extension's " +
+      "recording tab, so tell the user which patterns you added. Result: `added` (the new " +
+      "rules) and `skipped` (duplicates; a skipped pattern may be a rule the user " +
+      "deliberately disabled — leave it as is).",
+    inputSchema: {
+      patterns: z
+        .array(z.string().min(1))
+        .min(1)
+        .max(50)
+        .describe(
+          "Wildcard URL patterns to blacklist (e.g. '*://*.example.com/api/track*').",
+        ),
+    },
+  },
+  async ({ patterns }) => {
+    try {
+      const res = (await call("add_recording_filter_rules", {
+        patterns,
+      })) as RpcResults["add_recording_filter_rules"];
+      return jsonContent(res);
     } catch (err) {
       return errorContent(err);
     }
@@ -1582,6 +1662,17 @@ async function elect(): Promise<void> {
 }
 
 async function main() {
+  // Fail-closed warning: without the token the extension's handshake rejects
+  // every client, so surface the fix before the user debugs a dead bridge.
+  if (!token) {
+    console.error(
+      `[manta-action-kit-mcp] warning: MANTA_TOKEN is not set. The bridge will reject every ` +
+        `client (the extension's handshake requires it). Re-copy the install prompt from the ` +
+        `extension (Action tab → Copy install prompt) and update your MCP config env ` +
+        `— or run \`npx @manta-action-kit/mcp init\` to rewrite it.`,
+    );
+  }
+
   // Elect a role BEFORE serving MCP over stdio. Unlike before, losing the port
   // race is no longer fatal — we degrade to a peer that forwards to the owner, so
   // multiple concurrent agent sessions (installed via npx) coexist on one bridge.

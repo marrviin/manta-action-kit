@@ -58,6 +58,8 @@ MANTA_TOKEN=<MCP 配置 env 里的 token> node <skill 目录>/scripts/check-env.
 | 看调用链路 / 字段从哪来                       | `get_flow` · `get_endpoints` · `get_recording`              |
 | 看单个调用                                    | `get_call`                                                  |
 | 描述这段录制是干什么的                        | `set_recording_description`                                 |
+| 分析时发现埋点/监控等无效接口                 | `add_recording_filter_rules`（加入过滤规则，后续录制自动跳过） |
+| 这个接口为什么没被录制                        | `list_recording_filter_rules`（查该 URL 是否命中过滤规则）    |
 | 查 action 列表                                | `list_actions`                                              |
 | 找一个能做 X 的 action                        | `search_actions`                                            |
 | 看 action 定义 / 参数                         | `get_action`                                                |
@@ -183,3 +185,16 @@ MANTA_TOKEN=<MCP 配置 env 里的 token> node <skill 目录>/scripts/check-env.
   自行判断（`createdAt` 这种即使没标也大概率是 varies）。
 - `execute_action` 失败时带 `continueOnError: true` 重跑一次：所有步骤都会执行，
   `endReason: "completed-with-errors"` 一次性报告每步结果，而不是停在第一个失败。
+
+## 录制过滤规则（无效接口治理）
+
+分析录制时若发现埋点、监控、轮询心跳等对业务无意义的调用，把它们加入录制过滤规则，
+后续录制会自动跳过（提升录制的有效率）：
+
+- `add_recording_filter_rules`：传通配符 URL 规则数组（`*` 匹配任意字符，对完整 URL
+  全串匹配、大小写不敏感，如 `*://*.example.com/api/collect*`）。规则立即生效，无需
+  用户确认；用户会收到系统通知，并可随时在扩展「录制 → 过滤规则」里删除。规则要从
+  无效调用 URL 的特征路径段出发，写保守一些，避免误伤业务接口。把加了哪些规则告诉用户。
+- `list_recording_filter_rules`：列出全部规则；传 `url` 可查该 URL 命中了哪些启用的
+  规则。**用户问「这个接口为什么没被录制」时先查这里**——命中规则说明是设计如此
+  （被过滤了），不是录制失败。

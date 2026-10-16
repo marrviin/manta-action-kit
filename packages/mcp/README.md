@@ -172,6 +172,37 @@ Config:
 - `MANTA_TOKEN` — handshake secret shared with the extension; take it from the
   extension's install prompt. Without it the server rejects every client.
 
+## CLI
+
+The `manta-action-kit-mcp` bin doubles as a small CLI (no arguments = run the
+MCP stdio server — that is what agent configs launch):
+
+```bash
+npx @manta-action-kit/mcp init    # alias: i — auto-install into local agent hosts
+npx @manta-action-kit/mcp doctor  # alias: d — check the environment, auto-fix what it can
+npx @manta-action-kit/mcp -v      # alias: --version — print the version
+npx @manta-action-kit/mcp -h      # alias: --help — usage
+```
+
+`init` detects locally installed agent hosts (Claude Code, Claude Desktop,
+Cursor, Windsurf, VS Code, Codex CLI), shows a multi-select pre-checked with
+the detected ones, and upserts the `manta-action-kit` server entry into each
+selected agent's MCP config (creating the file if missing, preserving every
+other entry; corrupted files are never truncated). When `MANTA_TOKEN` is not
+set it asks you to paste the extension's install prompt (or just the token)
+and extracts the token and ports from it; a missing token is written as
+absent with a warning, since the bridge rejects clients without it. Restart
+the selected agents afterwards to pick up the config.
+
+`doctor` runs a read-only environment check — Node version, agent config
+coverage, a WS-bridge probe with the real token handshake (reusing the
+peer-client), extension connection and version skew, and the HTTP proxy
+port — and reports each check as OK / warning / fixable / failure. Fixable
+problems (missing config entries, a stale `MANTA_TOKEN`) are offered as an
+automatic fix after confirmation; the rest come with concrete solutions
+(`lsof` to identify a port squatter, opening Chrome for a disconnected
+extension, …). Warnings don't fail the exit code; unresolved failures exit 1.
+
 ## Wiring into an agent (e.g. Claude Code / Codex)
 
 The extension's **Action tab** has a **Copy install prompt** button that copies
@@ -384,6 +415,32 @@ pnpm --filter @manta-action-kit/mcp start   # node dist/index.js
   `MANTA_WS_PORT` 不同）。
 - `MANTA_TOKEN` —— 与扩展共享的握手密钥；取自扩展的安装提示词。未配置时服务端
   会拒绝所有客户端。
+
+## CLI 命令
+
+`manta-action-kit-mcp` bin 同时也是一个轻量 CLI（不带参数 = 运行 MCP stdio 服务，
+即 agent 配置启动时使用的模式）：
+
+```bash
+npx @manta-action-kit/mcp init    # 别名 i —— 自动安装到本地 agent
+npx @manta-action-kit/mcp doctor  # 别名 d —— 环境检查，能修的自动修
+npx @manta-action-kit/mcp -v      # 别名 --version —— 查询版本
+npx @manta-action-kit/mcp -h      # 别名 --help —— 用法说明
+```
+
+`init` 会检测本机已安装的 agent（Claude Code、Claude Desktop、Cursor、Windsurf、
+VS Code、Codex CLI），以多选框列出（已检测到的默认勾选），并把
+`manta-action-kit` 服务条目写入所选 agent 的 MCP 配置（文件不存在则创建，其他
+条目保持不变；损坏的文件不会静默覆盖而是直接报错）。若未设置 `MANTA_TOKEN`，
+会提示粘贴扩展的安装提示词（或仅 token），并从中提取 token 与端口；缺少 token
+时会带警告写入（网关会对无 token 的连接拒绝握手）。完成后请重启所选 agent 以
+加载新配置。
+
+`doctor` 做只读环境检查 —— Node 版本、agent 配置覆盖、用真实 token 握手探测
+WS bridge（复用 peer-client）、扩展连接与版本偏差、HTTP 代理端口 —— 并将每项
+标记为 OK / 警告 / 可修复 / 失败。可修复的问题（缺少配置条目、token 过期）会
+先询问用户是否自动修复；其余给出具体解决方案（用 `lsof` 找端口占用者、打开
+Chrome 让扩展重连等）。警告不影响退出码；存在未解决的失败时退出码为 1。
 
 ## 接入 Agent（例如 Claude Code / Codex）
 

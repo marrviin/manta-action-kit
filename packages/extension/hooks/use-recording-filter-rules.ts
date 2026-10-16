@@ -33,6 +33,7 @@ export function useRecordingFilterRules() {
       pattern: pattern.trim(),
       enabled: true,
       createdAt: Date.now(),
+      source: 'user',
     };
     const current = await recordingFilterRules.getValue();
     await recordingFilterRules.setValue([rule, ...current]);

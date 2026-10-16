@@ -122,7 +122,7 @@
   {
     "name": "get_flow",
     "title": "Get call dependency flow",
-    "description": "Get a recording's FLOW: its calls as ordered lightweight steps (seq/method/url/status, no bodies) plus the inferred field dependencies linking them — i.e. which response value from an earlier call feeds a later call's request. Deps with `fromSeq: -1` carry `fromPath: \"cookie:<NAME>\"` instead: that request field is fed by a browser COOKIE (CSRF/XSRF double-submit), not by any recorded response — when distilling an action, fill it with a `{{cookie:<NAME>}}` header override so the replay uses the live cookie, never a stale recorded token. Steps may also carry a `precedingInteraction` mark (the user interaction, with its text and `deltaMs`, that most likely triggered the call — direct consequences of user intent vs calls that merely co-occur). Use this to understand how the calls chain together before turning the flow into an action (create_action); use get_recording for full request/response bodies. Running a captured flow goes through execute_action — do not replay the chain's calls one by one via proxy_fetch. Find the id via list_recordings.",
+    "description": "Get a recording's FLOW: its calls as ordered lightweight steps (seq/method/url/status, no bodies) plus the inferred field dependencies linking them — i.e. which response value from an earlier call feeds a later call's request. Deps with `fromSeq: -1` carry `fromPath: \"cookie:<NAME>\"` instead: that request field is fed by a browser COOKIE (CSRF/XSRF double-submit), not by any recorded response — when distilling an action, fill it with a `{{cookie:<NAME>}}` header override so the replay uses the live cookie, never a stale recorded token. Steps may also carry a `precedingInteraction` mark (the user interaction, with its text and `deltaMs`, that most likely triggered the call — direct consequences of user intent vs calls that merely co-occur). Use this to understand how the calls chain together before turning the flow into an action (create_action); use get_recording for full request/response bodies. Running a captured flow goes through execute_action — do not replay the chain's calls one by one via proxy_fetch. When the flow contains noise — tracking/telemetry/monitoring calls with no business value — add their URL patterns to the recording filter via add_recording_filter_rules so future recordings on this site skip them, and tell the user which patterns you added. Find the id via list_recordings.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -143,7 +143,7 @@
   {
     "name": "get_endpoints",
     "title": "Get API contracts",
-    "description": "Get a recording's distinct ENDPOINTS: its calls collapsed by method + normalized URL path (numeric ids / uuids become \":id\") into one contract each, with request/response bodies inferred into REDACTED schemas — field names, types, optional/nullable flags, and one masked example per scalar, but no real values or credentials. Use this to learn a site's API surface cleanly, without wading through repetitive raw calls. Each endpoint may also carry inputsFrom: request fields whose VALUES come from an upstream endpoint's response (e.g. body.orderId ← `GET /orders` response `.data[].id`) — so before calling an endpoint, resolve its inputsFrom by first calling the upstream endpoint and reading the value from there, instead of guessing ids/tokens. An input with `fromCookie: \"<NAME>\"` (no fromEndpointKey) is instead fed by that browser cookie (CSRF double-submit) — in an action, fill it with a `{{cookie:<NAME>}}` HEADER override so the replay uses the live value. inputsFrom carries only the source location, never the literal value. Request fields may also carry a `dynamism` mark (and query params a `queryDynamism` map): `verdict: 'varies'` means the value would differ on a replay in a fresh session (timestamp, session token, auto-generated id) and must become an action parameter, while `stable` is safe to hardcode; `source: 'stats'` (multi-observation) outranks `'model'` (single-observation). Use get_recording for concrete bodies, get_flow for the raw per-call dependency chain. Find the id via list_recordings. Recordings are source material for actions: author the endpoint chain as an action (create_action) and run it via execute_action rather than replaying calls manually.",
+    "description": "Get a recording's distinct ENDPOINTS: its calls collapsed by method + normalized URL path (numeric ids / uuids become \":id\") into one contract each, with request/response bodies inferred into REDACTED schemas — field names, types, optional/nullable flags, and one masked example per scalar, but no real values or credentials. Use this to learn a site's API surface cleanly, without wading through repetitive raw calls. Each endpoint may also carry inputsFrom: request fields whose VALUES come from an upstream endpoint's response (e.g. body.orderId ← `GET /orders` response `.data[].id`) — so before calling an endpoint, resolve its inputsFrom by first calling the upstream endpoint and reading the value from there, instead of guessing ids/tokens. An input with `fromCookie: \"<NAME>\"` (no fromEndpointKey) is instead fed by that browser cookie (CSRF double-submit) — in an action, fill it with a `{{cookie:<NAME>}}` HEADER override so the replay uses the live value. inputsFrom carries only the source location, never the literal value. Request fields may also carry a `dynamism` mark (and query params a `queryDynamism` map): `verdict: 'varies'` means the value would differ on a replay in a fresh session (timestamp, session token, auto-generated id) and must become an action parameter, while `stable` is safe to hardcode; `source: 'stats'` (multi-observation) outranks `'model'` (single-observation). Use get_recording for concrete bodies, get_flow for the raw per-call dependency chain. Find the id via list_recordings. Recordings are source material for actions: author the endpoint chain as an action (create_action) and run it via execute_action rather than replaying calls manually. When the endpoints include noise — tracking/telemetry/monitoring calls with no business value — add their URL patterns to the recording filter via add_recording_filter_rules so future recordings on this site skip them, and tell the user which patterns you added.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -175,6 +175,51 @@
       },
       "required": [
         "callId"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    }
+  },
+  {
+    "name": "list_recording_filter_rules",
+    "title": "List recording filter rules",
+    "description": "List the extension's RECORDING FILTER RULES — the URL blacklist consulted while recording: any request whose URL matches an enabled rule's pattern is dropped at capture time and never reaches a recording. Each rule: {id, pattern, enabled, source, createdAt} (source 'agent' = added by an AI assistant). A pattern is a wildcard glob over the FULL URL: `*` matches any run of characters, matching is full-string and case-insensitive (e.g. `*://*.example.com/api/track*`). Pass `url` to also get `urlMatches`: the ids of enabled rules matching that exact URL. ⚠️ When the user asks why an endpoint is missing from a recording, CHECK HERE FIRST — a matching rule means the call was filtered out by design, not a capture failure.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "description": "Optional URL to test against the enabled rules; the result then includes urlMatches (matching rule ids).",
+          "type": "string"
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    }
+  },
+  {
+    "name": "add_recording_filter_rules",
+    "title": "Add recording filter rules",
+    "description": "Add URL patterns to the recording filter (blacklist) so FUTURE recordings skip noise APIs — tracking, telemetry, monitoring, polling heartbeats. Pass `patterns`: an array of wildcard URL globs (`*` matches any run of characters; full-string, case-insensitive match against the complete URL). Derive patterns conservatively from the noise calls' URLs — anchor them on the distinctive path segment (e.g. `*://*.example.com/api/collect*`) rather than a broad prefix that could swallow business APIs. Rules are added enabled immediately (no user confirmation): the user receives a system notification and can delete rules from the extension's recording tab, so tell the user which patterns you added. Result: `added` (the new rules) and `skipped` (duplicates; a skipped pattern may be a rule the user deliberately disabled — leave it as is).",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "patterns": {
+          "minItems": 1,
+          "maxItems": 50,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Wildcard URL patterns to blacklist (e.g. '*://*.example.com/api/track*')."
+        }
+      },
+      "required": [
+        "patterns"
       ],
       "$schema": "http://json-schema.org/draft-07/schema#"
     },

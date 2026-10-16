@@ -116,6 +116,7 @@ export const zhCN: Messages = {
     urlPatternPlaceholder: "例如：*/analytics*",
     ruleAdded: "已添加过滤规则",
     ruleDuplicate: "该过滤规则已存在",
+    ruleSourceAgent: "AI",
     deleteRuleTitle: "删除该过滤规则",
     deleteRuleConfirm: "确定删除「{{pattern}}」？",
     loadFailed: "加载录制记录失败",
@@ -300,6 +301,12 @@ export const zhCN: Messages = {
     set_recording_descriptionLabel: "设置录制描述",
     set_recording_descriptionDesc:
       "为录制写入由 agent 生成的「整体流程」业务描述——用途、能干什么、复用注意事项（而非逐接口字段罗列）；专用写入接口，详情页只读展示",
+    list_recording_filter_rulesLabel: "查询录制过滤规则",
+    list_recording_filter_rulesDesc:
+      "列出录制时生效的 URL 黑名单；可顺带检查某条 URL 是否被过滤（回答「这个接口为什么没被录制」）",
+    add_recording_filter_rulesLabel: "添加录制过滤规则",
+    add_recording_filter_rulesDesc:
+      "添加通配符 URL 规则，让后续录制跳过埋点/监控等无效接口；用户会收到系统通知，可在录制页删除规则",
     list_element_capturesLabel: "查询元素捕获列表",
     list_element_capturesDesc:
       "获取已保存的元素捕获快照概要（页面、标题、元素数量）；用于分析组件或与其他快照做对比",

@@ -349,4 +349,10 @@ export interface RecordingFilterRule {
   /** When false, the rule is inert (ignored during recording). */
   enabled: boolean;
   createdAt: number;
+  /**
+   * Who created the rule. 'agent' = added by an AI assistant via MCP
+   * (add_recording_filter_rules); 'user' (or absent, on old rules) = added
+   * from the side panel. Only used for the UI's origin tag.
+   */
+  source?: 'user' | 'agent';
 }
