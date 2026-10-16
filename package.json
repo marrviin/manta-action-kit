@@ -36,7 +36,7 @@
   },
   "simple-git-hooks": {
     "pre-commit": "pnpm exec lint-staged",
-    "pre-push": "pnpm compile && pnpm test"
+    "pre-push": "pnpm compile && pnpm test && pnpm lint && pnpm sync:skill"
   },
   "lint-staged": {
     "*.{ts,tsx,js,mjs,cjs,jsx}": [
